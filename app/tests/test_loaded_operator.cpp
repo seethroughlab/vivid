@@ -6,6 +6,7 @@
 #include "gpu/op_runtime.h"
 #include "test_helpers.h"
 
+#include <dlfcn.h>
 #include <memory>
 #include <string>
 #include <vector>
@@ -74,6 +75,27 @@ int main() {
     CHECK(dyl->role == VIVID_OP_ROLE_RECIPE);                    // dylib's own descriptor (VIVID_REGISTER)
     CHECK(op.declared_operator_role() == VIVID_OP_ROLE_RECIPE);  // adapter forwards it
     CHECK(built->role == VIVID_OP_ROLE_RECIPE);                  // host descriptor records it
+
+    // ADR-0050: the appended VividThumbnailContext.purpose (v17) crosses the dlopen boundary intact.
+    // Drive draw_thumbnail through the adapter -> the dylib's vivid_draw_thumbnail -> FixtureOp, which
+    // records the purpose; read it back via the fixture's test export (same image => shared static).
+    {
+        void* h = dlopen(FIXTURE_OP_PATH, RTLD_NOW | RTLD_LOCAL);
+        CHECK(h != nullptr);
+        auto last_purpose = reinterpret_cast<uint32_t (*)()>(dlsym(h, "vivid_test_last_preview_purpose"));
+        auto abi_of       = reinterpret_cast<uint32_t (*)()>(dlsym(h, "vivid_abi_version"));
+        CHECK(last_purpose != nullptr);
+        CHECK(abi_of != nullptr && abi_of() == VIVID_OPERATOR_ABI_VERSION);   // fixture built at current ABI
+        CHECK(last_purpose() == 0xFFFFFFFFu);                                 // not yet drawn
+
+        VividThumbnailContext tc{};                 // zero-init => purpose defaults to DEFAULT
+        CHECK(tc.purpose == VIVID_PREVIEW_DEFAULT);
+        tc.purpose = VIVID_PREVIEW_AUDIO_NODE;
+        op.draw_thumbnail(&tc);                     // adapter -> dlopen'd op (reads only ctx->purpose)
+        CHECK(last_purpose() == VIVID_PREVIEW_AUDIO_NODE);   // the appended field arrived intact
+
+        if (h) dlclose(h);
+    }
 
     return vivid::test::summary("test_loaded_operator");
 }

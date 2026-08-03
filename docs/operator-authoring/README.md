@@ -140,6 +140,26 @@ missing?" confusion:
 **So:** a stubbed `draw_thumbnail` + a `thumb3d`/`lanethumb` call in `process_gpu` = a working thumbnail.
 A stubbed `draw_thumbnail` + no Path-B render = a genuinely **blank** card (the audit will flag it).
 
+### Preview purpose — why you're being asked to draw (v17, ADR-0050)
+
+`draw_thumbnail` is really an **operator-drawn compact preview**, and the *same* hook is called from more
+than one surface. `ctx->purpose` (a `VividPreviewPurpose`) says which, so you know what you may assume.
+Most ops draw the same thing everywhere and can ignore it. Branch on it **only** when the semantic
+contract differs — it is **not** a layout hint (aspect and size are already in `surface_width`/
+`surface_height`, so read those for layout) and **not** the operator's role (that's `VividOperatorRole`).
+
+| `ctx->purpose` | live instance? | `param_values` | `time` | draw for… |
+|---|---|---|---|---|
+| `VIVID_PREVIEW_SESSION_CELL` | yes | node params | transport beats | musical material in the session grid |
+| `VIVID_PREVIEW_AUDIO_NODE` | yes | node params | clock beats | a device/node card in the audio graph |
+| `VIVID_PREVIEW_DEFAULT` | maybe | may be null | may be 0 | unspecified — assume the least |
+| `VIVID_PREVIEW_CATALOG` *(reserved)* | **no** | defaults/null | 0 | a picker/reference preview — render from defaults, assume no sample/voice |
+| `VIVID_PREVIEW_VISUAL_NODE` *(reserved)* | yes | node params | frame time | a visual node that draws instead of blitting a texture |
+
+`DEFAULT` is `0`, so an older op that never reads `purpose` is unaffected, and a host that hasn't set it
+yet gets `DEFAULT`. The two reserved purposes have no call site today — don't wait on them. The export is
+still `vivid_draw_thumbnail`; only the vocabulary ("preview") changed.
+
 ### Audio nodes have their own preview mechanisms
 
 Beyond Path A, the audio node-graph card gives most audio ops a meaningful preview **without**

@@ -561,6 +561,7 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
             tc.param_count    = static_cast<uint32_t>(pvals.size());
             tc.accent         = VividColor{ acc[0], acc[1], acc[2], 1.0f };
             tc.time           = clock_beats_;
+            tc.purpose        = VIVID_PREVIEW_AUDIO_NODE;   // ADR-0050
             P::session_generator_draw_thumbnail(s_, track_, gen_scene, &tc);
         } else if (kind == 6 && iw > 6.f && ih > 6.f) {
             // MidiClip ("Clip"): draw the scheduled clip's note pattern — the same mini piano-roll the

@@ -11,6 +11,10 @@ VividPortDescriptor out_port(const char* name) {
     p.value_type = VIVID_VALUE_TEXTURE; p.multiplicity = VIVID_MULTIPLICITY_SCALAR;
     return p;
 }
+// ADR-0050: the last preview purpose this dylib was asked to draw for, so test_loaded_operator can
+// prove the appended VividThumbnailContext.purpose field crosses the dlopen boundary intact. Sentinel
+// 0xFFFFFFFF = "never called".
+uint32_t g_last_preview_purpose = 0xFFFFFFFFu;
 }  // namespace
 
 struct FixtureOp : vivid::OperatorBase, vivid::FrameProcessable {
@@ -25,9 +29,16 @@ struct FixtureOp : vivid::OperatorBase, vivid::FrameProcessable {
     void collect_params(std::vector<vivid::ParamBase*>& o) override { o.push_back(&gain); o.push_back(&mix); }
     void collect_ports(std::vector<VividPortDescriptor>& o) override { o.push_back(out_port("out")); }
     void process_frame(const VividFrameContext*) override {}
+    // ADR-0050: record the preview purpose we were asked for (read the appended v17 field only).
+    void draw_thumbnail(const VividThumbnailContext* ctx) override {
+        g_last_preview_purpose = ctx ? ctx->purpose : 0xFFFFFFFFu;
+    }
 };
 
 VIVID_REGISTER(FixtureOp)
+
+// Test-only readback of the purpose the host last passed to draw_thumbnail (ADR-0050 ABI round-trip).
+extern "C" uint32_t vivid_test_last_preview_purpose(void) { return g_last_preview_purpose; }
 
 // ADR-0021/P3: exercise the file-drop ABI (vivid_file_drop_descriptor) through a real dylib.
 static const char* const kFixtureDropExts[] = { ".foo", ".bar" };
