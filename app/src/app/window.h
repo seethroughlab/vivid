@@ -162,6 +162,10 @@ struct Window {
     ui::Chooser audio_chooser;
     // "+ Track" opens the same chooser filtered to instruments; the pick creates the track first.
     bool audio_chooser_new_track = false;
+    // ADR-0050: the add-generator picker (Tab over a scene cell). Its rows draw a live CATALOG preview
+    // of each generator (Euclid ring, …); the pick places it into the remembered target cell.
+    ui::Chooser generator_chooser;
+    int  gen_pick_track = -1, gen_pick_scene = -1;   // the cell the picker targets
     // Phase 2c: the curated inspector's "+ Add param" picker — the same palette (type-to-filter +
     // scroll) as Tab-to-add, its entries = the selected plugin node's UNPINNED params. On confirm it
     // pins the chosen param. `param_chooser_node` is which node it curates.

@@ -828,6 +828,7 @@ void run_frame_loop(App& app, Window& win) {
             if (win.preview.show) draw_output_preview(ui, win, mx, my);
             graph.draw_overlays(ui);      // the visuals Tab chooser
             win.audio_chooser.draw(ui);   // the audio Tab chooser (A3) — same widget, one catalog
+            win.generator_chooser.draw(ui);   // ADR-0050: the add-generator picker (rows draw CATALOG previews)
             draw_popup(ui, win.menu);       // ADR-0027: characteristics menu (header baked in at open)
             draw_popup(ui, win.map_menu);   // ADR-0027: bridge map-source picker
             draw_mod_editor(ui, win.mod_editor, app.session, win.sel_track);   // ADR-0022 shape editor

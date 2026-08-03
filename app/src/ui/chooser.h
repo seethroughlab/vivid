@@ -3,6 +3,7 @@
 #include "ui/graph_catalog.h"   // CatalogSpawn — the typed domain/kind/spawn descriptor (ADR-0023 step 5)
 #include "operator_api/types.h" // VividOperatorRole (ADR-0046 role chip)
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -48,6 +49,12 @@ public:
     void hide() { open_ = false; }
     void set_entries(std::vector<ChooserEntry> entries);   // the catalog, rebuilt on each show()
 
+    // ADR-0050: optional per-row preview. When set, each row reserves a small left swatch and the owner
+    // draws into it (e.g. an operator's CATALOG thumbnail); unset => no swatch, byte-identical layout to
+    // before. One owner-level callback (not a per-entry closure), like clip_editor's audition sink.
+    using PreviewDrawer = std::function<void(Renderer2D&, const ChooserEntry&, float x, float y, float w, float h)>;
+    void set_preview_drawer(PreviewDrawer fn) { preview_fn_ = std::move(fn); }
+
     // Keys (the owner routes them while open() is true).
     void move(int dir);            // +1 down / -1 up
     void backspace();
@@ -78,6 +85,7 @@ private:
     float bx0_ = 0.f, by0_ = 0.f, bx1_ = 0.f, by1_ = 0.f;   // the graph region to stay inside
     std::vector<ChooserEntry> entries_;
     std::vector<int> hits_;                      // indices into entries_, best match first
+    PreviewDrawer preview_fn_;                   // ADR-0050: optional per-row swatch painter (may be empty)
 };
 
 }  // namespace vivid::ui

@@ -104,11 +104,19 @@ void Chooser::draw(Renderer2D& r) const {
         const float iy = py + kHdrH + vi * kRowH;
         if (hi == sel_) r.draw_rect(px + 2.f, iy, w - 4.f, kRowH, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 0.9f);
         const float* acc = e.accent ? e.accent : sty.dim;
-        r.draw_rect(px + 10.f, iy + 9.f, 5.f, 5.f, acc[0], acc[1], acc[2], e.enabled ? 1.0f : 0.4f);
+        // ADR-0050: when the owner supplies a preview painter, a 24x24 swatch replaces the accent dot
+        // in the left gutter and the text column shifts right past it. Otherwise a 5x5 accent dot.
+        float tx = px + 24.f;                // left text column (label + summary)
+        if (preview_fn_) {
+            const float sw = 24.f, sxp = px + 6.f, syp = iy + 3.f;
+            preview_fn_(r, e, sxp, syp, sw, sw);
+            tx = sxp + sw + 6.f;
+        } else {
+            r.draw_rect(px + 10.f, iy + 9.f, 5.f, 5.f, acc[0], acc[1], acc[2], e.enabled ? 1.0f : 0.4f);
+        }
         // A disabled row stays VISIBLE (the catalog must not lie about what you own) but reads as
         // unavailable, and says why in place of its summary.
         const float* nc = e.enabled ? sty.text : sty.dim;
-        const float tx = px + 24.f;          // left text column (label + summary)
         const float rx = px + w - 12.f;      // common right margin (badge on top, role chip below)
         const float gap = 10.f;
 
