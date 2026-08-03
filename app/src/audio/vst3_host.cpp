@@ -3240,6 +3240,15 @@ int session_audio_graph_connect_kind(Session* s, int t, int from_id, int to_id, 
     if (!tr) return 0;
     const auto ek = (kind == 1) ? vivid::audio::EdgeKind::Note : vivid::audio::EdgeKind::Audio;
     std::lock_guard<std::mutex> lk(tr->gmtx);
+    // ADR-0047: typed validation — a note edge is only valid from a note EMITTER to a note CONSUMER
+    // (the audio graph's connect() is capability-blind; this mirrors the cross-track session_connect_note
+    // check). Interactive path only; the persistence/load path replays edges separately and is untouched.
+    if (ek == vivid::audio::EdgeKind::Note) {
+        const int fi = tr->agraph.node_index(from_id), ti = tr->agraph.node_index(to_id);
+        const auto& ns = tr->agraph.nodes();
+        if (fi < 0 || fi >= static_cast<int>(ns.size()) || !ns[static_cast<size_t>(fi)].note_out) return 0;  // src must emit notes
+        if (ti < 0 || ti >= static_cast<int>(ns.size()) || !ns[static_cast<size_t>(ti)].note_in)  return 0;  // dst must consume notes
+    }
     if (!tr->agraph.connect(from_id, to_id, ek)) return 0;             // dup / self-loop / bad id
     if (!republish_track_graph(tr)) { tr->agraph.disconnect(from_id, to_id, ek); return 0; }  // cycle: revert
     // A note edge changes the graph's DEPTH (the instrument it feeds moves a column downstream), so

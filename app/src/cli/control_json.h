@@ -61,13 +61,40 @@ inline nlohmann::json param_to_json(const VividParamDescriptor& p) {
     return j;
 }
 
-// A port's discovery schema: direction + any semantic metadata.
+// The port's transport as a stable stream-kind name (ADR-0047: the first-class type of the wire).
+// Prefer the explicit `transport`; fall back to the legacy `type` for ports (audio/texture/string) that
+// only set `type` and leave `transport` at SIGNAL. nullptr for plain value/scalar ports (described by
+// value_type/semantics).
+inline const char* port_stream_name(const VividPortDescriptor& p) {
+    VividPortTransport t = p.transport;
+    if (t == VIVID_PORT_TRANSPORT_SIGNAL) {
+        switch (p.type) {
+            case VIVID_PORT_AUDIO_BUFFER: t = VIVID_PORT_TRANSPORT_AUDIO_BUFFER; break;
+            case VIVID_PORT_TEXTURE:      t = VIVID_PORT_TRANSPORT_TEXTURE;      break;
+            case VIVID_PORT_STRING:       t = VIVID_PORT_TRANSPORT_STRING;       break;
+            default: break;
+        }
+    }
+    switch (t) {
+        case VIVID_PORT_TRANSPORT_AUDIO_BUFFER:   return "audio_buffer";
+        case VIVID_PORT_TRANSPORT_NOTE_STREAM:    return "note_stream";
+        case VIVID_PORT_TRANSPORT_CONTROL_SIGNAL: return "control_signal";
+        case VIVID_PORT_TRANSPORT_TEXTURE:        return "texture";
+        case VIVID_PORT_TRANSPORT_STRING:         return "string";
+        case VIVID_PORT_TRANSPORT_CUSTOM_VALUE:   return "custom_value";
+        case VIVID_PORT_TRANSPORT_CUSTOM_REF:     return "custom_ref";
+        default:                                  return nullptr;   // SIGNAL scalar / unknown
+    }
+}
+
+// A port's discovery schema: direction + stream type + any semantic metadata.
 inline nlohmann::json port_to_json(const VividPortDescriptor& p) {
     nlohmann::json j = {
         {"name", p.name ? p.name : ""},
         {"dir", p.direction == VIVID_PORT_OUTPUT ? "out" : "in"},
     };
     auto add = [&](const char* key, const char* v) { if (v && *v) j[key] = v; };
+    add("stream",          port_stream_name(p));   // ADR-0047: first-class stream type
     add("semantic_tag",    p.semantic_tag);
     add("semantic_shape",  p.semantic_shape);
     add("semantic_intent", p.semantic_intent);

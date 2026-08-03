@@ -472,7 +472,7 @@ struct ArpOp : OperatorBase, AudioProcessable {
         VividPortDescriptor p{};
         p.name = "output"; p.type = VIVID_PORT_AUDIO_BUFFER; p.direction = VIVID_PORT_OUTPUT;
         p.value_type = VIVID_VALUE_FLOAT; p.multiplicity = VIVID_MULTIPLICITY_SCALAR;
-        p.semantic_shape = "note_stream";
+        p.semantic_shape = "note_stream"; p.transport = VIVID_PORT_TRANSPORT_NOTE_STREAM;
         o.push_back(p);
     }
 
@@ -623,7 +623,7 @@ struct LfoOp : OperatorBase, AudioProcessable {
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
         // ADR-0047: no audio — the real stream leaves via control_out. The port stays an audio buffer
         // for graph routing, but semantic_shape declares the truth (an Audio wire off an LFO is silence).
-        auto out = aud_out(); out.semantic_shape = "control_signal";
+        auto out = aud_out(); out.semantic_shape = "control_signal"; out.transport = VIVID_PORT_TRANSPORT_CONTROL_SIGNAL;
         o.push_back(out);
     }
 
@@ -703,7 +703,7 @@ struct AdsrOp : OperatorBase, AudioProcessable {
     }
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
         // ADR-0047: emits a control signal via control_out, not audio (like the LFO).
-        auto out = aud_out(); out.semantic_shape = "control_signal";
+        auto out = aud_out(); out.semantic_shape = "control_signal"; out.transport = VIVID_PORT_TRANSPORT_CONTROL_SIGNAL;
         o.push_back(out);
     }
 
@@ -855,7 +855,7 @@ struct EuclidOp : NoteGenBase {
         VividPortDescriptor p{}; p.name = "output"; p.type = VIVID_PORT_AUDIO_BUFFER;
         p.direction = VIVID_PORT_OUTPUT; p.value_type = VIVID_VALUE_FLOAT;
         p.multiplicity = VIVID_MULTIPLICITY_SCALAR;
-        p.semantic_shape = "note_stream";   // ADR-0047: real stream is notes (via note_out), not audio
+        p.semantic_shape = "note_stream"; p.transport = VIVID_PORT_TRANSPORT_NOTE_STREAM;   // ADR-0047: real stream = notes
         o.push_back(p);
     }
     double step_beats() const override { return rate_beats(rate.int_value()); }
@@ -926,7 +926,7 @@ struct ChordOp : NoteGenBase {
         VividPortDescriptor p{}; p.name = "output"; p.type = VIVID_PORT_AUDIO_BUFFER;
         p.direction = VIVID_PORT_OUTPUT; p.value_type = VIVID_VALUE_FLOAT;
         p.multiplicity = VIVID_MULTIPLICITY_SCALAR;
-        p.semantic_shape = "note_stream";   // ADR-0047: real stream is notes (via note_out), not audio
+        p.semantic_shape = "note_stream"; p.transport = VIVID_PORT_TRANSPORT_NOTE_STREAM;   // ADR-0047: real stream = notes
         o.push_back(p);
     }
     double step_beats() const override { return rate_beats(rate.int_value()); }
@@ -986,7 +986,7 @@ struct RandMelodyOp : NoteGenBase {
         VividPortDescriptor p{}; p.name = "output"; p.type = VIVID_PORT_AUDIO_BUFFER;
         p.direction = VIVID_PORT_OUTPUT; p.value_type = VIVID_VALUE_FLOAT;
         p.multiplicity = VIVID_MULTIPLICITY_SCALAR;
-        p.semantic_shape = "note_stream";   // ADR-0047: real stream is notes (via note_out), not audio
+        p.semantic_shape = "note_stream"; p.transport = VIVID_PORT_TRANSPORT_NOTE_STREAM;   // ADR-0047: real stream = notes
         o.push_back(p);
     }
     double step_beats() const override { return rate_beats(rate.int_value()); }
