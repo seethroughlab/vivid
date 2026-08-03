@@ -60,6 +60,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
 
 struct MeshDisplaceOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "MeshDisplace";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_TRANSFORM;   // ADR-0046
     static constexpr const char* kDisplayName = "Mesh Displace";
     static constexpr const char* kSummary = "Displace a mesh's vertices by a 2D texture (GPU compute); mesh in + map in, mesh out.";
     static constexpr std::array<const char*, 3> kKeywords = {"geometry", "3d", "distort"};

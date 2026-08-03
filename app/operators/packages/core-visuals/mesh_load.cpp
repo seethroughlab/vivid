@@ -22,6 +22,7 @@
 
 struct MeshLoadOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "MeshLoad";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr const char* kDisplayName = "Mesh Load";
     static constexpr const char* kSummary = "Load a 3D model (glTF/GLB) and output it as a mesh for the geometry pipeline.";
     static constexpr std::array<const char*, 3> kKeywords = {"generator", "geometry", "3d"};

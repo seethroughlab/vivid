@@ -37,6 +37,7 @@ struct VIn { @location(0) center: vec2f, @location(1) offset: vec2f };
 
 struct ShapeGridOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "ShapeGrid";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr const char* kDisplayName = "Shape Grid";
     static constexpr const char* kSummary = "A grid of filled polygons drawn as REAL vertex geometry (not a shader field).";
     static constexpr std::array<const char*, 3> kKeywords = {"generator", "geometry", "grid"};

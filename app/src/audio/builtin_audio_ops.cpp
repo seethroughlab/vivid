@@ -24,6 +24,7 @@ inline VividPortDescriptor aud_out() { return { "output", VIVID_PORT_AUDIO_BUFFE
 
 // --- Bitcrush: bit-depth + sample-rate reduction (an effect spike) --------------------
 struct BitcrushOp : OperatorBase, AudioProcessable {
+    VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_TRANSFORM; }   // ADR-0046
     static constexpr const char* kDisplayName = "Bitcrush";
     static constexpr const char* kSummary = "Bit-depth + sample-rate reduction (lo-fi crush).";
     static constexpr std::array<const char*, 3> kKeywords = { "audio", "effect", "bitcrush" };
@@ -70,6 +71,7 @@ struct BitcrushOp : OperatorBase, AudioProcessable {
 // fans a source out to both branches, so this single op powers the whole parallel-FX demo.
 // RT-safe: per-channel POD state, coefficients computed once per block, denormal-flushed.
 struct StateVariableFilterOp : OperatorBase, AudioProcessable {
+    VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_TRANSFORM; }   // ADR-0046
     static constexpr const char* kDisplayName = "Filter";
     static constexpr const char* kSummary = "State-variable filter (low/high/band-pass) with resonance.";
     static constexpr std::array<const char*, 4> kKeywords = { "audio", "effect", "filter", "eq" };
@@ -132,6 +134,7 @@ struct StateVariableFilterOp : OperatorBase, AudioProcessable {
 
 // --- Test Tone: a simple polyphonic sine instrument (an instrument spike) --------------
 struct TestToneOp : OperatorBase, AudioProcessable {
+    VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_SOURCE; }   // ADR-0046
     static constexpr const char* kDisplayName = "Test Tone";
     static constexpr const char* kSummary = "Simple sine instrument (native-instrument spike).";
     static constexpr std::array<const char*, 3> kKeywords = { "audio", "instrument", "tone" };
@@ -187,6 +190,7 @@ struct TestToneOp : OperatorBase, AudioProcessable {
 // channel's master A/V clock, which the Video op reads back to keep the picture locked to this sound.
 // Link the two nodes by matching this `source` to the Video node's `audio_bus`.
 struct MovieAudioOp : OperatorBase, AudioProcessable {
+    VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_SOURCE; }   // ADR-0046
     static constexpr const char* kDisplayName = "Movie Audio";
     static constexpr const char* kSummary = "Audio track of a Video node's movie, as a graph source (wire through effects).";
     static constexpr std::array<const char*, 3> kKeywords = { "audio", "movie", "source" };
@@ -223,6 +227,7 @@ struct MovieAudioOp : OperatorBase, AudioProcessable {
 //   - slice→MIDI  (nslices  > 0): one single-note region per slice at base_note+i (drum-rack),
 //     now click-free with an envelope.
 struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPreviewable {
+    VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_SOURCE; }   // ADR-0046
     static constexpr const char* kDisplayName = "Sampler";
     static constexpr const char* kSummary = "Plays pitched PCM per note with ADSR + polyphony (melodic or drum-rack).";
     static constexpr std::array<const char*, 4> kKeywords = { "audio", "instrument", "sampler", "slice" };
@@ -454,6 +459,7 @@ struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPrevi
 // RT-safe: fixed-size held-note table, no allocation, no locking. All timing is in samples so the
 // pattern stays phase-locked across blocks.
 struct ArpOp : OperatorBase, AudioProcessable {
+    VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_TRANSFORM; }   // ADR-0046
     static constexpr const char* kDisplayName = "Arp";
     static constexpr const char* kSummary = "Note effect: holds the keys you play and re-issues them as an arpeggio.";
     static constexpr std::array<const char*, 4> kKeywords = {"audio", "note", "arpeggiator", "midi"};
@@ -602,6 +608,7 @@ struct ArpOp : OperatorBase, AudioProcessable {
 // the host copies param values into Param<> members every block, so computed state living in a
 // param would be clobbered on arrival.
 struct LfoOp : OperatorBase, AudioProcessable {
+    VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_SOURCE; }   // ADR-0046
     static constexpr const char* kDisplayName = "LFO";
     static constexpr const char* kSummary = "Modulator: a low-frequency oscillator that drives any param through a control wire.";
     static constexpr std::array<const char*, 4> kKeywords = { "audio", "control", "modulation", "lfo" };
@@ -688,6 +695,7 @@ struct LfoOp : OperatorBase, AudioProcessable {
 // SHAPED BY THE PERFORMANCE: a note-on (re)triggers the attack, the last note-off starts the release —
 // so a mapped visual param swells and fades with the phrasing (musical dynamics, not a fixed wobble).
 struct AdsrOp : OperatorBase, AudioProcessable {
+    VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_SOURCE; }   // ADR-0046
     static constexpr const char* kDisplayName = "ADSR";
     static constexpr const char* kSummary = "Modulator: a note-gated attack/decay/sustain/release envelope that drives any param through a control wire.";
     static constexpr std::array<const char*, 4> kKeywords = { "audio", "control", "modulation", "envelope" };

@@ -54,6 +54,7 @@ WGPUTexture make_texture(const VividGpuContext* c, const uint8_t* rgba, uint32_t
 
 struct ImageOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "Image";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr const char* kDisplayName = "Image";
     static constexpr const char* kSummary = "Load a still image (PNG/JPG/…) from a file into the chain.";
     static constexpr std::array<const char*, 3> kKeywords = {"generator", "image", "texture"};

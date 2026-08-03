@@ -552,6 +552,7 @@ static constexpr float kTAU = 6.28318530717958647692f;
  */
 struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "SDF3D";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr bool kTimeDependent = false;
 
     // Shape A

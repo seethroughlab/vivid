@@ -21,6 +21,7 @@
 
 struct NotesOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "Notes";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr const char* kDisplayName = "Notes";
     static constexpr const char* kSummary = "A track's live MIDI as a generic signal (held notes + note-on fires) — drives Instancer, Emitter, or any consumer through an edge.";
     static constexpr std::array<const char*, 3> kKeywords = {"notes", "midi", "source"};

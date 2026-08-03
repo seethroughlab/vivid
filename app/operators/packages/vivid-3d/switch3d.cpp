@@ -21,6 +21,7 @@
 
 struct Switch3D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "Switch3D";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_TRANSFORM;   // ADR-0046
     static constexpr const char* kSummary =
         "Forwards one of several Scene3D inputs, selected by a Clock's `step` (wire it into `clock`). "
         "Cut between whole looks every N bars — timing comes from the Clock node.";

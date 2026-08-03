@@ -37,6 +37,7 @@ struct U { res: vec2f, time: f32, size: f32, rotation: f32, pad0: f32, pad1: vec
 
 struct LinesOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "Lines";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr const char* kDisplayName = "Lines";
     static constexpr const char* kSummary = "Real line geometry: a grid / radial burst / concentric rings (wireframe).";
     static constexpr std::array<const char*, 3> kKeywords = {"generator", "lines", "wireframe"};

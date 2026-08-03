@@ -50,6 +50,7 @@ struct U { res: vec2f, time: f32, index: f32, pad: vec4f };
 
 struct SwitchOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "Switch";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_TRANSFORM;   // ADR-0046
     static constexpr const char* kDisplayName = "Switch";
     static constexpr const char* kSummary =
         "Pass one of four texture inputs through, chosen by `index` — or wire a Clock's `step` into "

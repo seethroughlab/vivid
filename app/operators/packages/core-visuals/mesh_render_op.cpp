@@ -27,6 +27,7 @@ VividPortDescriptor tex_port(const char* name, VividPortDirection dir) {
 
 struct MeshRenderOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "MeshRender";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_RENDERER;   // ADR-0046
     static constexpr const char* kDisplayName = "Mesh Render";
     static constexpr const char* kSummary = "Render a mesh (from the geometry pipeline) to a textured, lit image.";
     static constexpr std::array<const char*, 2> kKeywords = {"geometry", "3d"};

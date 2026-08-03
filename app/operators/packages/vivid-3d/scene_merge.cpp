@@ -17,6 +17,7 @@
  */
 struct SceneMerge : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "SceneMerge";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_TRANSFORM;   // ADR-0046
     static constexpr bool kTimeDependent = false;
 
     void collect_params(std::vector<vivid::ParamBase*>&) override {}

@@ -58,6 +58,7 @@ float fps_for_preset(int preset) {
 
 struct WebcamOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "Webcam";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr const char* kDisplayName = "Webcam";
     static constexpr const char* kSummary = "Live camera capture (device / resolution / fps) into the chain.";
     static constexpr std::array<const char*, 3> kKeywords = {"generator", "webcam", "camera"};

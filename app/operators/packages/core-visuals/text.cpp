@@ -47,6 +47,7 @@ struct U { res: vec2f, time: f32, size: f32, pos: vec2f, aspect: f32, pad: f32, 
 
 struct TextOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "Text";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_TRANSFORM;   // ADR-0046
     static constexpr const char* kDisplayName = "Text";
     static constexpr const char* kSummary = "Renders a string (from a .txt file) over its input. Typography.";
     static constexpr std::array<const char*, 3> kKeywords = {"generator", "text", "typography"};

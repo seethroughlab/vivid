@@ -43,6 +43,7 @@ WGPUShaderModule make_glsl(WGPUDevice d, WGPUShaderStage stage, const char* src,
 
 struct CustomShaderOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "CustomShader";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr const char* kDisplayName = "Custom Shader";
     static constexpr const char* kSummary = "Data-driven GLSL generator: renders a project .glsl file (pick it in `file`).";
     static constexpr std::array<const char*, 3> kKeywords = {"generator", "shader", "glsl"};

@@ -45,6 +45,7 @@ struct U { a: vec4f, b: vec4f };   // 8 step values packed into two vec4
 
 struct StepBarsOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "StepBars";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046: self-contained texture generator
     static constexpr const char* kDisplayName = "Step Bars";
     static constexpr const char* kSummary = "Example op with a custom editor: 8 draggable step bars.";
     static constexpr std::array<const char*, 3> kKeywords = {"editor", "steps", "example"};

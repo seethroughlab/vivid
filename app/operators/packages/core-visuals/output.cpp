@@ -13,6 +13,7 @@
 
 struct OutputOp : core_visuals::BlitOp {
     static constexpr const char* kName = "Output";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SINK;   // ADR-0046
     static constexpr const char* kDisplayName = "Output";
     static constexpr const char* kSummary = "Chain sink: owns the output's size, aspect and fit; feeds the viewer.";
     static constexpr std::array<const char*, 3> kKeywords = {"output", "viewer", "sink"};

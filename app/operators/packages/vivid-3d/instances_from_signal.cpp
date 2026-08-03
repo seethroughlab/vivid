@@ -20,6 +20,7 @@
 
 struct InstancesFromSignal : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName        = "InstancesFromSignal";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_ADAPTER;   // ADR-0046
     static constexpr const char* kDisplayName = "Instances From Signal";
     static constexpr const char* kSummary =
         "Draws one 3D instance per element of an incoming signal (pitch->layout+colour, velocity->size); "

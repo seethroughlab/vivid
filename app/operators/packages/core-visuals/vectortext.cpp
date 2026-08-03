@@ -42,6 +42,7 @@ struct U { res: vec2f, time: f32, size: f32, posx: f32, posy: f32, pad0: f32, pa
 
 struct VectorTextOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "VectorText";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr const char* kDisplayName = "Vector Text";
     static constexpr const char* kSummary = "Filled text as REAL vertex geometry (glyph outlines -> triangles).";
     static constexpr std::array<const char*, 3> kKeywords = {"generator", "text", "geometry"};

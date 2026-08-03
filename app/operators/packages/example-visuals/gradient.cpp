@@ -31,6 +31,7 @@ struct U { res: vec2f, time: f32, hue: f32, tilt: f32, p: f32 };
 
 struct GradientOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "Gradient";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr const char* kDisplayName = "Gradient";
     static constexpr const char* kSummary = "Vertical/horizontal hue gradient generator (example package operator).";
     static constexpr std::array<const char*, 3> kKeywords = {"generator", "gradient", "color"};

@@ -132,6 +132,7 @@ float simplex3d(float x, float y, float z) {
  */
 struct Deformer : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Deformer";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_TRANSFORM;   // ADR-0046
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int>   mode      {"mode", 0, {"Noise", "Sine", "Audio"}};

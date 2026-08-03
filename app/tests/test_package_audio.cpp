@@ -74,6 +74,13 @@ int main() {
     CHECK(audio_op_is_gen_op(reg, "PulseGen"));
     CHECK(!audio_op_is_gen_op(reg, "SineSynth"));
 
+    // 4c. ADR-0046: the operator ROLE travels the same dylib path (vivid_operator_role export ->
+    //     LoadedOperator::declared_operator_role -> host descriptor). These example ops classify by
+    //     stream type: Drive is an audio->audio TRANSFORM; SineSynth/PulseGen introduce audio -> SOURCE.
+    CHECK(reg.descriptor_for("Drive")->role == VIVID_OP_ROLE_TRANSFORM);
+    CHECK(reg.descriptor_for("SineSynth")->role == VIVID_OP_ROLE_SOURCE);
+    CHECK(reg.descriptor_for("PulseGen")->role == VIVID_OP_ROLE_SOURCE);
+
     const uint32_t N = 64, sr = 48000;
 
     // 5. The effect RUNS: Drive is not a source; with defaults (drive=2, mix=1) it writes
