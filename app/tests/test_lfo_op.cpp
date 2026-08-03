@@ -60,12 +60,12 @@ int main() {
     vivid::register_builtin_audio_ops(reg);
 
     // --- 1. An LFO is NOT an instrument and NOT an effect ---
-    // It has no audio input, so the descriptor-based classifier calls it a source — which would
-    // offer it in the instrument picker, where wiring it to Output makes a DC-ish thud. The
-    // registration mark is the escape hatch (the same one ADR-0015's note effects use).
+    // It has no audio input, so the source-by-ports classifier would offer it in the instrument
+    // picker, where wiring it to Output makes a DC-ish thud. Its declared audio_role (ADR-0047) is
+    // the escape hatch — role_is_mod reads the descriptor, no name table.
     {
-        CHECK(vivid::audio_op_is_mod_op("LFO"));
-        CHECK(!vivid::audio_op_is_note_op("LFO"));
+        CHECK(vivid::audio_op_is_mod_op(reg, "LFO"));
+        CHECK(!vivid::audio_op_is_note_op(reg, "LFO"));
         CHECK(vivid::audio_mod_op_count(reg) >= 1);
 
         bool listed_as_instrument = false, listed_as_effect = false;

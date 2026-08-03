@@ -57,37 +57,26 @@ void        audio_op_param_override_set(AudioOp*, int i, float v);
 void        audio_op_param_override_clear(AudioOp*, int i);
 float       audio_op_param_effective(const AudioOp*, int i);
 
-// ADR-0015: which registered audio operators are NOTE EFFECTS (notes in -> notes out, no sound).
-// The descriptor can't say so yet — an op declares audio ports, not note ports — so note ops mark
-// themselves at registration. Marked ops are excluded from the instrument list (they are not
-// instruments) and offered as note effects instead.
-void audio_op_mark_note_op(const std::string& name);
-bool audio_op_is_note_op(const std::string& name);
-// v14 registry-aware overloads: honor a loaded dylib's declared audio_role too, not just the
-// built-in name marks. Prefer these wherever a registry is in hand (a project op has no name mark).
+// ADR-0015/0047: which registered audio operators are NOTE EFFECTS (notes in -> notes out, no sound).
+// Classified from each op's declared audio_role (a built-in override of declared_audio_role() or a
+// dylib's vivid_audio_role export) — the old audio_op_mark_* name tables are retired. Note effects are
+// excluded from the instrument list and offered as note effects instead.
 bool audio_op_is_note_op(OpRegistry& reg, const std::string& name);
 bool audio_op_is_mod_op (OpRegistry& reg, const std::string& name);
 bool audio_op_is_gen_op (OpRegistry& reg, const std::string& name);
 int  audio_note_op_count(OpRegistry& reg);
 const char* audio_note_op_name(OpRegistry& reg, int idx);
 
-// ADR-0022: which registered audio operators are MODULATORS (no audio at all — they emit a 0..1
-// control signal). Same escape hatch as note ops above, for the same reason: `audio_op_is_source`
-// classifies on "has no audio INPUT port", so a modulator would otherwise be offered as an
-// instrument and, wired to Output, be audible as a DC-ish thud. Marked ops are excluded from the
-// instrument list and offered as modulators instead.
-void audio_op_mark_mod_op(const std::string& name);
-bool audio_op_is_mod_op(const std::string& name);
+// ADR-0022/0047: which registered audio operators are MODULATORS (no audio at all — they emit a 0..1
+// control signal). Classified from the declared audio_role; excluded from the instrument list (else a
+// modulator wired to Output would be audible as a DC-ish thud).
 int  audio_mod_op_count(OpRegistry& reg);
 const char* audio_mod_op_name(OpRegistry& reg, int idx);
 
-// ADR-0022 P3.3: which registered audio operators are note GENERATORS — algorithmic note SOURCES
-// (Euclid / Chord / RandMelody) that read no notes and emit their own from the transport. Same
-// escape hatch as note effects/modulators: they declare an audio OUTPUT port so `descriptor_is_source`
-// would offer them as instruments; marking excludes them from the instrument list and lists them as
-// generators (a scene cell can hold one in place of a clip).
-void audio_op_mark_gen_op(const std::string& name);
-bool audio_op_is_gen_op(const std::string& name);
+// ADR-0022 P3.3 / 0047: which registered audio operators are note GENERATORS — algorithmic note
+// SOURCES (Euclid / Chord / RandMelody) that read no notes and emit their own from the transport.
+// Classified from the declared audio_role; excluded from the instrument list and offered as generators
+// (a scene cell can hold one in place of a clip).
 int  audio_gen_op_count(OpRegistry& reg);
 const char* audio_gen_op_name(OpRegistry& reg, int idx);
 

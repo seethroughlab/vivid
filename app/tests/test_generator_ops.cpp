@@ -72,15 +72,15 @@ int main() {
     // --- 1. Classification: exactly the three generators, and they are NOT instruments ---
     {
         CHECK(vivid::audio_gen_op_count(reg) == 3);
-        CHECK(vivid::audio_op_is_gen_op("Euclid"));
-        CHECK(vivid::audio_op_is_gen_op("Chord"));
-        CHECK(vivid::audio_op_is_gen_op("RandMelody"));
-        CHECK(!vivid::audio_op_is_gen_op("TestTone"));   // an instrument is not a generator
-        // A generator declares an audio OUTPUT (looks like a source) but must be excluded from the
-        // instrument list — otherwise it would be offered as an instrument and be silent noise.
+        CHECK(vivid::audio_op_is_gen_op(reg, "Euclid"));
+        CHECK(vivid::audio_op_is_gen_op(reg, "Chord"));
+        CHECK(vivid::audio_op_is_gen_op(reg, "RandMelody"));
+        CHECK(!vivid::audio_op_is_gen_op(reg, "TestTone"));   // an instrument is not a generator
+        // A generator has no audio input (looks like a source) but must be excluded from the
+        // instrument list — its declared audio_role (ADR-0047) lists it as a generator instead.
         const int nsrc = vivid::audio_op_registry_count(reg, /*want_source*/true);
         for (int i = 0; i < nsrc; ++i)
-            CHECK(!vivid::audio_op_is_gen_op(vivid::audio_op_registry_name(reg, true, i)));
+            CHECK(!vivid::audio_op_is_gen_op(reg, vivid::audio_op_registry_name(reg, true, i)));
     }
 
     // --- 2. Euclid E(4,16) at 1/16 fires exactly 4 hits per bar, all on the chosen note ---
