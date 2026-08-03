@@ -47,12 +47,26 @@ from vivid_demo import Vivid            # noqa: E402
 import scaffolds                        # noqa: E402
 from PIL import Image                   # noqa: E402  (uv run --with pillow)
 
-# The audit scaffold's canonical texture source is `Gradient`, a BUNDLED SHADER that isn't registered in
-# a freshly-launched instance (empty shader library — same reason generate_reference.py's clean instance
-# drops shader ops). Point texture inputs at `NoiseField` instead: a procedural shader source that's
-# always present and gives a livelier backdrop for showing what a Blur/CRT/Displace actually does. Only
-# patched here (our tool), never in the shared scaffolds.py the audit harness relies on.
-scaffolds.Sources._CANON = {**scaffolds.Sources._CANON, "texture": "NoiseField"}
+# The canonical effect-preview INPUT: Vivid's prism→spectrum test image (full hue gamut + a hard prism
+# edge + a smooth spectral gradient + fine detail), so a Blur/CRT/Displace/Kaleidoscope preview reads as
+# "here's what it did to THIS", the way TouchDesigner uses its banana. Effect (texture-consuming) ops get
+# it via an Image node; source/3D ops are unaffected. Absolute path (Image needs one).
+TEST_IMAGE = os.path.join(HERE, "assets", "effect-testcard.png")
+
+
+class PreviewSources(scaffolds.Sources):
+    """Audit scaffold sources, but texture inputs come from the prism test image (an Image node) rather
+    than the scaffold's default `Gradient` — a bundled SHADER that isn't registered in a fresh instance.
+    Falls back to `NoiseField` (a procedural source that's always present) when the test image is absent,
+    so the tool still runs before the asset is added. Patched only here, never in shared scaffolds.py."""
+
+    def get(self, kind):
+        if kind == "texture":
+            if "texture" not in self.cache:
+                self.cache["texture"] = (self.v.image(TEST_IMAGE) if os.path.exists(TEST_IMAGE)
+                                         else self.v.add_node("NoiseField"))
+            return self.cache["texture"]
+        return super().get(kind)
 
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 OUT_DIR = os.path.join(REPO, "site", "assets", "reference")
@@ -99,7 +113,7 @@ def capture_op(v, op, tmpdir) -> str:
     v.call("new_project")
     out = find_output(v)
     try:
-        op_node, _terminal = scaffolds.build_scaffold(v, op, scaffolds.Sources(v))
+        op_node, _terminal = scaffolds.build_scaffold(v, op, PreviewSources(v))
     except Exception as e:
         return f"scaffold-error: {str(e)[:80]}"
     # Feed the op's OWN output into Output (the audit's thumbnail step) so the preview is JUST this op.
