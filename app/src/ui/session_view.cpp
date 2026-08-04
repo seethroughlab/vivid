@@ -6,6 +6,7 @@
 #include "ui/ui_style.h"
 #include "ui/node_graph.h"
 #include "ui/audio_node_graph.h"
+#include "ui/sampler_editor.h"   // ADR-0049 slice 5: the Sampler's first-class detail view
 #include "ui/diagnostics_panel.h" // ADR-0019: severity_color for the health dot
 #include "ui/compound_widget.h"   // UI-4a: host-composed compound inspector widgets
 #include "ui/operator_draw_bridge.h"  // UI-4b: Renderer2D -> VividDrawAPI adapter
@@ -382,6 +383,24 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double beats, double mx, 
         // the UNIFIED param inspector, so here we render ONLY the selected audio node's param strip.
         const int tr = std::min(std::max(w.focus.track, 0), vivid::session::session_track_count(s) - 1);
         section_header(ui, 12.f, y0 + 7.f, vivid::session::session_track_name(s, tr), sty.audio);
+        // ADR-0049 slice 5: a selected Sampler node gets its first-class editor (identity + waveform +
+        // key-zone mapping + the high-frequency controls) in place of the generic param rows.
+        if (w.sel_audio_node >= 0) {
+            namespace SS = vivid::session;
+            const int nc = SS::session_track_audio_graph_node_count(s, tr);
+            for (int i = 0; i < nc; ++i) {
+                if (SS::session_track_audio_graph_node_id(s, tr, i) != w.sel_audio_node) continue;
+                const char* ty = SS::session_track_audio_graph_node_type(s, tr, i);
+                if (ty && std::strcmp(ty, "Sampler") == 0) {
+                    static vivid::ui::SamplerEditor s_sampler_editor;
+                    const Rect body{ 14.f, y0 + 26.f, static_cast<float>(w.win_w) - 28.f, w.dock_h - 32.f };
+                    s_sampler_editor.draw(ui, s, body, tr, w.sel_audio_node,
+                                          static_cast<float>(w.cur_x), static_cast<float>(w.cur_y), w.mouse_left_down);
+                    return;
+                }
+                break;
+            }
+        }
         AudioNodeGraph& ag = *w.app->audio_graph;   // ADR-0023 step 6: the one persistent instance, re-primed
         ag.prime(*w.app, w);                        // node-canvas bounds + param bounds (dock) + selection
         ag.set_mapping(w.app->graph);               // lights the map dot on any bridge-driven node param
