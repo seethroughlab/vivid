@@ -29,7 +29,7 @@ static Rect follow_btn_rect(float px, float py, float pw){ return { px + pw - 13
 
 // ADR-0048: the MIDI inspector strip — real controls, packed left-to-right, one shared Rect each for
 // draw + hit. `midi_insp()` is pure geometry (from the panel), so draw() and on_down() lay out identically.
-struct MidiInsp { Rect tool, grid, fold, scale, ghost, step, lane, quant, xform; };
+struct MidiInsp { Rect tool, grid, fold, key, scale, ghost, step, lane, quant, xform; };
 static MidiInsp midi_insp(float px, float py, float /*pw*/) {
     const float y = py + kEditorHeaderH + 5.f, h = 22.f;
     float x = px + 10.f;
@@ -40,8 +40,9 @@ static MidiInsp midi_insp(float px, float py, float /*pw*/) {
     m.grid  = take(116.f); gap();      // GRID stepper (wide enough for kicker + value)
     m.fold  = take(46.f);              // toggles
     m.ghost = take(52.f);
-    m.step  = take(46.f);
-    m.scale = take(90.f);  gap();      // scale (root + type)
+    m.step  = take(46.f);  gap();
+    m.key   = take(64.f);              // KEY (scale root) dropdown
+    m.scale = take(76.f);  gap();      // SCALE (type) dropdown
     m.lane  = take(96.f);  gap();      // velocity/expression lane
     m.quant = take(84.f);              // Quantize
     m.xform = take(104.f);             // ⋯ Transform menu
@@ -78,6 +79,11 @@ static const XItem kXItems[] = {
 static constexpr int kNumXItems = static_cast<int>(sizeof(kXItems) / sizeof(kXItems[0]));
 static constexpr float kXItemH = 22.f, kXMenuW = 150.f;
 static Rect xform_item_rect(Rect xbtn, int i) { return { xbtn.x, xbtn.y + xbtn.h + 2.f + i * kXItemH, kXMenuW, kXItemH }; }
+// MIDI-1: shared dropdown geometry + item labels for the Key / Scale / Lane pickers.
+static Rect menu_item_rect(Rect anchor, int i) { return { anchor.x, anchor.y + anchor.h + 2.f + i * kXItemH, kXMenuW, kXItemH }; }
+static const char* kKeyLabels[]  = { "Off", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };  // idx = scale_root_+1
+static constexpr int kNumKeys = static_cast<int>(sizeof(kKeyLabels) / sizeof(kKeyLabels[0]));
+static const char* kLaneLabels[] = { "Velocity", "Bend", "Pressure", "Timbre" };   // idx = lane_axis_+1
 
 // Grid/snap presets (beats). Straight + triplet subdivisions.
 struct GridPreset { double v; const char* label; };
@@ -339,16 +345,16 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
     if (!open_) return false;
     const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
     float px, py, pw, ph; panel(px, py, pw, ph);
-    // ADR-0048: the ⋯ Transform dropdown, while open, owns the next click.
-    if (!audio_ && xform_open_) {
+    // MIDI-1: an open inspector dropdown owns the next click — dispatch to the picked item, else close.
+    if (!audio_ && (xform_open_ || key_open_ || scale_open_ || lane_open_)) {
         const MidiInsp m = midi_insp(px, py, pw);
-        for (int i = 0; i < kNumXItems; ++i)
-            if (hit(xform_item_rect(m.xform, i), x, y)) {
-                const int k = kXItems[i].key;
-                on_key(k, k == GLFW_KEY_U ? GLFW_MOD_SUPER : 0);   // replay the exact keyboard handler
-                xform_open_ = false; return true;
-            }
-        xform_open_ = false;   // a click elsewhere just closes the menu; fall through
+        auto pick = [&](Rect anchor, int n) { for (int i = 0; i < n; ++i) if (hit(menu_item_rect(anchor, i), x, y)) return i; return -1; };
+        if (xform_open_) { const int i = pick(m.xform, kNumXItems);
+            if (i >= 0) { const int k = kXItems[i].key; on_key(k, k == GLFW_KEY_U ? GLFW_MOD_SUPER : 0); } xform_open_ = false; if (i >= 0) return true; }
+        else if (key_open_)   { const int i = pick(m.key, kNumKeys);   if (i >= 0) scale_root_ = i - 1;      key_open_ = false;   if (i >= 0) return true; }
+        else if (scale_open_) { const int i = pick(m.scale, kNumScales); if (i >= 0) { scale_type_ = i; if (scale_root_ < 0) scale_root_ = 0; } scale_open_ = false; if (i >= 0) return true; }
+        else if (lane_open_)  { const int i = pick(m.lane, 4);         if (i >= 0) lane_axis_ = i - 1;       lane_open_ = false;  if (i >= 0) return true; }
+        // a click elsewhere just closed the menu; fall through to normal handling
     }
     // Title strip: close / dock (both modes), MIDI follow/fit, audio per-mode controls, or drag-to-move.
     if (y < py + kEditorHeaderH) {
@@ -370,14 +376,13 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
         if (hit(m.fold, x, y))  { fold_ = !fold_; rebuild_fold(); fit_view(); return true; }
         if (hit(m.ghost, x, y)) { ghost_ = !ghost_; return true; }
         if (hit(m.step, x, y))  { step_mode_ = !step_mode_; step_cursor_ = 0.0; step_held_ = 0; return true; }
-        if (hit(m.scale, x, y)) {
-            if (shift) scale_type_ = (scale_type_ + 1) % kNumScales;
-            else       scale_root_ = (scale_root_ + 2) % 13 - 1;   // off -> C -> D ... -> B -> off
-            return true;
-        }
-        if (hit(m.lane, x, y))  { lane_axis_ = lane_axis_ >= 2 ? -1 : lane_axis_ + 1; return true; }
+        // MIDI-1: Key / Scale / Lane open a real pick-list (mutually exclusive); clicking an open one closes it.
+        auto toggle = [&](bool& m1) { const bool was = m1; key_open_ = scale_open_ = lane_open_ = xform_open_ = false; m1 = !was; };
+        if (hit(m.key, x, y))   { toggle(key_open_);   return true; }
+        if (hit(m.scale, x, y)) { toggle(scale_open_); return true; }
+        if (hit(m.lane, x, y))  { toggle(lane_open_);  return true; }
         if (hit(m.quant, x, y)) { on_key(GLFW_KEY_U, GLFW_MOD_SUPER); return true; }   // quantize to grid
-        if (hit(m.xform, x, y)) { xform_open_ = !xform_open_; return true; }
+        if (hit(m.xform, x, y)) { toggle(xform_open_); return true; }
         return true;   // a click anywhere in the inspector strip is consumed (no drag-through to the roll)
     }
     // ADR-0048: AUDIO inspector strip — hit the SAME audio_insp() rects; drive the aud_req_ commit bits.
@@ -830,11 +835,10 @@ void ClipEditor::draw(Renderer2D& r) {
         icon_button(r, m.fold,  "Fold",  hov(m.fold),  fold_);
         icon_button(r, m.ghost, "Ghost", hov(m.ghost), ghost_);
         icon_button(r, m.step,  "Step",  hov(m.step),  step_mode_);
-        { char sc[20];
-          if (scale_root_ < 0) std::snprintf(sc, sizeof sc, "Scale off");
-          else std::snprintf(sc, sizeof sc, "%s %s", kPitchNames[scale_root_], kScales[scale_type_].label);
-          menu_button(r, m.scale, sc, hov(m.scale)); }
-        menu_button(r, m.lane, lane_axis_ < 0 ? "Velocity" : kAxisNames[lane_axis_], hov(m.lane));
+        { char key[12]; std::snprintf(key, sizeof key, "Key %s", scale_root_ < 0 ? "\xE2\x80\x94" : kPitchNames[scale_root_]);
+          menu_button(r, m.key, key, hov(m.key), key_open_); }
+        menu_button(r, m.scale, kScales[scale_type_].label, hov(m.scale), scale_open_);
+        menu_button(r, m.lane, lane_axis_ < 0 ? "Velocity" : kAxisNames[lane_axis_], hov(m.lane), lane_open_);
         menu_button(r, m.quant, "Quantize", hov(m.quant));
         menu_button(r, m.xform, "\xE2\x8B\xAF Transform", hov(m.xform), xform_open_);
     } else {
@@ -1087,20 +1091,28 @@ void ClipEditor::draw(Renderer2D& r) {
     if (!hover_status_.empty())
         hover_status(r, px + 12.f, py + ph - 26.f, hover_status_.c_str(), sty.audio);
 
-    if (xform_open_) {   // the ⋯ Transform dropdown, over the roll
+    // MIDI-1: inspector dropdowns, drawn LAST so they overlay the roll. One shared painter for all four;
+    // `selected` gets a subtle marker, hover a brighter one.
+    if (xform_open_ || key_open_ || scale_open_ || lane_open_) {
         const MidiInsp m = midi_insp(px, py, pw);
-        const Rect menu{ m.xform.x, m.xform.y + m.xform.h + 2.f, kXMenuW, kNumXItems * kXItemH + 2.f };
-        r.draw_rect(menu.x, menu.y, menu.w, menu.h, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
-        r.draw_rect_outline(menu.x, menu.y, menu.w, menu.h, 1.f, sty.border[0], sty.border[1], sty.border[2], 1.0f);
-        r.draw_rect(menu.x, menu.y, sty.accent_bar, menu.h, sty.audio[0], sty.audio[1], sty.audio[2], 1.0f);
-        for (int i = 0; i < kNumXItems; ++i) {
-            const Rect it = xform_item_rect(m.xform, i);
-            const bool h = hit(it, hover_x_, hover_y_);
-            if (h) r.draw_rect(it.x + 1.f, it.y, it.w - 2.f, it.h, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 1.0f);
-            const float* tc = h ? sty.text : sty.body;
-            r.draw_text(it.x + 12.f, it.y + (kXItemH - 15.f * sty.fs_label) * 0.5f, kXItems[i].label,
-                        tc[0], tc[1], tc[2], 1.0f, sty.fs_label);
-        }
+        auto draw_menu = [&](Rect anchor, int n, int selected, const char* (*label)(int)) {
+            const Rect menu{ anchor.x, anchor.y + anchor.h + 2.f, kXMenuW, n * kXItemH + 2.f };
+            r.draw_rect(menu.x, menu.y, menu.w, menu.h, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
+            r.draw_rect_outline(menu.x, menu.y, menu.w, menu.h, 1.f, sty.border[0], sty.border[1], sty.border[2], 1.0f);
+            r.draw_rect(menu.x, menu.y, sty.accent_bar, menu.h, sty.audio[0], sty.audio[1], sty.audio[2], 1.0f);
+            for (int i = 0; i < n; ++i) {
+                const Rect it = menu_item_rect(anchor, i);
+                const bool h = hit(it, hover_x_, hover_y_);
+                if (h)                 r.draw_rect(it.x + 1.f, it.y, it.w - 2.f, it.h, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 1.0f);
+                else if (i == selected) r.draw_rect(it.x + 1.f, it.y, it.w - 2.f, it.h, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+                const float* tc = (h || i == selected) ? sty.text : sty.body;
+                r.draw_text(it.x + 12.f, it.y + (kXItemH - 15.f * sty.fs_label) * 0.5f, label(i), tc[0], tc[1], tc[2], 1.0f, sty.fs_label);
+            }
+        };
+        if (xform_open_) draw_menu(m.xform, kNumXItems, -1,             [](int i) { return kXItems[i].label; });
+        if (key_open_)   draw_menu(m.key,   kNumKeys,    scale_root_ + 1, [](int i) { return kKeyLabels[i]; });
+        if (scale_open_) draw_menu(m.scale, kNumScales,  scale_type_,     [](int i) { return kScales[i].label; });
+        if (lane_open_)  draw_menu(m.lane,  4,           lane_axis_ + 1,  [](int i) { return kLaneLabels[i]; });
     }
 }
 
