@@ -1,6 +1,7 @@
 #include "ui/clip_editor.h"
 #include "ui/ui_style.h"
 #include "ui/editor_controls.h"   // ADR-0048: the shared control substrate (icon_button, segmented, …)
+#include "ui/waveform_view.h"     // ADR-0048/0049: the shared waveform component (one waveform language)
 #include "midi/note_ops.h"
 #include "midi/note_tools.h"
 #include <GLFW/glfw3.h>
@@ -854,43 +855,25 @@ void ClipEditor::draw(Renderer2D& r) {
     r.push_clip_rect(GX, GY, GW, GH);
 
     if (audio_) {
-        const int n = static_cast<int>(wave_.size());
-        const float midY = GY + GH * 0.5f;
-        const float x0 = wxn(t0_), x1 = wxn(t1_);   // trim-handle screen x (in the zoomed view)
-        // Only draw bins whose normalized position is in the visible window.
-        const double vLo = wnorm_at(GX), vHi = wnorm_at(GX + GW);
-        const float binw = std::max(1.f, wav_px_ / std::max(1, n));
-        for (int i = 0; i < n; ++i) {
-            const double np = static_cast<double>(i) / n;
-            if (np < vLo - 0.01 || np > vHi + 0.01) continue;
-            const float wx = wxn(np);
-            const float h = std::min(wave_[i] * GH * 0.46f * wav_amp_, GH * 0.49f);
-            const bool in = (np >= t0_ && np < t1_);
-            r.draw_rect(wx, midY - h, binw, h * 2.f,
-                        in ? 0.32f : 0.16f, in ? 0.72f : 0.26f, in ? 0.78f : 0.30f, 1.0f);
-        }
-        r.draw_rect(GX, midY, GW, 1.f, 0.18f, 0.20f, 0.24f, 1.0f);          // center line
-        if (x0 > GX) r.draw_rect(GX, GY, std::min(x0, GX + GW) - GX, GH, 0.f, 0.f, 0.f, 0.45f);  // dim outside loop
-        if (x1 < GX + GW) r.draw_rect(std::max(x1, GX), GY, GX + GW - std::max(x1, GX), GH, 0.f, 0.f, 0.f, 0.45f);
-        if (x0 >= GX && x0 <= GX + GW) r.draw_rect(x0 - 1.f, GY, 2.f, GH, 0.92f, 0.84f, 0.34f, 1.0f);  // trim handles
-        if (x1 >= GX && x1 <= GX + GW) r.draw_rect(x1 - 1.f, GY, 2.f, GH, 0.92f, 0.84f, 0.34f, 1.0f);
-        // Detected transients (faint ticks along the bottom).
-        for (float tn : trans_norm_) { const float tx = wxn(tn); if (tx >= GX && tx < GX + GW) r.draw_rect(tx, GY + GH - 9.f, 1.f, 8.f, 0.5f, 0.5f, 0.36f, 0.7f); }
-        // Slice boundaries (A6): blue dividers (drawn under the warp markers).
-        for (float sn : slice_norm_) { const float sx = wxn(sn); if (sx >= GX && sx < GX + GW) r.draw_rect(sx, GY, 1.f, GH, 0.4f, 0.6f, 0.95f, 0.5f); }
-        // Warp markers: orange lines with a grab tab (click to drag, shift-click to delete).
-        for (float wn : warp_norm_) {
-            const float wx = wxn(wn);
-            if (wx < GX || wx > GX + GW) continue;
-            r.draw_rect(wx, GY, 1.f, GH, 0.96f, 0.62f, 0.24f, 0.85f);
-            r.draw_rect(wx - 3.f, GY, 7.f, 6.f, 0.98f, 0.72f, 0.3f, 1.0f);
-        }
-        // Playhead: the read position within the loop window, mapped back to the buffer.
-        if (playhead_ >= 0.0 && aud_loop_ > 0.0) {
+        // ADR-0048/0049: compose the shared waveform language (same component the Sampler editor reuses).
+        // The view transform matches wxn()/wnorm_at() (key_w()==0 for audio, so GX==gx()), so drawing and
+        // the interaction code below stay in lockstep.
+        const WaveformView wv{ { GX, GY, GW, GH }, wav_x0_, wav_px_, wav_amp_ };
+        static const float kTrim[3]  = { 0.92f, 0.84f, 0.34f };   // trim/loop handles (yellow)
+        static const float kTrans[3] = { 0.50f, 0.50f, 0.36f };   // transient ticks
+        static const float kSlice[3] = { 0.40f, 0.60f, 0.95f };   // slice dividers (blue)
+        static const float kWarp[3]  = { 0.96f, 0.62f, 0.24f };   // warp markers (orange)
+        static const float kPlay[3]  = { 0.95f, 0.35f, 0.35f };   // playhead (red)
+        wv.bins(r, wave_.data(), static_cast<int>(wave_.size()), t0_, t1_);
+        wv.center_line(r);
+        wv.dim_outside(r, t0_, t1_);
+        wv.handle(r, t0_, kTrim); wv.handle(r, t1_, kTrim);
+        wv.ticks(r, trans_norm_.data(), static_cast<int>(trans_norm_.size()), kTrans);
+        wv.dividers(r, slice_norm_.data(), static_cast<int>(slice_norm_.size()), kSlice, 0.5f);
+        wv.dividers(r, warp_norm_.data(), static_cast<int>(warp_norm_.size()), kWarp, 0.85f, /*grab_tab*/true);
+        if (playhead_ >= 0.0 && aud_loop_ > 0.0) {   // read position, mapped through the loop window
             double ph = std::fmod(playhead_, aud_loop_); if (ph < 0) ph += aud_loop_;
-            const double rn = t0_ + (ph / aud_loop_) * (t1_ - t0_);
-            const float x = wxn(rn);
-            if (x >= GX && x < GX + GW) r.draw_rect(x, GY, 1.5f, GH, 0.95f, 0.35f, 0.35f, 1.0f);
+            wv.playhead(r, t0_ + (ph / aud_loop_) * (t1_ - t0_), kPlay);
         }
         r.pop_clip_rect();
         // ADR-0048: the footer crawl is gone — a hover-status pill names what the hovered handle does.
