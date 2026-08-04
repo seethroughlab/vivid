@@ -75,6 +75,8 @@ static const XItem kXItems[] = {
     { "Strum",        GLFW_KEY_T },
     { "To scale",     GLFW_KEY_Y },
     { "Glide",        GLFW_KEY_APOSTROPHE },
+    { "Velocity louder (>)", GLFW_KEY_PERIOD },   // scale the selection's velocities up / down (repeatable)
+    { "Velocity softer (<)", GLFW_KEY_COMMA },
 };
 static constexpr int kNumXItems = static_cast<int>(sizeof(kXItems) / sizeof(kXItems[0]));
 static constexpr float kXItemH = 22.f, kXMenuW = 150.f;
@@ -836,6 +838,8 @@ bool ClipEditor::on_key(int key, int mods) {
     }
     // --- M5 musical tools (operate on the selection, or the whole clip if none) ---
     namespace nt = vivid::session;
+    if (key == GLFW_KEY_PERIOD) { push_undo(); nt::scale_velocity(notes_, sel_, 1.15f);      dirty_ = true; return true; }  // louder
+    if (key == GLFW_KEY_COMMA)  { push_undo(); nt::scale_velocity(notes_, sel_, 1.f / 1.15f); dirty_ = true; return true; }  // softer
     if (key == GLFW_KEY_I) { push_undo(); nt::invert_pitches(notes_, sel_); dirty_ = true; return true; }
     if (key == GLFW_KEY_R) { push_undo(); nt::retrograde(notes_, sel_); dirty_ = true; return true; }
     if (key == GLFW_KEY_H) { push_undo(); nt::humanize(notes_, sel_, cell_ * 0.15, 0.12f, ++tool_seed_); dirty_ = true; return true; }

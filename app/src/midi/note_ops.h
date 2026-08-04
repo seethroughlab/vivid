@@ -59,6 +59,17 @@ inline void set_velocity_selected(std::vector<ClipNote>& notes, const std::vecto
     for (size_t i = 0; i < notes.size(); ++i) if (i < sel.size() && sel[i]) notes[i].vel = v;
 }
 
+// Scale velocities by `factor` (louder/softer), preserving relative dynamics; clamped 0..1. Operates on
+// the selection, or the whole clip when nothing is selected (the musical-tool convention).
+inline void scale_velocity(std::vector<ClipNote>& notes, const std::vector<uint8_t>& sel, float factor) {
+    bool any = false;
+    for (size_t i = 0; i < notes.size(); ++i) if (i < sel.size() && sel[i]) { any = true; break; }
+    for (size_t i = 0; i < notes.size(); ++i) {
+        if (any && !(i < sel.size() && sel[i])) continue;
+        notes[i].vel = std::clamp(notes[i].vel * factor, 0.f, 1.f);
+    }
+}
+
 // The selected notes, rebased so the earliest selected start is 0 (for the clipboard).
 inline std::vector<ClipNote> copy_selected(const std::vector<ClipNote>& notes,
                                            const std::vector<uint8_t>& sel) {
