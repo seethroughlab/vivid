@@ -149,10 +149,11 @@ public:
             else {
                 drag_ = -1;
                 for (int i = 0; i + 1 < nb; ++i) if (at_x(n_of(be[i]))) { drag_ = 100 + i; break; }
-                if (drag_ < 0) {                                   // empty space → select the slice under x
+                if (drag_ < 0) {                                   // empty space → select + audition the slice
                     const double n = static_cast<double>(mx - wf.x) / wf.w;
                     sel_ = -1;
                     for (int i = 0; i < nb; ++i) if (n >= n_of(bs[i]) && n < n_of(be[i])) { sel_ = i; break; }
+                    if (sel_ >= 0) audition(s, track, (sel_ < nsl ? slc[sel_].root_note : root));
                 }
             }
         }
@@ -176,9 +177,12 @@ public:
             drag_ = -1; ds_.clear(); de_.clear();
         }
 
-        // ---- key-zone strip: the VISIBLE note mapping -------------------------------------------------
+        // ---- key-zone strip: the VISIBLE note mapping (click a zone to audition it) --------------------
         const Rect ks{ wf.x, wf.y + wf.h + 4.f, wf.w, ksH - 4.f };
+        const int prev_kz = sel_;
         draw_key_zones(r, ks, slc, nsl, root, sel_, mx, my, (click && !pop_hit) ? &sel_ : nullptr);
+        if (sel_ != prev_kz && sel_ >= 0 && sel_ < nsl && hit(ks, mx, my))
+            audition(s, track, slc[sel_].root_note);
 
         // ---- hover status -----------------------------------------------------------------------------
         std::string status;
@@ -201,6 +205,11 @@ private:
     bool env_open_ = false;  // ⋯ Envelope popover open
     int  drag_ = -1;         // -1 none · 0 in-handle · 1 out-handle · 100+i divider between slice i / i+1
     std::vector<uint32_t> ds_, de_;   // live boundaries (SOURCE frames) during a drag
+
+    // Play a slice's mapped note through the track's instrument so you can HEAR a slice as you cut it.
+    static void audition(vivid::session::Session* s, int t, int pitch) {
+        vivid::session::session_preview_note(s, t, std::clamp(pitch, 0, 127), 0.85f);
+    }
 
     // Re-cut into N equal slices spanning [in,out) of the source (N==1 => a plain melodic trim).
     static void reslice_equal(vivid::session::Session* s, int t, int nid, uint32_t in, uint32_t out, int n, int base) {

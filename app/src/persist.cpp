@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstring>
 #include "audio/vst3_host.h"
+#include "audio/sampler_op.h"       // ADR-0049 slice 7: SamplerInfo (persist the loaded sample + edits)
 #include "audio/plugin_catalog.h"   // kFmtVST3 / kFmtCLAP (A2: user-spawned plugin graph nodes)
 #include "midi/note_json.h"
 #include "ui/node_graph.h"
@@ -19,6 +20,45 @@
 using json = nlohmann::json;
 
 namespace vivid {
+
+// ADR-0049 slice 7: a Sampler node persists its loaded sample (source path) + edit boundaries (per-slice
+// [start,end) in SOURCE frames + base note) so in/out trim and trigger-point edits survive save/reload.
+// Shared by BOTH representations — the linear `audio_instrument` and the authoritative graph nodes.
+static int sampler_node_id(vivid::session::Session* s, int t) {
+    const int n = vivid::session::session_track_audio_graph_node_count(s, t);
+    for (int i = 0; i < n; ++i) {
+        const char* ty = vivid::session::session_track_audio_graph_node_type(s, t, i);
+        if (ty && std::strcmp(ty, "Sampler") == 0) return vivid::session::session_track_audio_graph_node_id(s, t, i);
+    }
+    return -1;
+}
+static json sampler_save_block(vivid::session::Session* s, int t, int nid) {
+    if (nid < 0) return json();
+    const char* sp = vivid::session::session_sampler_source(s, t, nid);
+    if (!sp || !*sp) return json();
+    ::vivid::SamplerInfo info{};
+    const int base = vivid::session::session_sampler_info(s, t, nid, &info) ? info.base_note : 60;
+    json sm; sm["path"] = sp; sm["base"] = base;
+    unsigned int bs[64], be[64];
+    const int nb = vivid::session::session_sampler_edit_boundaries(s, t, nid, bs, be, 64);
+    json edges = json::array();
+    for (int k = 0; k < nb; ++k) edges.push_back(json::array({ bs[k], be[k] }));
+    sm["slices"] = edges;
+    return sm;
+}
+static void sampler_restore(vivid::session::Session* s, int t, int nid, const json& sm) {
+    if (nid < 0 || !sm.is_object()) return;
+    const std::string spath = sm.value("path", std::string());
+    const int sbase = sm.value("base", 60);
+    if (spath.empty() || vivid::session::session_audio_graph_load_sampler(s, t, nid, spath.c_str(), sbase) <= 0) return;
+    if (!sm.contains("slices") || !sm["slices"].is_array()) return;
+    std::vector<unsigned int> starts, ends;
+    for (const auto& e : sm["slices"])
+        if (e.is_array() && e.size() == 2) { starts.push_back(e[0].get<unsigned int>()); ends.push_back(e[1].get<unsigned int>()); }
+    const int n = static_cast<int>(starts.size());
+    if (n == 1)     vivid::session::session_sampler_set_trim(s, t, nid, starts[0], ends[0]);
+    else if (n > 1) vivid::session::session_sampler_reslice(s, t, nid, starts.data(), ends.data(), n, sbase);
+}
 
 json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                      int win_w, int win_h, float split_x, float dock_h,
@@ -211,6 +251,9 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                     for (int k = 0; k < npc; ++k) pins.push_back(vivid::session::session_audio_graph_node_param_pinned_at(s, t, id, k));
                     jn["pinned"] = pins;
                 }
+                // ADR-0049 slice 7: persist a Sampler node's loaded sample + edit boundaries (authoritative
+                // graph representation; the linear audio_instrument is covered below).
+                if (json sm = sampler_save_block(s, t, id); !sm.is_null()) jn["sampler"] = sm;
                 nodes.push_back(jn);
             }
             const int ne = vivid::session::session_track_audio_graph_edge_count(s, t);
@@ -236,7 +279,12 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
             g["output"] = vivid::session::session_track_audio_graph_output_id(s, t);
             jt["audio_graph"] = g;
         } else {
-            if (*vivid::session::session_audio_op_type(s, t, -1)) jt["audio_instrument"] = audio_op(-1);
+            if (*vivid::session::session_audio_op_type(s, t, -1)) {
+                json inst = audio_op(-1);
+                // ADR-0049 slice 7: attach the Sampler's sample + edits (the instrument is a graph node).
+                if (json sm = sampler_save_block(s, t, sampler_node_id(s, t)); !sm.is_null()) inst["sampler"] = sm;
+                jt["audio_instrument"] = inst;
+            }
             json afx = json::array();
             for (int e = 0; e < vivid::session::session_audio_effect_count(s, t); ++e) afx.push_back(audio_op(e));
             if (!afx.empty()) jt["audio_fx"] = afx;
@@ -713,6 +761,8 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                                         vivid::session::session_audio_graph_node_param_set(s, t, nid, p, it.value().get<float>());
                                         break;
                                     }
+                        // ADR-0049 slice 7: restore the Sampler node's sample + edits (authoritative graph).
+                        if (jn.contains("sampler")) sampler_restore(s, t, nid, jn["sampler"]);
                     }
                 if (g.contains("edges"))
                     for (const auto& je : g["edges"]) {
@@ -733,8 +783,11 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
             }
             if (jt.contains("audio_instrument")) {
                 const auto& ai = jt["audio_instrument"];
-                if (vivid::session::session_set_track_audio_instrument(s, t, ai.value("op", std::string()).c_str())
-                    && ai.contains("params")) apply_audio_params(-1, ai["params"]);
+                if (vivid::session::session_set_track_audio_instrument(s, t, ai.value("op", std::string()).c_str())) {
+                    if (ai.contains("params")) apply_audio_params(-1, ai["params"]);
+                    // ADR-0049 slice 7: restore the Sampler's sample + edits (the instrument is a graph node).
+                    if (ai.contains("sampler")) sampler_restore(s, t, sampler_node_id(s, t), ai["sampler"]);
+                }
             }
             if (jt.contains("audio_fx"))
                 for (const auto& jn : jt["audio_fx"]) {
