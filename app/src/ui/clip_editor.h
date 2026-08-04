@@ -143,6 +143,9 @@ private:
     // the ⋯ Transform menu is showing; hover_status_ = contextual "what will happen" text for this frame.
     double hover_x_ = -1.0, hover_y_ = -1.0;
     bool   xform_open_ = false;
+    // MIDI-1: the Key / Scale / Lane inspector controls are real pick-from-list dropdowns (not blind
+    // cyclers). At most one menu is open at a time (opening one closes the others).
+    bool   key_open_ = false, scale_open_ = false, lane_open_ = false;
     std::string hover_status_;         // set during draw/hit; drawn as a pill (replaces the footer crawl)
     // Per-clip view memory: each clip remembers its zoom + scroll so
     // reopening it restores the view instead of re-fitting. (fold/scale/ghost are global
