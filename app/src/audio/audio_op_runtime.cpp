@@ -130,6 +130,32 @@ void audio_op_set_sampler_source(AudioOp* a, const char* path) {
     auto* sl = dynamic_cast<SamplerLoadable*>(a->inst.op.get());
     if (sl) sl->set_source_path(path);
 }
+// ADR-0049 slice 6: edit-side cross-casts (re-cut the played window / slice map from the retained PCM).
+unsigned long long audio_op_sampler_source_frames(const AudioOp* a) {
+    if (!a) return 0;
+    auto* se = dynamic_cast<const SamplerEditable*>(a->inst.op.get());
+    return se && se->has_source() ? se->source_frames() : 0;
+}
+void audio_op_sampler_set_trim(AudioOp* a, unsigned int in, unsigned int out) {
+    if (!a) return;
+    auto* se = dynamic_cast<SamplerEditable*>(a->inst.op.get());
+    if (se) se->set_trim(in, out);
+}
+void audio_op_sampler_reslice(AudioOp* a, const unsigned int* starts, const unsigned int* ends, int n, int base) {
+    if (!a) return;
+    auto* se = dynamic_cast<SamplerEditable*>(a->inst.op.get());
+    if (se) se->reslice(starts, ends, n, base);
+}
+int audio_op_sampler_source_peaks(const AudioOp* a, float* out, int n) {
+    if (!a) return 0;
+    auto* se = dynamic_cast<const SamplerEditable*>(a->inst.op.get());
+    return se ? se->source_peaks(out, n) : 0;
+}
+int audio_op_sampler_edit_boundaries(const AudioOp* a, unsigned int* starts, unsigned int* ends, int cap) {
+    if (!a) return 0;
+    auto* se = dynamic_cast<const SamplerEditable*>(a->inst.op.get());
+    return se ? se->edit_boundaries(starts, ends, cap) : 0;
+}
 
 // Registry inspection (UI thread) — enumerate audio operators for the device pickers.
 // want_source: true = instruments/generators (no audio input), false = effects.

@@ -42,6 +42,12 @@ bool        audio_op_sampler_info(const AudioOp*, SamplerInfo& out);         // 
 int         audio_op_sampler_slices(const AudioOp*, SamplerSlice* out, int cap);  // count; fills up to cap
 const char* audio_op_sampler_source(const AudioOp*);                        // loaded path ("" if unknown)
 void        audio_op_set_sampler_source(AudioOp*, const char* path);        // remember the source path
+// ADR-0049 slice 6: edit the played window / slice map from the retained source PCM (no re-decode).
+unsigned long long audio_op_sampler_source_frames(const AudioOp*);          // retained source length (0 if none)
+void        audio_op_sampler_set_trim(AudioOp*, unsigned int in, unsigned int out);            // melodic trim
+void        audio_op_sampler_reslice(AudioOp*, const unsigned int* starts, const unsigned int* ends, int n, int base);
+int         audio_op_sampler_source_peaks(const AudioOp*, float* out, int n);                  // whole-source envelope
+int         audio_op_sampler_edit_boundaries(const AudioOp*, unsigned int* starts, unsigned int* ends, int cap);  // SOURCE-space edges
 // Enumerate registered audio operators for the device pickers. want_source: true =
 // instruments/generators (no audio input), false = effects (has audio input).
 int         audio_op_registry_count(OpRegistry& reg, bool want_source);

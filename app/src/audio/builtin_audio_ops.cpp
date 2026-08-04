@@ -226,7 +226,7 @@ struct MovieAudioOp : OperatorBase, AudioProcessable {
 //     transposes the sample — a playable melodic instrument.
 //   - slice→MIDI  (nslices  > 0): one single-note region per slice at base_note+i (drum-rack),
 //     now click-free with an envelope.
-struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPreviewable, SamplerInspectable {
+struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPreviewable, SamplerInspectable, SamplerEditable {
     VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_SOURCE; }   // ADR-0046
     static constexpr const char* kDisplayName = "Sampler";
     static constexpr const char* kSummary = "Plays pitched PCM per note with ADSR + polyphony (melodic or drum-rack).";
@@ -268,6 +268,14 @@ struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPrevi
     std::string            src_path_;                // ADR-0049: loaded-sample source path (identity)
     uint32_t               voice_base_[kV] = {};       // concatenated base frame of each voice's region
     std::atomic<float>     playhead_{ -1.f };
+    // ADR-0049 slice 6: the ORIGINAL decoded PCM, retained so the played window (trim) and the slice map
+    // can be re-cut on a live op with no re-decode. The regions above are copies OUT of this buffer, so
+    // an edit rebuilds them from here. UI-thread-only.
+    std::vector<float>     src_L_, src_R_;
+    size_t                 src_n_ = 0;
+    uint32_t               src_sr_ = 0;
+    bool                   src_stereo_ = false;
+    std::vector<uint32_t>  cur_starts_, cur_ends_;    // current edit boundaries in SOURCE frames (per region)
 
     void collect_params(std::vector<ParamBase*>& o) override {
         o.push_back(&base_note); o.push_back(&gain); o.push_back(&gate);
@@ -283,39 +291,97 @@ struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPrevi
     void load_pcm(const float* L, const float* R, size_t n, uint32_t sr,
                   const uint32_t* starts, const uint32_t* ends, int nslices, int base) override {
         base_note.value = static_cast<float>(base);
+        // Retain the source PCM so trim / re-slice edits (slice 6) can re-cut without a re-decode.
+        src_stereo_ = (R != nullptr); src_sr_ = sr; src_n_ = n;
+        src_L_.assign(L, L + n);
+        if (src_stereo_) src_R_.assign(R, R + n); else src_R_.clear();
+        rebuild_(starts, ends, nslices, base);
+    }
+
+    // Cut one SampleData [a,b) out of the retained source (a region owns its own copy — the voice engine
+    // plays from frame 0, so a region IS its trimmed window).
+    std::shared_ptr<sample_engine::SampleData> cut_(size_t a, size_t b) {
+        a = std::min(a, src_n_); b = std::min(b, src_n_);
+        auto d = std::make_shared<sample_engine::SampleData>();
+        d->sample_rate = src_sr_; d->stereo = src_stereo_;
+        if (b > a) {
+            d->samples_L.assign(src_L_.begin() + a, src_L_.begin() + b);
+            if (src_stereo_) d->samples_R.assign(src_R_.begin() + a, src_R_.begin() + b);
+        }
+        return d;
+    }
+
+    // Build the region set from the retained source and publish it atomically (safe on a live op). Shared
+    // by the initial load and every edit. nslices<=0 => one melodic region [start,end) (default whole
+    // sample) mapped across the keyboard; else one single-note region per [starts[i],ends[i]) slice.
+    void rebuild_(const uint32_t* starts, const uint32_t* ends, int nslices, int base,
+                  size_t mel_a = 0, size_t mel_b = 0) {
+        base_note.value = static_cast<float>(base);
         auto bank = std::make_unique<sample_engine::SampleBank>();
         bank->groups.emplace_back();
         auto& regions = bank->groups[0].regions;
-        const bool stereo = (R != nullptr);
-        auto make_data = [&](size_t a, size_t b) {
-            auto d = std::make_shared<sample_engine::SampleData>();
-            d->sample_rate = sr;              // 0 => resolved to the device rate at note-on (ratio 1.0)
-            d->stereo = stereo;
-            d->samples_L.assign(L + a, L + b);
-            if (stereo) d->samples_R.assign(R + a, R + b);
-            return d;
-        };
-        if (nslices <= 0) {                    // whole sample mapped across the keyboard (melodic)
+        cur_starts_.clear(); cur_ends_.clear();   // record the SOURCE-space boundaries for the editor
+        if (nslices <= 0) {                    // whole sample (or a trimmed window) mapped across the keyboard
+            const size_t a = mel_a, b = (mel_b > mel_a) ? mel_b : src_n_;
             sample_engine::SampleRegion r;
             r.root_note = base; r.lo_note = 0; r.hi_note = 127;
-            r.data = make_data(0, n);
-            regions.push_back(std::move(r));
+            r.data = cut_(a, b);
+            if (!r.data->samples_L.empty()) {
+                regions.push_back(std::move(r));
+                cur_starts_.push_back(static_cast<uint32_t>(std::min(a, src_n_)));
+                cur_ends_.push_back(static_cast<uint32_t>(std::min(b, src_n_)));
+            }
         } else {                               // one single-note region per slice (drum-rack)
             for (int i = 0; i < nslices; ++i) {
-                const size_t a = std::min<size_t>(starts[i], n);
-                const size_t b = std::min<size_t>(ends[i], n);
+                const size_t a = std::min<size_t>(starts[i], src_n_);
+                const size_t b = std::min<size_t>(ends[i], src_n_);
                 if (b <= a) continue;
                 sample_engine::SampleRegion r;
                 r.root_note = r.lo_note = r.hi_note = base + i;
-                r.data = make_data(a, b);
+                r.data = cut_(a, b);
                 regions.push_back(std::move(r));
+                cur_starts_.push_back(static_cast<uint32_t>(a));
+                cur_ends_.push_back(static_cast<uint32_t>(b));
             }
         }
-        for (auto& v : v_) { v.active = false; v.gate = false; }   // reload clears ringing voices (load contract)
+        for (auto& v : v_) { v.active = false; v.gate = false; }   // an edit clears ringing voices (load contract)
         compute_peaks(regions);                      // cache the waveform thumbnail (UI thread)
         sample_engine::SampleBank* raw = bank.get();
         banks_.push_back(std::move(bank));           // retain (freed at op destroy, never on the audio thread)
         bank_.store(raw, std::memory_order_release); // publish
+    }
+
+    // ---- SamplerEditable (slice 6): re-cut the played window / slice map from the retained source. ----
+    bool has_source() const override { return src_n_ > 0; }
+    unsigned long long source_frames() const override { return src_n_; }
+    void set_trim(uint32_t in, uint32_t out) override {                       // melodic: play only [in,out)
+        if (src_n_ == 0) return;
+        if (out <= in) out = static_cast<uint32_t>(src_n_);
+        rebuild_(nullptr, nullptr, 0, static_cast<int>(std::lround(base_note.value)), in, out);
+    }
+    void reslice(const uint32_t* starts, const uint32_t* ends, int n, int base) override {  // drum-rack
+        if (src_n_ == 0 || n <= 0) return;
+        rebuild_(starts, ends, n, base);
+    }
+    int source_peaks(float* out, int n) const override {    // envelope of the WHOLE retained source
+        if (!out || n <= 0 || src_n_ == 0) return 0;
+        const int bins = std::min(n, static_cast<int>(src_n_));
+        for (int i = 0; i < bins; ++i) {
+            const size_t a = static_cast<size_t>(i)     * src_n_ / bins;
+            const size_t b = static_cast<size_t>(i + 1) * src_n_ / bins;
+            float pk = 0.f;
+            for (size_t k = a; k < b && k < src_n_; ++k) {
+                pk = std::max(pk, std::fabs(src_L_[k]));
+                if (src_stereo_ && k < src_R_.size()) pk = std::max(pk, std::fabs(src_R_[k]));
+            }
+            out[i] = std::min(pk, 1.f);
+        }
+        return bins;
+    }
+    int edit_boundaries(uint32_t* starts, uint32_t* ends, int cap) const override {
+        const int n = static_cast<int>(cur_starts_.size());
+        for (int i = 0; i < n && i < cap; ++i) { if (starts) starts[i] = cur_starts_[i]; if (ends) ends[i] = cur_ends_[i]; }
+        return n;
     }
 
     // Downsample the loaded regions (concatenated in order — the whole break, or one melodic sample)

@@ -3044,6 +3044,51 @@ const char* session_sampler_source(Session* s, int t, int node_id) {
       if (idx >= 0 && idx < static_cast<int>(tr->agnodes.size())) op = tr->agnodes[idx].op; }
     return op ? vivid::audio_op_sampler_source(op) : "";
 }
+// ADR-0049 slice 6: edit the played window / slice map. These MUTATE the op's bank (atomic publish +
+// retained old banks), so they hold gmtx across the call to serialize with a concurrent load.
+unsigned long long session_sampler_source_frames(Session* s, int t, int node_id) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const int idx = tr->agraph.node_index(node_id);
+    vivid::AudioOp* op = (idx >= 0 && idx < static_cast<int>(tr->agnodes.size())) ? tr->agnodes[idx].op : nullptr;
+    return op ? vivid::audio_op_sampler_source_frames(op) : 0;
+}
+void session_sampler_set_trim(Session* s, int t, int node_id, unsigned int in, unsigned int out) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const int idx = tr->agraph.node_index(node_id);
+    if (idx >= 0 && idx < static_cast<int>(tr->agnodes.size()) && tr->agnodes[idx].op)
+        vivid::audio_op_sampler_set_trim(tr->agnodes[idx].op, in, out);
+}
+void session_sampler_reslice(Session* s, int t, int node_id, const unsigned int* starts,
+                             const unsigned int* ends, int n, int base) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const int idx = tr->agraph.node_index(node_id);
+    if (idx >= 0 && idx < static_cast<int>(tr->agnodes.size()) && tr->agnodes[idx].op)
+        vivid::audio_op_sampler_reslice(tr->agnodes[idx].op, starts, ends, n, base);
+}
+int session_sampler_source_peaks(Session* s, int t, int node_id, float* out, int n) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    vivid::AudioOp* op = nullptr;
+    { std::lock_guard<std::mutex> lk(tr->gmtx);
+      const int idx = tr->agraph.node_index(node_id);
+      if (idx >= 0 && idx < static_cast<int>(tr->agnodes.size())) op = tr->agnodes[idx].op; }
+    return op ? vivid::audio_op_sampler_source_peaks(op, out, n) : 0;
+}
+int session_sampler_edit_boundaries(Session* s, int t, int node_id, unsigned int* starts, unsigned int* ends, int cap) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    vivid::AudioOp* op = nullptr;
+    { std::lock_guard<std::mutex> lk(tr->gmtx);
+      const int idx = tr->agraph.node_index(node_id);
+      if (idx >= 0 && idx < static_cast<int>(tr->agnodes.size())) op = tr->agnodes[idx].op; }
+    return op ? vivid::audio_op_sampler_edit_boundaries(op, starts, ends, cap) : 0;
+}
 
 // Copy a Sampler node's loaded-sample peak envelope for its waveform thumbnail (the UI node card).
 // Resolves the node's op under gmtx, then reads the cached peaks via the SamplerPreviewable escape

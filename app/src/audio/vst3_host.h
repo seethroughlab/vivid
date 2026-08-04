@@ -413,6 +413,13 @@ float       session_audio_graph_node_sampler_playhead(Session*, int track, int n
 int         session_sampler_info(Session*, int track, int node_id, ::vivid::SamplerInfo* out);       // 1 if loaded
 int         session_sampler_slices(Session*, int track, int node_id, ::vivid::SamplerSlice* out, int cap);  // count
 const char* session_sampler_source(Session*, int track, int node_id);                                // "" if none
+// ADR-0049 slice 6: edit the played window / slice map from the retained source PCM (no re-decode).
+unsigned long long session_sampler_source_frames(Session*, int track, int node_id);                  // 0 if none
+void        session_sampler_set_trim(Session*, int track, int node_id, unsigned int in, unsigned int out);   // melodic trim
+void        session_sampler_reslice(Session*, int track, int node_id, const unsigned int* starts,
+                                    const unsigned int* ends, int n, int base);                       // drum-rack re-slice
+int         session_sampler_source_peaks(Session*, int track, int node_id, float* out, int n);       // whole-source envelope
+int         session_sampler_edit_boundaries(Session*, int track, int node_id, unsigned int* starts, unsigned int* ends, int cap);
 // A2: add a VST3/CLAP plugin as a graph NODE (the peer of add_op/add_source, which are native-only).
 // `format` is a PluginFormat (audio/plugin_catalog.h); `is_source` = instrument (fans in to Output)
 // vs effect (splices before Output) — take it from the plugin's CLASS, never from its port counts (a

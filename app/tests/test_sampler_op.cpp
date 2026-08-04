@@ -258,7 +258,77 @@ int main() {
 
         AudioOp* tone = audio_op_create(reg, "TestTone");
         CHECK(!audio_op_sampler_info(tone, info));            // not a sampler → false, no crash
+        CHECK(audio_op_sampler_source_frames(tone) == 0);     // edit cross-cast also refuses cleanly
         audio_op_destroy(tone);
+    }
+
+    // ==== ADR-0049 slice 6: the EDIT API (SamplerEditable) — re-cut trim / slices from retained PCM ====
+    // 8. Trim a melodic load: play only [in,out) of the whole sample. Source is a ramp so we can confirm
+    //    the trim window by its geometry; the retained source length is unchanged (edits are non-lossy).
+    {
+        const uint32_t sr = 44100, N = 1000;
+        std::vector<float> L(N);
+        for (uint32_t i = 0; i < N; ++i) L[i] = static_cast<float>(i);
+        AudioOp* op = audio_op_create(reg, "Sampler");
+        CHECK(audio_op_load_sampler(op, L.data(), nullptr, N, sr, nullptr, nullptr, 0, 60));
+        CHECK(audio_op_sampler_source_frames(op) == N);       // source retained for editing
+        SamplerInfo info{};
+        CHECK(audio_op_sampler_info(op, info) && info.frames == N);   // whole sample before trim
+
+        audio_op_sampler_set_trim(op, 200, 700);              // keep [200,700)
+        CHECK(audio_op_sampler_info(op, info));
+        CHECK(info.frames == 500);                            // played window is now 500 frames
+        CHECK(info.slice_count == 1);                         // still melodic
+        CHECK(audio_op_sampler_source_frames(op) == N);       // source is NOT consumed by the trim
+        SamplerSlice sl[2];
+        CHECK(audio_op_sampler_slices(op, sl, 2) == 1);
+        CHECK(sl[0].start == 0 && sl[0].end == 500);          // the region carries its own [0,len) copy
+        CHECK(sl[0].lo_note == 0 && sl[0].hi_note == 127);    // still spans the keyboard
+
+        audio_op_sampler_set_trim(op, 100, 0);                // out<=in => trim to the end
+        CHECK(audio_op_sampler_info(op, info) && info.frames == N - 100);
+        // The editor reads the whole-source envelope + the play window in SOURCE frames (not the
+        // concatenated result), so trim handles land on the right place even after a trim.
+        float sp[64]; CHECK(audio_op_sampler_source_peaks(op, sp, 64) == 64);
+        unsigned int bs[4], be[4];
+        CHECK(audio_op_sampler_edit_boundaries(op, bs, be, 4) == 1);
+        CHECK(bs[0] == 100 && be[0] == N);                    // the current window is [100,N) in source space
+        audio_op_destroy(op);
+    }
+
+    // 9. Re-slice a melodic load into a drum-rack: two unequal slices mapped to ascending pitches.
+    {
+        const uint32_t sr = 48000, N = 1000;
+        std::vector<float> L(N, 0.25f);
+        AudioOp* op = audio_op_create(reg, "Sampler");
+        CHECK(audio_op_load_sampler(op, L.data(), nullptr, N, sr, nullptr, nullptr, 0, 60));
+        const unsigned int starts[2] = { 0, 400 }, ends[2] = { 400, 1000 };
+        audio_op_sampler_reslice(op, starts, ends, 2, 48);
+        SamplerInfo info{};
+        CHECK(audio_op_sampler_info(op, info));
+        CHECK(info.slice_count == 2);
+        CHECK(info.base_note == 48);
+        CHECK(info.frames == N);                              // 400 + 600 concatenated
+        SamplerSlice sl[4];
+        CHECK(audio_op_sampler_slices(op, sl, 4) == 2);
+        CHECK(sl[0].start == 0   && sl[0].end == 400 && sl[0].root_note == 48);
+        CHECK(sl[1].start == 400 && sl[1].end == 1000 && sl[1].root_note == 49);
+        unsigned int bs[4], be[4];                            // SOURCE-space edges match the slice request
+        CHECK(audio_op_sampler_edit_boundaries(op, bs, be, 4) == 2);
+        CHECK(bs[0] == 0 && be[0] == 400 && bs[1] == 400 && be[1] == 1000);
+        audio_op_destroy(op);
+    }
+
+    // 10. Edits on a never-loaded op are safe no-ops (no source to re-cut).
+    {
+        AudioOp* op = audio_op_create(reg, "Sampler");
+        CHECK(audio_op_sampler_source_frames(op) == 0);
+        const unsigned int s0 = 0, e0 = 100;
+        audio_op_sampler_set_trim(op, 0, 100);               // no source → no-op, no crash
+        audio_op_sampler_reslice(op, &s0, &e0, 1, 36);
+        SamplerInfo info{};
+        CHECK(!audio_op_sampler_info(op, info));             // still nothing loaded
+        audio_op_destroy(op);
     }
 
     return vivid::test::summary("test_sampler_op");
