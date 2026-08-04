@@ -12,6 +12,23 @@ struct Rect { float x, y, w, h; };
 inline bool hit(const Rect& r, double mx, double my) {
     return mx >= r.x && mx < r.x + r.w && my >= r.y && my < r.y + r.h;
 }
+
+// ADR-0048 control-substrate geometry (pure; the draw side lives in ui/editor_controls.h). Kept here so
+// the shared draw/hit Rect math is wgpu-free and unit-testable (test_editor_controls).
+// Which cell (0..n-1) a point lands in for an N-cell segmented control over `b`, or -1 if outside.
+inline int segmented_hit(Rect b, int n, double mx, double my) {
+    if (n <= 0 || !hit(b, mx, my)) return -1;
+    const int i = static_cast<int>((mx - b.x) / (b.w / static_cast<double>(n)));
+    return i < 0 ? 0 : (i >= n ? n - 1 : i);
+}
+// Stepper [ − | body | + ] with square ± buttons (width = b.h) at each end: -1 dec, +1 inc, 0 body/outside.
+inline int stepper_hit(Rect b, double mx, double my) {
+    if (!hit(b, mx, my)) return 0;
+    const double bw = b.h;
+    if (mx < b.x + bw) return -1;
+    if (mx > b.x + b.w - bw) return +1;
+    return 0;
+}
 inline float dock_top(int win_h, float dock_h);   // fwd (defined in the window-relative section)
 
 // --- Pane region chrome: bounded panels on a margin/gutter grid. ---

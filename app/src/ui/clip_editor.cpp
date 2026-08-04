@@ -1,5 +1,6 @@
 #include "ui/clip_editor.h"
 #include "ui/ui_style.h"
+#include "ui/editor_controls.h"   // ADR-0048: the shared control substrate (icon_button, segmented, …)
 #include "midi/note_ops.h"
 #include "midi/note_tools.h"
 #include <GLFW/glfw3.h>
@@ -15,6 +16,12 @@ using vivid::session::ExprCurve;
 static constexpr float kFloatW = 900.f, kFloatH = 560.f;  // floating size
 static constexpr float kDockH  = 300.f;                   // docked bottom-strip height
 static constexpr float kEditorHeaderH = 30.f;
+
+// ADR-0048: shared header-control rects — draw() and on_down() compute a control's bounds from the SAME
+// helper, so the click target can never drift from what's drawn (the old code hand-authored mismatched
+// x-ranges in each). More controls migrate to real widgets + a laid-out inspector strip in later slices.
+static Rect close_btn_rect(float px, float py, float pw) { return { px + pw - 26.f, py + 6.f, 20.f, 18.f }; }
+static Rect dock_btn_rect (float px, float py, float pw) { return { px + pw - 76.f, py + 6.f, 44.f, 18.f }; }
 
 // Grid/snap presets (beats). Straight + triplet subdivisions.
 struct GridPreset { double v; const char* label; };
@@ -278,8 +285,9 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
     float px, py, pw, ph; panel(px, py, pw, ph);
     // Header: close [X], dock toggle, per-mode controls, or drag-to-move.
     if (y < py + kEditorHeaderH) {
-        if (x >= px + pw - 28.f) { close(); return true; }                              // [X]
-        if (x >= px + pw - 64.f) { docked_ = !docked_; drag_ = 0; return true; }         // dock
+        // ADR-0048: hit-test the SAME rects the header controls are drawn from (no magic-offset drift).
+        if (hit(close_btn_rect(px, py, pw), x, y)) { close(); return true; }             // [✕]
+        if (hit(dock_btn_rect(px, py, pw), x, y)) { docked_ = !docked_; drag_ = 0; return true; }  // dock
         if (audio_) {
             if (x >= px + pw - 432.f && x < px + pw - 372.f) { aud_req_ |= 16; return true; }   // slice -> MIDI track
             if (x >= px + pw - 358.f && x < px + pw - 274.f) {   // slice: cycle off->tran->grid
@@ -755,8 +763,9 @@ void ClipEditor::draw(Renderer2D& r) {
         char pl[16]; std::snprintf(pl, sizeof pl, "pit %+d", static_cast<int>(std::lround(aud_pitch_)));
         r.draw_text(px + pw - 132.f, py + 8.f, pl, 0.6f, 0.72f, 0.78f, 1.0f, 0.82f);
     }
-    r.draw_text(px + pw - 60.f, py + 8.f, docked_ ? "float" : "dock", 0.6f, 0.72f, 0.78f, 1.0f, 0.8f);
-    r.draw_text(px + pw - 22.f, py + 8.f, "X", 0.8f, 0.55f, 0.55f, 1.0f, 1.0f);
+    // ADR-0048: real bounded controls (shared draw/hit rect) — replacing the old bare "dock"/"X" text.
+    icon_button(r, dock_btn_rect(px, py, pw), docked_ ? "float" : "dock");
+    icon_button(r, close_btn_rect(px, py, pw), "\xE2\x9C\x95", false, false, sty.red);   // ✕ (red glyph)
 
     const float GX = roll_x0(), GY = gy(), GW = roll_w(), GH = gh();   // roll content (inset past the keys, MIDI)
     recess(r, { gx(), GY, gw(), GH });
