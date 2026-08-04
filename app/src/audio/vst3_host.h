@@ -420,6 +420,8 @@ void        session_sampler_reslice(Session*, int track, int node_id, const unsi
                                     const unsigned int* ends, int n, int base);                       // drum-rack re-slice
 int         session_sampler_source_peaks(Session*, int track, int node_id, float* out, int n);       // whole-source envelope
 int         session_sampler_edit_boundaries(Session*, int track, int node_id, unsigned int* starts, unsigned int* ends, int cap);
+int         session_sampler_detect_slices(Session*, int track, int node_id, float sensitivity);        // auto-slice; returns count
+void        session_sampler_set_slice_tune(Session*, int track, int node_id, int slice, int semitones);
 // A2: add a VST3/CLAP plugin as a graph NODE (the peer of add_op/add_source, which are native-only).
 // `format` is a PluginFormat (audio/plugin_catalog.h); `is_source` = instrument (fans in to Output)
 // vs effect (splices before Output) — take it from the plugin's CLASS, never from its port counts (a

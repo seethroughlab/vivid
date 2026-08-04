@@ -1,5 +1,6 @@
 #include "audio/builtin_audio_ops.h"
 #include "audio/sampler_op.h"        // SamplerLoadable escape hatch
+#include "audio/audio_transient_detect.h" // ADR-0049 slice 9: onset detection (json-free)
 #include "gpu/op_runtime.h"          // OpRegistry / register_op (includes operator_api)
 #include "audio/audio_op_runtime.h"  // audio_op_mark_note_op (ADR-0015)
 #include "operator_api/movie_audio.h" // the movie-audio bus (MovieAudio source op)
@@ -276,6 +277,7 @@ struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPrevi
     uint32_t               src_sr_ = 0;
     bool                   src_stereo_ = false;
     std::vector<uint32_t>  cur_starts_, cur_ends_;    // current edit boundaries in SOURCE frames (per region)
+    std::vector<int>       cur_tune_;                 // per-slice tune in semitones (+ = up), applied via root_note
 
     void collect_params(std::vector<ParamBase*>& o) override {
         o.push_back(&base_note); o.push_back(&gain); o.push_back(&gate);
@@ -315,12 +317,13 @@ struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPrevi
     // by the initial load and every edit. nslices<=0 => one melodic region [start,end) (default whole
     // sample) mapped across the keyboard; else one single-note region per [starts[i],ends[i]) slice.
     void rebuild_(const uint32_t* starts, const uint32_t* ends, int nslices, int base,
-                  size_t mel_a = 0, size_t mel_b = 0) {
+                  size_t mel_a = 0, size_t mel_b = 0, bool reset_tune = true) {
         base_note.value = static_cast<float>(base);
         auto bank = std::make_unique<sample_engine::SampleBank>();
         bank->groups.emplace_back();
         auto& regions = bank->groups[0].regions;
-        cur_starts_.clear(); cur_ends_.clear();   // record the SOURCE-space boundaries for the editor
+        const std::vector<int> tune_prev = cur_tune_;   // preserved across an edit when reset_tune==false
+        cur_starts_.clear(); cur_ends_.clear(); cur_tune_.clear();
         if (nslices <= 0) {                    // whole sample (or a trimmed window) mapped across the keyboard
             const size_t a = mel_a, b = (mel_b > mel_a) ? mel_b : src_n_;
             sample_engine::SampleRegion r;
@@ -330,18 +333,22 @@ struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPrevi
                 regions.push_back(std::move(r));
                 cur_starts_.push_back(static_cast<uint32_t>(std::min(a, src_n_)));
                 cur_ends_.push_back(static_cast<uint32_t>(std::min(b, src_n_)));
+                cur_tune_.push_back(0);
             }
         } else {                               // one single-note region per slice (drum-rack)
             for (int i = 0; i < nslices; ++i) {
                 const size_t a = std::min<size_t>(starts[i], src_n_);
                 const size_t b = std::min<size_t>(ends[i], src_n_);
                 if (b <= a) continue;
+                const int tune = (!reset_tune && i < static_cast<int>(tune_prev.size())) ? tune_prev[i] : 0;
                 sample_engine::SampleRegion r;
-                r.root_note = r.lo_note = r.hi_note = base + i;
+                r.lo_note = r.hi_note = base + i;
+                r.root_note = base + i - tune;   // per-slice tune (semitones, + = up): played note stays base+i
                 r.data = cut_(a, b);
                 regions.push_back(std::move(r));
                 cur_starts_.push_back(static_cast<uint32_t>(a));
                 cur_ends_.push_back(static_cast<uint32_t>(b));
+                cur_tune_.push_back(tune);
             }
         }
         for (auto& v : v_) { v.active = false; v.gate = false; }   // an edit clears ringing voices (load contract)
@@ -362,6 +369,34 @@ struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPrevi
     void reslice(const uint32_t* starts, const uint32_t* ends, int n, int base) override {  // drum-rack
         if (src_n_ == 0 || n <= 0) return;
         rebuild_(starts, ends, n, base);
+    }
+    // ADR-0049 slice 9: auto-slice at detected onsets (each transient starts a slice; the head is slice 0).
+    int detect_slices(float sensitivity) override {
+        if (src_n_ == 0) return 0;
+        const std::vector<float>& R = src_stereo_ ? src_R_ : src_L_;   // detector uses min(L,R) length
+        const auto tps = audio_clip_ed::detect_transients(src_L_, R, src_sr_, sensitivity);
+        std::vector<uint32_t> on{ 0 };
+        for (const auto& tp : tps) if (tp.source_sample > 8 && tp.source_sample < src_n_) on.push_back(tp.source_sample);
+        std::sort(on.begin(), on.end());
+        on.erase(std::unique(on.begin(), on.end()), on.end());
+        std::vector<uint32_t> starts, ends;
+        for (size_t i = 0; i < on.size(); ++i) {
+            const uint32_t a = on[i], b = (i + 1 < on.size()) ? on[i + 1] : static_cast<uint32_t>(src_n_);
+            if (b > a) { starts.push_back(a); ends.push_back(b); }
+        }
+        if (starts.empty()) return 0;
+        rebuild_(starts.data(), ends.data(), static_cast<int>(starts.size()), static_cast<int>(std::lround(base_note.value)));
+        return static_cast<int>(starts.size());
+    }
+    // Tune a single slice ±semitones (keeps its trigger note; shifts pitch via root_note). Rebuilds
+    // preserving every slice's tune so successive edits accumulate.
+    void set_slice_tune(int slice, int semis) override {
+        if (slice < 0 || slice >= static_cast<int>(cur_starts_.size())) return;
+        if (static_cast<int>(cur_tune_.size()) < static_cast<int>(cur_starts_.size())) cur_tune_.resize(cur_starts_.size(), 0);
+        cur_tune_[slice] = std::clamp(semis, -48, 48);
+        const std::vector<uint32_t> ss = cur_starts_, ee = cur_ends_;   // snapshot: rebuild_ rewrites cur_*
+        rebuild_(ss.data(), ee.data(), static_cast<int>(ss.size()),
+                 static_cast<int>(std::lround(base_note.value)), 0, 0, /*reset_tune*/false);
     }
     int source_peaks(float* out, int n) const override {    // envelope of the WHOLE retained source
         if (!out || n <= 0 || src_n_ == 0) return 0;

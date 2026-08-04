@@ -44,6 +44,12 @@ static json sampler_save_block(vivid::session::Session* s, int t, int nid) {
     json edges = json::array();
     for (int k = 0; k < nb; ++k) edges.push_back(json::array({ bs[k], be[k] }));
     sm["slices"] = edges;
+    // ADR-0049 slice 9: per-slice tune (semitones = trigger note - root note); written only when non-trivial.
+    ::vivid::SamplerSlice sl[64];
+    const int nsl = vivid::session::session_sampler_slices(s, t, nid, sl, 64);
+    json tunes = json::array(); bool any_tune = false;
+    for (int k = 0; k < nsl; ++k) { const int tn = sl[k].lo_note - sl[k].root_note; tunes.push_back(tn); any_tune |= (tn != 0); }
+    if (any_tune) sm["tunes"] = tunes;
     return sm;
 }
 static void sampler_restore(vivid::session::Session* s, int t, int nid, const json& sm,
@@ -61,6 +67,15 @@ static void sampler_restore(vivid::session::Session* s, int t, int nid, const js
     const int n = static_cast<int>(starts.size());
     if (n == 1)     vivid::session::session_sampler_set_trim(s, t, nid, starts[0], ends[0]);
     else if (n > 1) vivid::session::session_sampler_reslice(s, t, nid, starts.data(), ends.data(), n, sbase);
+    // ADR-0049 slice 9: re-apply per-slice tune after the slices exist.
+    if (sm.contains("tunes") && sm["tunes"].is_array()) {
+        int i = 0;
+        for (const auto& tn : sm["tunes"]) {
+            if (tn.is_number_integer() && tn.get<int>() != 0)
+                vivid::session::session_sampler_set_slice_tune(s, t, nid, i, tn.get<int>());
+            ++i;
+        }
+    }
 }
 
 json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,

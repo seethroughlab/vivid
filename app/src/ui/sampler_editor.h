@@ -87,6 +87,17 @@ public:
         { char v[16]; std::snprintf(v, sizeof v, "%.2f", gn); stepper(r, rGn, "GAIN", v, stepper_hit(rGn, mx, my)); }
         const Rect rSlc = place(112.f);   // number of trigger slices: 1 = whole/trimmed; N = drum-rack
         { char v[16]; std::snprintf(v, sizeof v, "%d", nb); stepper(r, rSlc, "SLICES", v, stepper_hit(rSlc, mx, my)); }
+        const Rect rDet = place(84.f);    // auto-slice at detected onsets
+        icon_button(r, rDet, "Detect", hov(rDet));
+        // Per-slice TUNE appears only when a drum-rack slice is selected (tune == trigger note - root note).
+        const bool slice_sel = (sel_ >= 0 && sel_ < nsl && nb > 1);
+        const int  stune = slice_sel ? (slc[sel_].lo_note - slc[sel_].root_note) : 0;
+        Rect rTune{};
+        if (slice_sel) {
+            rTune = place(120.f);
+            char v[16]; std::snprintf(v, sizeof v, "%+d st", stune);
+            stepper(r, rTune, "TUNE", v, stepper_hit(rTune, mx, my));
+        }
         const Rect rEnv = place(120.f);   // the disclosure for the set-and-forget envelope/voice params
         menu_button(r, rEnv, "\xE2\x8B\xAF Envelope", hov(rEnv), env_open_);
 
@@ -97,6 +108,9 @@ public:
             if (int h = stepper_hit(rGn, mx, my)) pset(s, track, node_id, "gain", std::clamp(gn + 0.05f * h, 0.f, 2.f));
             if (int h = stepper_hit(rSlc, mx, my); h && nb > 0)   // re-cut into N EQUAL slices over [in,out]
                 reslice_equal(s, track, node_id, bs[0], be[nb - 1], std::clamp(nb + h, 1, 32), root);
+            if (hit(rDet, mx, my)) { S::session_sampler_detect_slices(s, track, node_id, 0.5f); sel_ = -1; }
+            if (slice_sel) if (int h = stepper_hit(rTune, mx, my))
+                S::session_sampler_set_slice_tune(s, track, node_id, sel_, std::clamp(stune + h, -48, 48));
             if (hit(rEnv, mx, my)) env_open_ = !env_open_;
         }
 

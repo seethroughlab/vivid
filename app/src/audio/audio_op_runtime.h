@@ -48,6 +48,8 @@ void        audio_op_sampler_set_trim(AudioOp*, unsigned int in, unsigned int ou
 void        audio_op_sampler_reslice(AudioOp*, const unsigned int* starts, const unsigned int* ends, int n, int base);
 int         audio_op_sampler_source_peaks(const AudioOp*, float* out, int n);                  // whole-source envelope
 int         audio_op_sampler_edit_boundaries(const AudioOp*, unsigned int* starts, unsigned int* ends, int cap);  // SOURCE-space edges
+int         audio_op_sampler_detect_slices(AudioOp*, float sensitivity);          // auto-slice at onsets; returns count
+void        audio_op_sampler_set_slice_tune(AudioOp*, int slice, int semitones);  // per-slice ±semitone tune
 // Enumerate registered audio operators for the device pickers. want_source: true =
 // instruments/generators (no audio input), false = effects (has audio input).
 int         audio_op_registry_count(OpRegistry& reg, bool want_source);

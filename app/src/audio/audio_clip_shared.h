@@ -15,6 +15,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "audio/audio_transient_detect.h"   // TransientPoint / SliceRegion / detect_transients (json-free core)
+
 namespace audio_clip_ed {
 
 struct LoopBounds {
@@ -25,16 +27,6 @@ struct LoopBounds {
 struct WarpPoint {
     uint32_t source_sample = 0;
     double beat = 0.0;
-};
-
-struct TransientPoint {
-    uint32_t source_sample = 0;
-    float strength = 0.0f;
-};
-
-struct SliceRegion {
-    uint32_t start = 0;
-    uint32_t end = 0;
 };
 
 // Returns true if mx is within grab_px of handle_x (for a vertical handle line).
@@ -307,30 +299,7 @@ inline double next_quantized_beat(double current_beats, int beats_per_bar, int q
     return next <= current_beats + 1e-9 ? next + grid : next;
 }
 
-inline std::vector<TransientPoint> detect_transients(const std::vector<float>& left,
-                                                     const std::vector<float>& right,
-                                                     uint32_t sample_rate,
-                                                     float sensitivity) {
-    std::vector<TransientPoint> out;
-    const size_t n = std::min(left.size(), right.size());
-    if (n < 8 || sample_rate == 0) return out;
-    const uint32_t min_gap = std::max(1u, sample_rate / 50u);
-    const float threshold = 0.04f + (1.0f - std::clamp(sensitivity, 0.0f, 1.0f)) * 0.24f;
-    float env = 0.0f;
-    uint32_t last = 0;
-    bool have_last = false;
-    for (uint32_t i = 0; i < n; ++i) {
-        const float mag = 0.5f * (std::fabs(left[i]) + std::fabs(right[i]));
-        const float delta = mag - env;
-        env = std::max(mag, env * 0.96f);
-        if (delta > threshold && (!have_last || i - last >= min_gap)) {
-            out.push_back({i, std::clamp(delta, 0.0f, 1.0f)});
-            last = i;
-            have_last = true;
-        }
-    }
-    return out;
-}
+// detect_transients now lives in audio/audio_transient_detect.h (json-free), included above.
 
 inline std::vector<SliceRegion> compile_slices(int mode,
                                                const std::vector<TransientPoint>& transients,

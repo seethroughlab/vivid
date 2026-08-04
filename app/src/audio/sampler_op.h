@@ -60,6 +60,10 @@ struct SamplerEditable {
     virtual unsigned long long source_frames() const = 0; // length of the retained source (frames)
     virtual void set_trim(uint32_t in, uint32_t out) = 0; // out<=in => to end of sample
     virtual void reslice(const uint32_t* starts, const uint32_t* ends, int n, int base) = 0;
+    // Auto-slice at detected onsets (sensitivity 0..1); returns the slice count. Per-slice ±semitone
+    // tune (keeps the slice's trigger note, shifts its pitch). ADR-0049 slice 9.
+    virtual int  detect_slices(float sensitivity) = 0;
+    virtual void set_slice_tune(int slice, int semitones) = 0;
     // The editor draws the WHOLE retained source and overlays the play/slice markers in SOURCE space
     // (the read side's SamplerSlice positions are in the concatenated result, which loses the trim).
     // source_peaks: per-bin absolute-peak envelope (0..1) of the retained source; returns bins written.

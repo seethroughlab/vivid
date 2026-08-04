@@ -3089,6 +3089,22 @@ int session_sampler_edit_boundaries(Session* s, int t, int node_id, unsigned int
       if (idx >= 0 && idx < static_cast<int>(tr->agnodes.size())) op = tr->agnodes[idx].op; }
     return op ? vivid::audio_op_sampler_edit_boundaries(op, starts, ends, cap) : 0;
 }
+int session_sampler_detect_slices(Session* s, int t, int node_id, float sensitivity) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const int idx = tr->agraph.node_index(node_id);
+    vivid::AudioOp* op = (idx >= 0 && idx < static_cast<int>(tr->agnodes.size())) ? tr->agnodes[idx].op : nullptr;
+    return op ? vivid::audio_op_sampler_detect_slices(op, sensitivity) : 0;
+}
+void session_sampler_set_slice_tune(Session* s, int t, int node_id, int slice, int semitones) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const int idx = tr->agraph.node_index(node_id);
+    if (idx >= 0 && idx < static_cast<int>(tr->agnodes.size()) && tr->agnodes[idx].op)
+        vivid::audio_op_sampler_set_slice_tune(tr->agnodes[idx].op, slice, semitones);
+}
 
 // Copy a Sampler node's loaded-sample peak envelope for its waveform thumbnail (the UI node card).
 // Resolves the node's op under gmtx, then reads the cached peaks via the SamplerPreviewable escape
