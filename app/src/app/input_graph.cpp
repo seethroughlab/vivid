@@ -725,6 +725,10 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
                 break;
             }
     }
+    // The SamplerEditor owns the whole dock (immediate-mode input in draw). CONSUME any press/drag inside
+    // it so it can't fall through to the graph-canvas pan below — dragging the waveform must not pan the
+    // graph. (The dock-resize strip at the very top stays draggable.)
+    if (sampler_dock && my >= win.dock_top() && !hit(win.dock_resize_rect(), mx, my)) return true;
     if (win.sel_audio_node >= 0 && !sampler_dock && sel_is_source(win.sel_audio_node)) {   // key-range drag handles (source node)
         int lo = 0, hi = 127;
         S::session_audio_graph_node_key_range_get(app.session, tr, win.sel_audio_node, &lo, &hi);
