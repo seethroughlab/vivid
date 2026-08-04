@@ -665,7 +665,9 @@ void ClipEditor::apply_vel_ramp(double x1, double y1) {
     const float top = lane_top() + 6.f, bot = gy() + gh() - 4.f;
     auto vel_at = [&](double yy) { return std::clamp(static_cast<float>((bot - yy) / std::max(1.f, bot - top)), 0.f, 1.f); };
     if (vel_scale_) {   // Shift+drag: scale the selection's (or all) velocities proportionally — keep the shape
-        const float factor = std::clamp(1.f + (vel_at(y1) - vel_at(vel_y0_)) * 1.8f, 0.f, 2.f);
+        // Pixel-based sensitivity (the lane is short, so a lane-height mapping would be far too twitchy):
+        // ~220px of vertical drag doubles / zeroes; up = louder, down = softer.
+        const float factor = std::clamp(1.f + static_cast<float>(vel_y0_ - y1) / 220.f, 0.f, 2.f);
         bool any = false;
         for (size_t i = 0; i < notes_.size(); ++i) if (i < sel_.size() && sel_[i]) { any = true; break; }
         for (size_t i = 0; i < notes_.size() && i < drag_orig_.size(); ++i) {
