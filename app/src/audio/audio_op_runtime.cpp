@@ -156,6 +156,16 @@ int audio_op_sampler_edit_boundaries(const AudioOp* a, unsigned int* starts, uns
     auto* se = dynamic_cast<const SamplerEditable*>(a->inst.op.get());
     return se ? se->edit_boundaries(starts, ends, cap) : 0;
 }
+int audio_op_sampler_detect_slices(AudioOp* a, float sensitivity) {
+    if (!a) return 0;
+    auto* se = dynamic_cast<SamplerEditable*>(a->inst.op.get());
+    return se ? se->detect_slices(sensitivity) : 0;
+}
+void audio_op_sampler_set_slice_tune(AudioOp* a, int slice, int semitones) {
+    if (!a) return;
+    auto* se = dynamic_cast<SamplerEditable*>(a->inst.op.get());
+    if (se) se->set_slice_tune(slice, semitones);
+}
 
 // Registry inspection (UI thread) — enumerate audio operators for the device pickers.
 // want_source: true = instruments/generators (no audio input), false = effects.

@@ -326,8 +326,47 @@ int main() {
         const unsigned int s0 = 0, e0 = 100;
         audio_op_sampler_set_trim(op, 0, 100);               // no source → no-op, no crash
         audio_op_sampler_reslice(op, &s0, &e0, 1, 36);
+        audio_op_sampler_set_slice_tune(op, 0, 5);           // no source → no-op, no crash
+        CHECK(audio_op_sampler_detect_slices(op, 0.5f) == 0);
         SamplerInfo info{};
         CHECK(!audio_op_sampler_info(op, info));             // still nothing loaded
+        audio_op_destroy(op);
+    }
+
+    // 11. Per-slice tune (slice 9): a slice keeps its TRIGGER note (lo/hi) but shifts pitch via root_note,
+    //     so tune == lo_note - root_note. Successive tunes accumulate across slices.
+    {
+        const uint32_t sr = 44100, N = 1200;
+        std::vector<float> L(N, 0.2f);
+        AudioOp* op = audio_op_create(reg, "Sampler");
+        CHECK(audio_op_load_sampler(op, L.data(), nullptr, N, sr, nullptr, nullptr, 0, 60));
+        const unsigned int st[3] = { 0, 400, 800 }, en[3] = { 400, 800, 1200 };
+        audio_op_sampler_reslice(op, st, en, 3, 36);         // slices trigger on 36,37,38
+        audio_op_sampler_set_slice_tune(op, 0, +5);          // slice 0 up 5 st
+        audio_op_sampler_set_slice_tune(op, 2, -3);          // slice 2 down 3 st (accumulates with slice 0)
+        SamplerSlice sl[3];
+        CHECK(audio_op_sampler_slices(op, sl, 3) == 3);
+        CHECK(sl[0].lo_note == 36 && sl[0].root_note == 36 - 5);   // +5 up  => root below trigger
+        CHECK(sl[1].lo_note == 37 && sl[1].root_note == 37);       // untouched
+        CHECK(sl[2].lo_note == 38 && sl[2].root_note == 38 + 3);   // -3 down => root above trigger
+        audio_op_destroy(op);
+    }
+
+    // 12. Transient-detect slicing (slice 9): three loud onsets on a quiet bed → several slices, all
+    //     valid + covering the sample; head always starts slice 0. (Loose: detector tuning may vary.)
+    {
+        const uint32_t sr = 44100, N = 44100;                // 1s
+        std::vector<float> L(N, 0.f);
+        for (uint32_t p : { 0u, 15000u, 30000u })            // sharp onsets: a short burst at each
+            for (uint32_t k = 0; k < 400 && p + k < N; ++k) L[p + k] = (k < 20 ? 0.9f : 0.5f) * ((k % 2) ? 1.f : -1.f);
+        AudioOp* op = audio_op_create(reg, "Sampler");
+        CHECK(audio_op_load_sampler(op, L.data(), nullptr, N, sr, nullptr, nullptr, 0, 36));
+        const int n = audio_op_sampler_detect_slices(op, 0.5f);
+        CHECK(n >= 2);                                        // found the onsets (at least a couple of slices)
+        SamplerSlice sl[16]; const int got = audio_op_sampler_slices(op, sl, 16);
+        CHECK(got == n && n <= 16);
+        CHECK(sl[0].start == 0);                             // slice 0 always starts at the head
+        for (int i = 0; i + 1 < got; ++i) CHECK(sl[i].end == sl[i + 1].start);   // contiguous, in order
         audio_op_destroy(op);
     }
 
