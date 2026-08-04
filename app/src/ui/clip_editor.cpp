@@ -808,7 +808,7 @@ void ClipEditor::draw(Renderer2D& r) {
     if (!open_) return;
     float px, py, pw, ph; panel(px, py, pw, ph);
     const Style& sty = style();
-    editor_panel(r, { px, py, pw, ph }, title_.c_str(), sty.gpu, kEditorHeaderH);
+    editor_panel(r, { px, py, pw, ph }, title_.c_str(), sty.audio, kEditorHeaderH);
     auto hov = [&](Rect rr) { return hit(rr, hover_x_, hover_y_); };
     hover_status_.clear();
     // ADR-0048: shared title-strip controls (both modes) — dock/float toggle + close, real bounded buttons.
@@ -825,7 +825,7 @@ void ClipEditor::draw(Renderer2D& r) {
         // MIDI inspector controls, each drawn + hit from the SAME midi_insp() rect.
         const MidiInsp m = midi_insp(px, py, pw);
         segmented(r, m.tool, { "Draw", "Select" }, tool_ == Tool::Draw ? 0 : 1,
-                  segmented_hit(m.tool, 2, hover_x_, hover_y_), sty.gpu);
+                  segmented_hit(m.tool, 2, hover_x_, hover_y_), sty.audio);
         stepper(r, m.grid, "GRID", kGrids[grid_idx_].label, stepper_hit(m.grid, hover_x_, hover_y_));
         icon_button(r, m.fold,  "Fold",  hov(m.fold),  fold_);
         icon_button(r, m.ghost, "Ghost", hov(m.ghost), ghost_);
@@ -841,12 +841,12 @@ void ClipEditor::draw(Renderer2D& r) {
         // AUDIO inspector controls (drive the same aud_req_ commit bits as the old header text).
         const AudioInsp a = audio_insp(px, py, pw);
         segmented(r, a.warp, { "Off", "Cplx", "Beat", "Rept" }, aud_warp_mode_ + 1,
-                  segmented_hit(a.warp, 4, hover_x_, hover_y_), sty.gpu);
+                  segmented_hit(a.warp, 4, hover_x_, hover_y_), sty.audio);
         icon_button(r, a.autow, "Auto-warp", hov(a.autow));
         { char pl[16]; std::snprintf(pl, sizeof pl, "%+d st", static_cast<int>(std::lround(aud_pitch_)));
           stepper(r, a.pitch, "PITCH", pl, stepper_hit(a.pitch, hover_x_, hover_y_)); }
         const int slc = slice_mode_ == 0 ? 0 : slice_mode_ == 1 ? 1 : 2;
-        segmented(r, a.slice, { "Off", "Tran", "Grid" }, slc, segmented_hit(a.slice, 3, hover_x_, hover_y_), sty.gpu);
+        segmented(r, a.slice, { "Off", "Tran", "Grid" }, slc, segmented_hit(a.slice, 3, hover_x_, hover_y_), sty.audio);
         icon_button(r, a.to_midi, "Slice \xE2\x86\x92 MIDI", hov(a.to_midi), slice_mode_ > 0);   // active when slicing
     }
 
@@ -886,7 +886,7 @@ void ClipEditor::draw(Renderer2D& r) {
                 hover_status_ = "scroll \xE2\x86\x92 zoom  \xC2\xB7  \xE2\x8C\xA5 amp  \xC2\xB7  drag marker \xE2\x86\x92 warp";
         }
         if (!hover_status_.empty())
-            hover_status(r, px + 12.f, py + ph - 26.f, hover_status_.c_str(), sty.gpu);
+            hover_status(r, px + 12.f, py + ph - 26.f, hover_status_.c_str(), sty.audio);
         return;
     }
 
@@ -1085,14 +1085,14 @@ void ClipEditor::draw(Renderer2D& r) {
                                         : "drag \xE2\x86\x92 move  \xC2\xB7  double-click \xE2\x86\x92 delete";
     }
     if (!hover_status_.empty())
-        hover_status(r, px + 12.f, py + ph - 26.f, hover_status_.c_str(), sty.gpu);
+        hover_status(r, px + 12.f, py + ph - 26.f, hover_status_.c_str(), sty.audio);
 
     if (xform_open_) {   // the ⋯ Transform dropdown, over the roll
         const MidiInsp m = midi_insp(px, py, pw);
         const Rect menu{ m.xform.x, m.xform.y + m.xform.h + 2.f, kXMenuW, kNumXItems * kXItemH + 2.f };
         r.draw_rect(menu.x, menu.y, menu.w, menu.h, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
         r.draw_rect_outline(menu.x, menu.y, menu.w, menu.h, 1.f, sty.border[0], sty.border[1], sty.border[2], 1.0f);
-        r.draw_rect(menu.x, menu.y, sty.accent_bar, menu.h, sty.gpu[0], sty.gpu[1], sty.gpu[2], 1.0f);
+        r.draw_rect(menu.x, menu.y, sty.accent_bar, menu.h, sty.audio[0], sty.audio[1], sty.audio[2], 1.0f);
         for (int i = 0; i < kNumXItems; ++i) {
             const Rect it = xform_item_rect(m.xform, i);
             const bool h = hit(it, hover_x_, hover_y_);

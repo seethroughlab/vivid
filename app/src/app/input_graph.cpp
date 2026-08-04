@@ -2,6 +2,7 @@
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
+#include <cstring>
 
 #include "app/app.h"
 #include "app/edit_gateway.h"   // ADR-0017/G3 note_edit
@@ -710,14 +711,28 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
         open_audio_node_editor(app, win, tr, win.sel_audio_node);
         return true;
     }
-    if (win.sel_audio_node >= 0 && sel_is_source(win.sel_audio_node)) {   // key-range drag handles (source node)
+    // ADR-0049: a selected Sampler node's dock IS the SamplerEditor, which processes its own clicks
+    // (immediate-mode, in draw). The old dock param-strip handlers below must then be SKIPPED — otherwise
+    // they double-process the same click against the retired knob-strip layout and fight the editor (the
+    // symptom: a gate/one-shot toggle that sets, then the stale handler starts a knob-drag that reverts it).
+    bool sampler_dock = false;
+    if (win.sel_audio_node >= 0) {
+        const int nc = S::session_track_audio_graph_node_count(app.session, tr);
+        for (int i = 0; i < nc; ++i)
+            if (S::session_track_audio_graph_node_id(app.session, tr, i) == win.sel_audio_node) {
+                const char* ty = S::session_track_audio_graph_node_type(app.session, tr, i);
+                sampler_dock = ty && std::strcmp(ty, "Sampler") == 0;
+                break;
+            }
+    }
+    if (win.sel_audio_node >= 0 && !sampler_dock && sel_is_source(win.sel_audio_node)) {   // key-range drag handles (source node)
         int lo = 0, hi = 127;
         S::session_audio_graph_node_key_range_get(app.session, tr, win.sel_audio_node, &lo, &hi);
         if (hit(key_lo_rect(win.sel_audio_node), mx, my)) { key_drag = 0; key_v0 = lo; key_y0 = my; return true; }
         if (hit(key_hi_rect(win.sel_audio_node), mx, my)) { key_drag = 1; key_v0 = hi; key_y0 = my; return true; }
     }
     // Curated inspector (Phase 2b): a plugin node's pinned params are vertical rows, not a knob grid.
-    if (win.sel_audio_node >= 0 && is_plugin_node(win.sel_audio_node)) {
+    if (win.sel_audio_node >= 0 && !sampler_dock && is_plugin_node(win.sel_audio_node)) {
         if (hit(add_param_button_rect(win.sel_audio_node), mx, my)) {   // "+ Add param" palette
             vivid::input::param_chooser_open(win, app, win.sel_audio_node, mx, my);
             return true;
@@ -761,7 +776,7 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
         }
         // a click in the band that hit no row falls through to node select (the band is below the nodes)
     }
-    if (win.sel_audio_node >= 0 && !is_plugin_node(win.sel_audio_node)) {   // native knob strip (by node id)
+    if (win.sel_audio_node >= 0 && !sampler_dock && !is_plugin_node(win.sel_audio_node)) {   // native knob strip (by node id)
         for (const auto& c : param_cells(win.sel_audio_node)) {
             // The map dot (top-right of the cell) takes priority over the knob rect it sits inside.
             const Rect dd = ag_param_map_dot(c);
