@@ -355,6 +355,7 @@ int ClipEditor::hit_note(double x, double y, bool& right_edge) const {
 bool ClipEditor::on_down(double x, double y, double now, int mods) {
     if (!open_) return false;
     const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
+    const bool nosnap = (mods & GLFW_MOD_ALT) != 0;   // MIDI-4: Alt held at drag start = bypass grid snap
     float px, py, pw, ph; panel(px, py, pw, ph);
     // MIDI-1: an open inspector dropdown owns the next click — dispatch to the picked item, else close.
     if (!audio_ && (xform_open_ || key_open_ || scale_open_ || lane_open_ || quant_open_)) {
@@ -504,7 +505,7 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
             last_down_ = now; last_idx_ = idx;
             if (!sel_[idx]) { clear_sel(); sel_[idx] = 1; }        // select (plain click)
             push_undo();
-            drag_ = re ? 2 : 1;
+            drag_ = re ? 2 : 1; drag_nosnap_ = nosnap;
             drag_orig_ = notes_;
             down_beat_ = beat_at(x); down_pitch_ = pitch_at(y);
             return true;
@@ -589,13 +590,14 @@ void ClipEditor::on_move(double x, double y) {
     for (size_t i = 0; i < notes_.size(); ++i) {
         if (!sel_[i] || i >= drag_orig_.size()) continue;
         const auto& o = drag_orig_[i];
+        auto maybe_snap = [&](double b) { return drag_nosnap_ ? b : snap(b); };   // Alt held = fine (no grid)
         if (drag_ == 1) {                                   // move
-            double ns = snap(o.start + dbeat);
+            double ns = maybe_snap(o.start + dbeat);
             notes_[i].start = std::clamp(ns, 0.0, std::max(0.0, length_ - o.dur));
             notes_[i].pitch = std::clamp(o.pitch + dpitch, 0, 127);
         } else {                                            // resize
-            double nd = snap(o.dur + dbeat);
-            notes_[i].dur = std::clamp(nd, cell_, length_ - notes_[i].start);
+            double nd = maybe_snap(o.dur + dbeat);
+            notes_[i].dur = std::clamp(nd, drag_nosnap_ ? 0.02 : cell_, length_ - notes_[i].start);
         }
     }
     dirty_ = true;
@@ -1108,8 +1110,8 @@ void ClipEditor::draw(Renderer2D& r) {
     {
         bool re = false;
         const int hn = hit_note(hover_x_, hover_y_, re);
-        if (hn >= 0) hover_status_ = re ? "drag right edge \xE2\x86\x92 resize note"
-                                        : "drag \xE2\x86\x92 move  \xC2\xB7  double-click \xE2\x86\x92 delete";
+        if (hn >= 0) hover_status_ = re ? "drag right edge \xE2\x86\x92 resize note  \xC2\xB7  \xE2\x8C\xA5 fine"
+                                        : "drag \xE2\x86\x92 move  \xC2\xB7  \xE2\x8C\xA5 fine  \xC2\xB7  double-click \xE2\x86\x92 delete";
     }
     if (!hover_status_.empty())
         hover_status(r, px + 12.f, py + ph - 26.f, hover_status_.c_str(), sty.audio);

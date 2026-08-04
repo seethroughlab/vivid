@@ -171,6 +171,7 @@ private:
     double marq_x_ = 0, marq_y_ = 0; bool marq_add_ = false;   // marquee current corner + additive
     int    lane_idx_ = -1;        // note whose velocity a lane-drag targets
     double vel_x0_ = 0, vel_y0_ = 0;   // MIDI-3: velocity ramp-drag start point (draw a line across the lane)
+    bool   drag_nosnap_ = false;       // MIDI-4: hold Alt at drag start to bypass grid snap (fine positioning)
     int    lane_axis_ = -1;       // bottom lane: -1 velocity, 0 bend, 1 pressure, 2 timbre
     bool   bend_snap_ = false;    // quantize painted bend to whole semitones
     uint32_t tool_seed_ = 1;      // varies humanize between repeated presses
