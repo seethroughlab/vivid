@@ -8,9 +8,11 @@
 #include "audio/sampler_op.h"     // SamplerInfo / SamplerSlice
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <vector>
 
 // ADR-0049 slice 5: the Sampler editor. The Sampler node's home detail view — the same dark-steel shell
 // and waveform language as the clip editor (slices 1-3b), specialized to a sampler: sample identity,
@@ -30,16 +32,21 @@ public:
               int track, int node_id, float mx, float my, bool mouse_down) {
         namespace S = vivid::session;
         const Style& sty = style();
-        if (node_id != node_) { node_ = node_id; sel_ = -1; }             // reset selection on node change
-        const bool click = mouse_down && !prev_down_;                     // rising edge
+        if (node_id != node_) { node_ = node_id; sel_ = -1; drag_ = -1; }  // reset per-node UI state
+        const bool down_edge = mouse_down && !prev_down_;                 // grab / click
+        const bool up_edge   = !mouse_down && prev_down_;                 // release (commit a drag)
         prev_down_ = mouse_down;
+        const bool click = down_edge;
         auto hov = [&](Rect rr) { return hit(rr, mx, my); };
 
-        // ---- read the sample --------------------------------------------------------------------------
+        // ---- read the sample + its edit state ---------------------------------------------------------
         SamplerInfo info{};
         const bool loaded = S::session_sampler_info(s, track, node_id, &info) != 0;
         const char* src = S::session_sampler_source(s, track, node_id);
         SamplerSlice slc[128]; const int nsl = loaded ? S::session_sampler_slices(s, track, node_id, slc, 128) : 0;
+        const unsigned long long sframes = loaded ? S::session_sampler_source_frames(s, track, node_id) : 0;
+        uint32_t bs[64], be[64];
+        const int nb = sframes ? S::session_sampler_edit_boundaries(s, track, node_id, bs, be, 64) : 0;
 
         // ---- identity line (name + geometry) ----------------------------------------------------------
         const char* name = (src && *src) ? base_name(src) : (loaded ? "(sample)" : nullptr);
@@ -78,6 +85,8 @@ public:
         { char v[16]; std::snprintf(v, sizeof v, "%+d st", tr); stepper(r, rTr, "TRANS", v, stepper_hit(rTr, mx, my)); }
         const Rect rGn = place(112.f);
         { char v[16]; std::snprintf(v, sizeof v, "%.2f", gn); stepper(r, rGn, "GAIN", v, stepper_hit(rGn, mx, my)); }
+        const Rect rSlc = place(112.f);   // number of trigger slices: 1 = whole/trimmed; N = drum-rack
+        { char v[16]; std::snprintf(v, sizeof v, "%d", nb); stepper(r, rSlc, "SLICES", v, stepper_hit(rSlc, mx, my)); }
         const Rect rEnv = place(120.f);   // the disclosure for the set-and-forget envelope/voice params
         menu_button(r, rEnv, "\xE2\x8B\xAF Envelope", hov(rEnv), env_open_);
 
@@ -86,6 +95,8 @@ public:
             if (int c = segmented_hit(rGate, 2, mx, my); c >= 0) pset(s, track, node_id, "gate", (float)c);
             if (int h = stepper_hit(rTr, mx, my)) pset(s, track, node_id, "transpose", std::clamp(tr + h, -48, 48));
             if (int h = stepper_hit(rGn, mx, my)) pset(s, track, node_id, "gain", std::clamp(gn + 0.05f * h, 0.f, 2.f));
+            if (int h = stepper_hit(rSlc, mx, my); h && nb > 0)   // re-cut into N EQUAL slices over [in,out]
+                reslice_equal(s, track, node_id, bs[0], be[nb - 1], std::clamp(nb + h, 1, 32), root);
             if (hit(rEnv, mx, my)) env_open_ = !env_open_;
         }
 
@@ -96,48 +107,87 @@ public:
         const bool pop_hit = env_open_ && hit(pop, mx, my);
         if (env_open_ && click && !pop_hit && !hit(rEnv, mx, my)) env_open_ = false;
 
-        // ---- waveform canvas (one control row above → the canvas takes the full remaining height) -------
+        // ---- waveform canvas: the WHOLE source with draggable in/out + slice edges (SOURCE space) ------
         const float canvas_top = IY + IH + 8.f;
         const float ksH = 26.f;                                    // key-zone strip height (below the waveform)
         const Rect wf{ body.x + 4.f, canvas_top, body.w - 8.f, std::max(30.f, body.y + body.h - canvas_top - ksH - 6.f) };
         recess(r, wf);
         r.push_clip_rect(wf.x, wf.y, wf.w, wf.h);
-        static float peaks[512];
-        const int np = S::session_audio_graph_node_sampler_peaks(s, track, node_id, peaks, 512);
-        const WaveformView wv{ { wf.x, wf.y, wf.w, wf.h }, 0.0, wf.w, 1.f };   // whole sample, fit-to-width
-        static const float kAmber[3] = { 0.94f, 0.63f, 0.19f };
-        static const float kSel[3]   = { 0.35f, 0.55f, 0.85f };
-        static const float kPlay[3]  = { 0.95f, 0.35f, 0.35f };
-        if (np > 0) { wv.bins(r, peaks, np); wv.center_line(r); }
-        // slice dividers at each region boundary + selected-slice region highlight
-        float divs[128]; int nd = 0;
-        for (int i = 0; i < nsl && info.frames; ++i) {
-            const double n0 = (double)slc[i].start / info.frames;
-            if (i > 0) divs[nd++] = (float)n0;
-            if (i == sel_) {
-                const double n1 = (double)slc[i].end / info.frames;
-                wv.region(r, n0, n1, kSel, 0.20f);
+        static float speaks[512];
+        const int np = sframes ? S::session_sampler_source_peaks(s, track, node_id, speaks, 512) : 0;
+        const WaveformView wv{ { wf.x, wf.y, wf.w, wf.h }, 0.0, wf.w, 1.f };   // whole SOURCE, fit-to-width
+        static const float kTrim[3] = { 0.94f, 0.63f, 0.19f };     // in/out handles (amber)
+        static const float kDiv[3]  = { 0.58f, 0.66f, 0.78f };     // slice dividers
+        static const float kSel[3]  = { 0.35f, 0.55f, 0.85f };     // selected slice
+        static const float kPlay[3] = { 0.95f, 0.35f, 0.35f };     // playhead
+        // A drag in progress paints from the live copy; otherwise from the committed boundaries.
+        const bool dragging = (drag_ >= 0) && !ds_.empty();
+        const uint32_t* S0 = dragging ? ds_.data() : bs;
+        const uint32_t* E0 = dragging ? de_.data() : be;
+        const int NB = dragging ? static_cast<int>(ds_.size()) : nb;
+        auto n_of = [&](uint32_t f) { return sframes ? static_cast<double>(f) / sframes : 0.0; };
+        const double inN = NB ? n_of(S0[0]) : 0.0, outN = NB ? n_of(E0[NB - 1]) : 1.0;
+        if (np > 0) wv.bins(r, speaks, np);
+        wv.center_line(r);
+        wv.dim_outside(r, inN, outN);                              // darken the un-played head/tail
+        if (sel_ >= 0 && sel_ < NB) wv.region(r, n_of(S0[sel_]), n_of(E0[sel_]), kSel, 0.20f);
+        float divs[64]; int nd = 0;                                // internal slice edges (shared boundaries)
+        for (int i = 0; i + 1 < NB; ++i) divs[nd++] = static_cast<float>(n_of(E0[i]));
+        wv.dividers(r, divs, nd, kDiv, 0.85f, /*grab_tab*/true);
+        wv.handle(r, inN, kTrim, 3.f); wv.handle(r, outN, kTrim, 3.f);
+        if (NB == 1) { const float ph = S::session_audio_graph_node_sampler_playhead(s, track, node_id);
+                       if (ph >= 0.f) wv.playhead(r, inN + ph * (outN - inN), kPlay); }
+        r.pop_clip_rect();
+
+        // ---- drag: grab an in/out handle or a divider, or select a slice; commit on release -----------
+        const float grab = 7.f;
+        auto at_x  = [&](double n) { return std::abs((wf.x + static_cast<float>(n) * wf.w) - mx) < grab; };
+        if (down_edge && !pop_hit && hit(wf, mx, my) && nb > 0) {
+            ds_.assign(bs, bs + nb); de_.assign(be, be + nb);      // snapshot for the live drag
+            if      (at_x(n_of(bs[0])))        drag_ = 0;          // in handle
+            else if (at_x(n_of(be[nb - 1])))   drag_ = 1;          // out handle
+            else {
+                drag_ = -1;
+                for (int i = 0; i + 1 < nb; ++i) if (at_x(n_of(be[i]))) { drag_ = 100 + i; break; }
+                if (drag_ < 0) {                                   // empty space → select the slice under x
+                    const double n = static_cast<double>(mx - wf.x) / wf.w;
+                    sel_ = -1;
+                    for (int i = 0; i < nb; ++i) if (n >= n_of(bs[i]) && n < n_of(be[i])) { sel_ = i; break; }
+                }
             }
         }
-        wv.dividers(r, divs, nd, kAmber, 0.7f);
-        { const float ph = S::session_audio_graph_node_sampler_playhead(s, track, node_id);
-          if (ph >= 0.f) wv.playhead(r, ph, kPlay); }
-        r.pop_clip_rect();
-        // click a slice region in the waveform → select it (unless the popover owns this click)
-        if (click && !pop_hit && hit(wf, mx, my) && info.frames) {
-            const double n = (double)(mx - wf.x) / wf.w;
-            for (int i = 0; i < nsl; ++i)
-                if (n >= (double)slc[i].start / info.frames && n < (double)slc[i].end / info.frames) { sel_ = (sel_ == i ? -1 : i); break; }
+        if (drag_ >= 0 && mouse_down && !ds_.empty()) {            // live-update the grabbed edge
+            const double n = std::clamp(static_cast<double>(mx - wf.x) / wf.w, 0.0, 1.0);
+            const long f = std::llround(n * static_cast<double>(sframes));
+            const long pad = 16;
+            if (drag_ == 0)      ds_[0] = static_cast<uint32_t>(std::clamp<long>(f, 0, static_cast<long>(de_[0]) - pad));
+            else if (drag_ == 1) de_.back() = static_cast<uint32_t>(std::clamp<long>(f, static_cast<long>(ds_.back()) + pad, static_cast<long>(sframes)));
+            else { const int i = drag_ - 100;
+                   const long lo = static_cast<long>(ds_[i]) + pad;
+                   const long hi = (i + 1 < static_cast<int>(de_.size()) ? static_cast<long>(de_[i + 1]) : static_cast<long>(sframes)) - pad;
+                   const uint32_t cf = static_cast<uint32_t>(std::clamp<long>(f, lo, std::max(lo, hi)));
+                   de_[i] = cf; if (i + 1 < static_cast<int>(ds_.size())) ds_[i + 1] = cf; }
+        }
+        if (up_edge && drag_ >= 0) {                               // commit the edit
+            if (!ds_.empty()) {
+                if (ds_.size() == 1) S::session_sampler_set_trim(s, track, node_id, ds_[0], de_[0]);
+                else S::session_sampler_reslice(s, track, node_id, ds_.data(), de_.data(), static_cast<int>(ds_.size()), root);
+            }
+            drag_ = -1; ds_.clear(); de_.clear();
         }
 
-        // ---- key-zone strip: the VISIBLE mapping ------------------------------------------------------
+        // ---- key-zone strip: the VISIBLE note mapping -------------------------------------------------
         const Rect ks{ wf.x, wf.y + wf.h + 4.f, wf.w, ksH - 4.f };
         draw_key_zones(r, ks, slc, nsl, root, sel_, mx, my, (click && !pop_hit) ? &sel_ : nullptr);
 
         // ---- hover status -----------------------------------------------------------------------------
         std::string status;
-        if (hit(wf, mx, my))      status = nsl > 1 ? "click a slice \xE2\x86\x92 select" : "one region \xC2\xB7 spans the map";
-        else if (hit(ks, mx, my)) status = "the key map \xC2\xB7 each zone = a region's note range";
+        if (drag_ == 0)            status = "drag \xE2\x86\x92 sample start (in)";
+        else if (drag_ == 1)       status = "drag \xE2\x86\x92 sample end (out)";
+        else if (drag_ >= 100)     status = "drag \xE2\x86\x92 slice point";
+        else if (hit(wf, mx, my))  status = nb > 1 ? "drag edges to move slices \xC2\xB7 SLICES to add/remove"
+                                                   : "drag the amber handles to trim in/out \xC2\xB7 SLICES to cut";
+        else if (hit(ks, mx, my))  status = "the key map \xC2\xB7 each zone = a slice's note range";
         if (!status.empty()) hover_status(r, body.x + 10.f, body.y + body.h - 22.f, status.c_str(), sty.audio);
 
         // ---- ⋯ Envelope popover (drawn LAST so it overlays the canvas) --------------------------------
@@ -149,6 +199,22 @@ private:
     int  sel_ = -1;          // selected slice (-1 none)
     bool prev_down_ = false; // click-edge latch
     bool env_open_ = false;  // ⋯ Envelope popover open
+    int  drag_ = -1;         // -1 none · 0 in-handle · 1 out-handle · 100+i divider between slice i / i+1
+    std::vector<uint32_t> ds_, de_;   // live boundaries (SOURCE frames) during a drag
+
+    // Re-cut into N equal slices spanning [in,out) of the source (N==1 => a plain melodic trim).
+    static void reslice_equal(vivid::session::Session* s, int t, int nid, uint32_t in, uint32_t out, int n, int base) {
+        if (out <= in) return;
+        if (n <= 1) { vivid::session::session_sampler_set_trim(s, t, nid, in, out); return; }
+        std::vector<uint32_t> starts(n), ends(n);
+        const double span = static_cast<double>(out - in);
+        for (int i = 0; i < n; ++i) {
+            starts[i] = in + static_cast<uint32_t>(span * i / n);
+            ends[i]   = in + static_cast<uint32_t>(span * (i + 1) / n);
+        }
+        ends[n - 1] = out;
+        vivid::session::session_sampler_reslice(s, t, nid, starts.data(), ends.data(), n, base);
+    }
 
     // The secondary param popover: a compact vertical stack of the envelope / voice / tune steppers,
     // anchored under the ⋯ button. Kept OFF the main strip (which stays a single high-frequency row).

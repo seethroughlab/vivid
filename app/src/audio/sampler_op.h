@@ -49,6 +49,26 @@ struct SamplerInspectable {
     virtual const char* source_path() const = 0;
 };
 
+// ADR-0049 slice 6: the EDIT side — re-cut the played window (trim in/out) and the slice→note map from
+// the retained source PCM, with no re-decode, on a LIVE op (the atomic bank publish makes it safe). All
+// frame counts are 0..source_frames(). UI/main-thread only. `set_trim`/`reslice` are mutually exclusive
+// framings: trim = one melodic region [in,out) across the keyboard; reslice = one single-note region per
+// [starts[i],ends[i]) drum-rack slice, mapped to ascending pitches from `base`.
+struct SamplerEditable {
+    virtual ~SamplerEditable() = default;
+    virtual bool has_source() const = 0;                  // false until a sample is loaded
+    virtual unsigned long long source_frames() const = 0; // length of the retained source (frames)
+    virtual void set_trim(uint32_t in, uint32_t out) = 0; // out<=in => to end of sample
+    virtual void reslice(const uint32_t* starts, const uint32_t* ends, int n, int base) = 0;
+    // The editor draws the WHOLE retained source and overlays the play/slice markers in SOURCE space
+    // (the read side's SamplerSlice positions are in the concatenated result, which loses the trim).
+    // source_peaks: per-bin absolute-peak envelope (0..1) of the retained source; returns bins written.
+    virtual int source_peaks(float* out, int n) const = 0;
+    // edit_boundaries: the current played window / slice edges in SOURCE frames — one [start,end) per
+    // region, in order. Fills up to `cap`; returns the region count (1 for a melodic trim).
+    virtual int edit_boundaries(uint32_t* starts, uint32_t* ends, int cap) const = 0;
+};
+
 // Read side of the same escape hatch: the UI reads a downsampled peak envelope of the loaded
 // sample to draw the node's waveform thumbnail (VividThumbnailContext carries only params, not
 // PCM). The op caches the peaks at load time, so this copy is cheap and UI-thread-only.
