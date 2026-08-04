@@ -46,9 +46,12 @@ static json sampler_save_block(vivid::session::Session* s, int t, int nid) {
     sm["slices"] = edges;
     return sm;
 }
-static void sampler_restore(vivid::session::Session* s, int t, int nid, const json& sm) {
+static void sampler_restore(vivid::session::Session* s, int t, int nid, const json& sm,
+                            const std::string& base_dir) {
     if (nid < 0 || !sm.is_object()) return;
-    const std::string spath = sm.value("path", std::string());
+    std::string spath = sm.value("path", std::string());   // a relative path resolves against the project dir
+    if (!spath.empty() && !base_dir.empty() && std::filesystem::path(spath).is_relative())
+        spath = (std::filesystem::path(base_dir) / spath).lexically_normal().string();
     const int sbase = sm.value("base", 60);
     if (spath.empty() || vivid::session::session_audio_graph_load_sampler(s, t, nid, spath.c_str(), sbase) <= 0) return;
     if (!sm.contains("slices") || !sm["slices"].is_array()) return;
@@ -762,7 +765,7 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                                         break;
                                     }
                         // ADR-0049 slice 7: restore the Sampler node's sample + edits (authoritative graph).
-                        if (jn.contains("sampler")) sampler_restore(s, t, nid, jn["sampler"]);
+                        if (jn.contains("sampler")) sampler_restore(s, t, nid, jn["sampler"], base_dir);
                     }
                 if (g.contains("edges"))
                     for (const auto& je : g["edges"]) {
@@ -786,7 +789,7 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                 if (vivid::session::session_set_track_audio_instrument(s, t, ai.value("op", std::string()).c_str())) {
                     if (ai.contains("params")) apply_audio_params(-1, ai["params"]);
                     // ADR-0049 slice 7: restore the Sampler's sample + edits (the instrument is a graph node).
-                    if (ai.contains("sampler")) sampler_restore(s, t, sampler_node_id(s, t), ai["sampler"]);
+                    if (ai.contains("sampler")) sampler_restore(s, t, sampler_node_id(s, t), ai["sampler"], base_dir);
                 }
             }
             if (jt.contains("audio_fx"))
@@ -941,18 +944,27 @@ bool save_session(const std::string& path, vivid::session::Session* s, vivid::ui
     // absolute path into a "../.." escape. Mirrors the load-time resolution in load_session.
     {
         const std::filesystem::path base = std::filesystem::path(path).parent_path();
+        auto relativize = [&](json& obj, const char* key) {
+            if (!obj.contains(key) || !obj[key].is_string()) return;
+            const std::filesystem::path sp(obj[key].get<std::string>());
+            if (!sp.is_absolute()) return;
+            std::error_code ec;
+            const std::filesystem::path rel = std::filesystem::relative(sp, base, ec);
+            if (!ec && !rel.empty() && *rel.begin() != "..")   // only when the media lives under the project
+                obj[key] = rel.generic_string();
+        };
         if (!base.empty() && j.contains("tracks") && j["tracks"].is_array()) {
             for (auto& jt : j["tracks"]) {
-                if (!jt.contains("audio_clips") || !jt["audio_clips"].is_array()) continue;
-                for (auto& c : jt["audio_clips"]) {
-                    if (!c.contains("src_path") || !c["src_path"].is_string()) continue;
-                    const std::filesystem::path sp(c["src_path"].get<std::string>());
-                    if (!sp.is_absolute()) continue;
-                    std::error_code ec;
-                    const std::filesystem::path rel = std::filesystem::relative(sp, base, ec);
-                    if (!ec && !rel.empty() && *rel.begin() != "..")   // stays inside the project dir
-                        c["src_path"] = rel.generic_string();
-                }
+                if (jt.contains("audio_clips") && jt["audio_clips"].is_array())
+                    for (auto& c : jt["audio_clips"]) relativize(c, "src_path");
+                // ADR-0049 slice 8: the Sampler's sample path, in either representation.
+                if (jt.contains("audio_instrument") && jt["audio_instrument"].is_object()
+                    && jt["audio_instrument"].contains("sampler"))
+                    relativize(jt["audio_instrument"]["sampler"], "path");
+                if (jt.contains("audio_graph") && jt["audio_graph"].is_object()
+                    && jt["audio_graph"].contains("nodes") && jt["audio_graph"]["nodes"].is_array())
+                    for (auto& n : jt["audio_graph"]["nodes"])
+                        if (n.is_object() && n.contains("sampler")) relativize(n["sampler"], "path");
             }
         }
     }
