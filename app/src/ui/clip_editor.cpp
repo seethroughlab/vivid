@@ -75,6 +75,8 @@ static const XItem kXItems[] = {
     { "Strum",        GLFW_KEY_T },
     { "To scale",     GLFW_KEY_Y },
     { "Glide",        GLFW_KEY_APOSTROPHE },
+    { "Velocity louder (>)", GLFW_KEY_PERIOD },   // scale the selection's velocities up / down (repeatable)
+    { "Velocity softer (<)", GLFW_KEY_COMMA },
 };
 static constexpr int kNumXItems = static_cast<int>(sizeof(kXItems) / sizeof(kXItems[0]));
 static constexpr float kXItemH = 22.f, kXMenuW = 150.f;
@@ -84,17 +86,10 @@ static Rect menu_item_rect(Rect anchor, int i) { return { anchor.x, anchor.y + a
 static const char* kKeyLabels[]  = { "Off", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };  // idx = scale_root_+1
 static constexpr int kNumKeys = static_cast<int>(sizeof(kKeyLabels) / sizeof(kKeyLabels[0]));
 static const char* kLaneLabels[] = { "Velocity", "Bend", "Pressure", "Timbre" };   // idx = lane_axis_+1
-// MIDI-2: Quantize presets — a real popover with strength (partial pull) + swing (off-beat delay).
-struct QuantItem { const char* label; float amount; float swing; };
-static const QuantItem kQuantItems[] = {
-    { "Full",         1.00f, 0.00f },
-    { "Soft 50%",     0.50f, 0.00f },
-    { "Soft 25%",     0.25f, 0.00f },
-    { "Swing light",  1.00f, 0.16f },
-    { "Swing medium", 1.00f, 0.33f },
-    { "Swing hard",   1.00f, 0.50f },
-};
-static constexpr int kNumQuant = static_cast<int>(sizeof(kQuantItems) / sizeof(kQuantItems[0]));
+// Quantize is a live popover with continuous Amount (strength) + Swing sliders (leftover: was presets).
+static constexpr float kQSwingMax = 0.6f;                 // swing slider maps 0 .. 0.6 of a grid cell
+static Rect quant_pop_rect(Rect anchor) { return { anchor.x, anchor.y + anchor.h + 2.f, 208.f, 2.f * 30.f + 12.f }; }
+static Rect quant_slider_rect(Rect anchor, int i) { return { anchor.x + 12.f, anchor.y + anchor.h + 10.f + i * 30.f, 184.f, 22.f }; }
 
 // Grid/snap presets (beats). Straight + triplet subdivisions.
 struct GridPreset { double v; const char* label; };
@@ -366,9 +361,12 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
         else if (key_open_)   { const int i = pick(m.key, kNumKeys);   if (i >= 0) scale_root_ = i - 1;      key_open_ = false;   if (i >= 0) return true; }
         else if (scale_open_) { const int i = pick(m.scale, kNumScales); if (i >= 0) { scale_type_ = i; if (scale_root_ < 0) scale_root_ = 0; } scale_open_ = false; if (i >= 0) return true; }
         else if (lane_open_)  { const int i = pick(m.lane, 4);         if (i >= 0) lane_axis_ = i - 1;       lane_open_ = false;  if (i >= 0) return true; }
-        else if (quant_open_) { const int i = pick(m.quant, kNumQuant);
-            if (i >= 0) { push_undo(); vivid::session::quantize_swing(notes_, sel_, cell_, kQuantItems[i].amount, kQuantItems[i].swing); dirty_ = true; }
-            quant_open_ = false; if (i >= 0) return true; }
+        else if (quant_open_) {   // grab a slider (live re-quantize), consume clicks inside, close outside
+            if (hit(quant_slider_rect(m.quant, 0), x, y)) { drag_ = 30; on_move(x, y); return true; }   // Amount
+            if (hit(quant_slider_rect(m.quant, 1), x, y)) { drag_ = 31; on_move(x, y); return true; }   // Swing
+            if (hit(quant_pop_rect(m.quant), x, y)) return true;
+            quant_open_ = false;
+        }
         // a click elsewhere just closed the menu; fall through to normal handling
     }
     // Title strip: close / dock (both modes), MIDI follow/fit, audio per-mode controls, or drag-to-move.
@@ -396,7 +394,8 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
         if (hit(m.key, x, y))   { toggle(key_open_);   return true; }
         if (hit(m.scale, x, y)) { toggle(scale_open_); return true; }
         if (hit(m.lane, x, y))  { toggle(lane_open_);  return true; }
-        if (hit(m.quant, x, y)) { toggle(quant_open_); return true; }   // strength + swing presets
+        if (hit(m.quant, x, y)) { const bool was = quant_open_; toggle(quant_open_);   // Amount + Swing sliders
+            if (quant_open_ && !was) { push_undo(); quant_snap_ = notes_; } return true; }
         if (hit(m.xform, x, y)) { toggle(xform_open_); return true; }
         return true;   // a click anywhere in the inspector strip is consumed (no drag-through to the roll)
     }
@@ -471,10 +470,11 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
         }
         // Bottom lane: velocity bars (lane_axis_ < 0) or a painted expression curve.
         if (y >= lane_top()) {
-            if (lane_axis_ < 0) {                             // velocity: drag a ramp across the notes
+            if (lane_axis_ < 0) {                             // velocity: drag a ramp; Shift = scale the dynamics
                 push_undo();
-                drag_ = 5; vel_x0_ = x; vel_y0_ = y;
-                apply_vel_ramp(x, y);                         // a click sets the note under the cursor
+                drag_ = 5; vel_x0_ = x; vel_y0_ = y; vel_scale_ = shift;
+                if (vel_scale_) drag_orig_ = notes_;          // snapshot velocities for proportional scaling
+                apply_vel_ramp(x, y);
             } else {                                          // expression: paint into the note under x
                 paint_note_ = -1;
                 for (size_t i = 0; i < notes_.size(); ++i) {
@@ -584,6 +584,17 @@ void ClipEditor::on_move(double x, double y) {
         return;
     }
     if (drag_ == 5) { apply_vel_ramp(x, y); return; }        // velocity ramp-drag
+    if (drag_ == 30 || drag_ == 31) {                        // quantize Amount/Swing slider — live re-quantize
+        float px, py, pw, ph; panel(px, py, pw, ph);
+        const MidiInsp m = midi_insp(px, py, pw);
+        const Rect sr = quant_slider_rect(m.quant, drag_ == 30 ? 0 : 1);
+        const float v01 = std::clamp(static_cast<float>((x - sr.x) / std::max(1.0, static_cast<double>(sr.w))), 0.f, 1.f);
+        if (drag_ == 30) quant_amount_ = v01; else quant_swing_ = v01 * kQSwingMax;
+        notes_ = quant_snap_;
+        vivid::session::quantize_swing(notes_, sel_, cell_, quant_amount_, quant_swing_);
+        dirty_ = true;
+        return;
+    }
     if (drag_ != 1 && drag_ != 2) return;
     const double dbeat = beat_at(x) - down_beat_;
     const int    dpitch = pitch_at(y) - down_pitch_;
@@ -615,7 +626,7 @@ void ClipEditor::on_up(double x, double y) {
         if (audition_cb_) audition_cb_(track_, audition_pitch_, 0.f, false);
         audition_pitch_ = -1;
     }
-    drag_ = 0; lane_idx_ = -1;
+    drag_ = 0; lane_idx_ = -1; vel_scale_ = false;
 }
 
 void ClipEditor::finish_marquee(double x, double y) {
@@ -653,6 +664,18 @@ void ClipEditor::apply_vel_ramp(double x1, double y1) {
     if (notes_.empty()) return;
     const float top = lane_top() + 6.f, bot = gy() + gh() - 4.f;
     auto vel_at = [&](double yy) { return std::clamp(static_cast<float>((bot - yy) / std::max(1.f, bot - top)), 0.f, 1.f); };
+    if (vel_scale_) {   // Shift+drag: scale the selection's (or all) velocities proportionally — keep the shape
+        // Pixel-based sensitivity (the lane is short, so a lane-height mapping would be far too twitchy):
+        // ~220px of vertical drag doubles / zeroes; up = louder, down = softer.
+        const float factor = std::clamp(1.f + static_cast<float>(vel_y0_ - y1) / 220.f, 0.f, 2.f);
+        bool any = false;
+        for (size_t i = 0; i < notes_.size(); ++i) if (i < sel_.size() && sel_[i]) { any = true; break; }
+        for (size_t i = 0; i < notes_.size() && i < drag_orig_.size(); ++i) {
+            if (any && !(i < sel_.size() && sel_[i])) continue;
+            notes_[i].vel = std::clamp(drag_orig_[i].vel * factor, 0.f, 1.f);
+        }
+        dirty_ = true; return;
+    }
     const float v0 = vel_at(vel_y0_), v1 = vel_at(y1);
     const double xa = std::min(vel_x0_, x1), xz = std::max(vel_x0_, x1);
     bool any = false;
@@ -817,6 +840,8 @@ bool ClipEditor::on_key(int key, int mods) {
     }
     // --- M5 musical tools (operate on the selection, or the whole clip if none) ---
     namespace nt = vivid::session;
+    if (key == GLFW_KEY_PERIOD) { push_undo(); nt::scale_velocity(notes_, sel_, 1.15f);      dirty_ = true; return true; }  // louder
+    if (key == GLFW_KEY_COMMA)  { push_undo(); nt::scale_velocity(notes_, sel_, 1.f / 1.15f); dirty_ = true; return true; }  // softer
     if (key == GLFW_KEY_I) { push_undo(); nt::invert_pitches(notes_, sel_); dirty_ = true; return true; }
     if (key == GLFW_KEY_R) { push_undo(); nt::retrograde(notes_, sel_); dirty_ = true; return true; }
     if (key == GLFW_KEY_H) { push_undo(); nt::humanize(notes_, sel_, cell_ * 0.15, 0.12f, ++tool_seed_); dirty_ = true; return true; }
@@ -1138,7 +1163,17 @@ void ClipEditor::draw(Renderer2D& r) {
         if (key_open_)   draw_menu(m.key,   kNumKeys,    scale_root_ + 1, [](int i) { return kKeyLabels[i]; });
         if (scale_open_) draw_menu(m.scale, kNumScales,  scale_type_,     [](int i) { return kScales[i].label; });
         if (lane_open_)  draw_menu(m.lane,  4,           lane_axis_ + 1,  [](int i) { return kLaneLabels[i]; });
-        if (quant_open_) draw_menu(m.quant, kNumQuant,   -1,              [](int i) { return kQuantItems[i].label; });
+        if (quant_open_) {   // the Quantize popover: two live sliders (Amount, Swing), drawn over the roll
+            const Rect pop = quant_pop_rect(m.quant);
+            r.draw_rect(pop.x, pop.y, pop.w, pop.h, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
+            r.draw_rect_outline(pop.x, pop.y, pop.w, pop.h, 1.f, sty.border[0], sty.border[1], sty.border[2], 1.0f);
+            r.draw_rect(pop.x, pop.y, sty.accent_bar, pop.h, sty.audio[0], sty.audio[1], sty.audio[2], 1.0f);
+            const Rect sa = quant_slider_rect(m.quant, 0), ss = quant_slider_rect(m.quant, 1);
+            char av[8]; std::snprintf(av, sizeof av, "%d%%", static_cast<int>(std::lround(quant_amount_ * 100.f)));
+            char sv[8]; std::snprintf(sv, sizeof sv, "%d%%", static_cast<int>(std::lround(quant_swing_ / kQSwingMax * 100.f)));
+            slider(r, sa.x, sa.y, sa.w, sa.h, quant_amount_,         "Amount", av, sty.audio, false, hit(sa, hover_x_, hover_y_) || drag_ == 30);
+            slider(r, ss.x, ss.y, ss.w, ss.h, quant_swing_ / kQSwingMax, "Swing", sv, sty.audio, false, hit(ss, hover_x_, hover_y_) || drag_ == 31);
+        }
     }
 }
 

@@ -71,6 +71,22 @@ int main() {
         CHECK_NEAR(n[1].vel, 0.3, 1e-6);      // unchanged
     }
 
+    // scale_velocity: multiplies (preserving relative dynamics), clamps, respects the selection.
+    {
+        std::vector<ClipNote> n = { {60,0,1,0.5f}, {62,1,1,0.9f} };
+        std::vector<uint8_t> sel = { 1, 0 };
+        scale_velocity(n, sel, 1.2f);
+        CHECK_NEAR(n[0].vel, 0.6, 1e-6);      // 0.5 * 1.2 (selected)
+        CHECK_NEAR(n[1].vel, 0.9, 1e-6);      // unselected -> unchanged
+    }
+    {   // empty selection => scale ALL; result clamps at 1.
+        std::vector<ClipNote> n = { {60,0,1,0.5f}, {62,1,1,0.9f} };
+        std::vector<uint8_t> sel = { 0, 0 };
+        scale_velocity(n, sel, 1.5f);
+        CHECK_NEAR(n[0].vel, 0.75, 1e-6);     // 0.5 * 1.5
+        CHECK_NEAR(n[1].vel, 1.0, 1e-6);      // 0.9 * 1.5 = 1.35 -> clamped
+    }
+
     // copy_selected rebases to 0; notes_span measures the extent; paste_at offsets + clamps.
     {
         std::vector<ClipNote> n = { {60,1.0,0.5,0.8f}, {64,2.0,0.5,0.7f}, {67,0.0,1,0.9f} };

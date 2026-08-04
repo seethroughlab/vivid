@@ -172,6 +172,10 @@ private:
     int    lane_idx_ = -1;        // note whose velocity a lane-drag targets
     double vel_x0_ = 0, vel_y0_ = 0;   // MIDI-3: velocity ramp-drag start point (draw a line across the lane)
     bool   drag_nosnap_ = false;       // MIDI-4: hold Alt at drag start to bypass grid snap (fine positioning)
+    bool   vel_scale_ = false;         // leftover: Shift+velocity-drag scales the dynamics (keeps relative shape)
+    // leftover: Quantize is a live popover — Amount + Swing sliders re-quantize from a snapshot as you drag.
+    float  quant_amount_ = 1.f, quant_swing_ = 0.f;
+    std::vector<vivid::session::ClipNote> quant_snap_;   // notes at popover open (re-quantize non-cumulatively)
     int    lane_axis_ = -1;       // bottom lane: -1 velocity, 0 bend, 1 pressure, 2 timbre
     bool   bend_snap_ = false;    // quantize painted bend to whole semitones
     uint32_t tool_seed_ = 1;      // varies humanize between repeated presses
