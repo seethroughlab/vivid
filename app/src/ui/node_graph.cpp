@@ -965,6 +965,11 @@ void NodeGraph::chooser_show(double sx, double sy) {
     std::vector<Chooser::Entry> entries;
     if (vg_ && vg_->registry()) {                     // spawnable ops, straight from the registry
         for (const auto& nm : vg_->registry()->type_names()) {
+            const auto* d = vg_->registry()->descriptor_for(nm);   // v3+ metadata (both optional)
+            // VISUAL ops only. The registry is shared with the built-in AUDIO ops (Bitcrush/LFO/…, added
+            // first in registration order), so filter to GPU ops the way list_operator_catalog does —
+            // otherwise audio DSP nodes leak into the visuals add-menu.
+            if (!d || !d->has_process_gpu) continue;
             Chooser::Entry e;
             e.label = nm;
             e.id = nm;
@@ -973,12 +978,10 @@ void NodeGraph::chooser_show(double sx, double sy) {
             e.badge = (shaders_ && shaders_->is_shader(nm)) ? "shader" : "op";
             e.spawn = { Domain::Visual, SpawnKind::VisualOp, nm };   // ADR-0023 step 5
             e.accent = style().gpu;                   // both are visual ops: one zone, one accent
-            if (const auto* d = vg_->registry()->descriptor_for(nm)) {   // v3+ metadata (both optional)
-                if (d->summary) e.summary = d->summary;
-                for (uint32_t k = 0; k < d->keyword_count; ++k)
-                    if (d->keywords && d->keywords[k]) { e.hay += d->keywords[k]; e.hay += ' '; }
-                e.role = d->role;   // ADR-0046: role chip + recipe demotion
-            }
+            if (d->summary) e.summary = d->summary;
+            for (uint32_t k = 0; k < d->keyword_count; ++k)
+                if (d->keywords && d->keywords[k]) { e.hay += d->keywords[k]; e.hay += ' '; }
+            e.role = d->role;   // ADR-0046: role chip + recipe demotion
             entries.push_back(std::move(e));
         }
     }
