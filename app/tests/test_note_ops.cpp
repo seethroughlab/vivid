@@ -39,6 +39,29 @@ int main() {
         CHECK_NEAR(n[1].start, 0.75, 1e-9);   // 0.65 -> nearest 0.25 grid = 0.75
     }
 
+    // MIDI-2 quantize_swing: partial strength pull + swing (delays odd grid positions).
+    {
+        std::vector<ClipNote> n = { {60,0.30,1,0.8f}, {62,0.20,1,0.8f} };
+        std::vector<uint8_t> sel = { 1, 1 };
+        quantize_swing(n, sel, 0.25, 0.5f, 0.0f);          // 50% pull toward the grid, no swing
+        CHECK_NEAR(n[0].start, (0.30 + 0.25) * 0.5, 1e-9); // 0.30 -> halfway to 0.25 = 0.275
+        CHECK_NEAR(n[1].start, (0.20 + 0.25) * 0.5, 1e-9); // 0.20 -> halfway to 0.25 = 0.225
+    }
+    {   // swing: grid index 1 (odd) is pushed late by swing*grid; index 0 (even) is not.
+        std::vector<ClipNote> n = { {60,0.02,1,0.8f}, {62,0.24,1,0.8f} };  // -> grid 0 and grid 1
+        std::vector<uint8_t> sel = { 1, 1 };
+        quantize_swing(n, sel, 0.25, 1.0f, 0.4f);          // full snap + 0.4 swing
+        CHECK_NEAR(n[0].start, 0.0, 1e-9);                 // even grid position, on the beat
+        CHECK_NEAR(n[1].start, 0.35, 1e-6);   // odd position delayed: 0.25 + 0.25*0.4 = 0.35 (swing is a float)
+    }
+    {   // empty selection => quantize ALL notes (whole-clip convention).
+        std::vector<ClipNote> n = { {60,0.31,1,0.8f}, {62,0.02,1,0.8f} };
+        std::vector<uint8_t> sel = { 0, 0 };
+        quantize_swing(n, sel, 0.25, 1.0f, 0.0f);
+        CHECK_NEAR(n[0].start, 0.25, 1e-9);
+        CHECK_NEAR(n[1].start, 0.0, 1e-9);
+    }
+
     // set_velocity_selected: clamps and only touches the selection.
     {
         std::vector<ClipNote> n = { {60,0,1,0.8f}, {62,1,1,0.3f} };

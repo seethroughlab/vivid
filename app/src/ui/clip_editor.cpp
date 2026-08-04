@@ -84,6 +84,17 @@ static Rect menu_item_rect(Rect anchor, int i) { return { anchor.x, anchor.y + a
 static const char* kKeyLabels[]  = { "Off", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };  // idx = scale_root_+1
 static constexpr int kNumKeys = static_cast<int>(sizeof(kKeyLabels) / sizeof(kKeyLabels[0]));
 static const char* kLaneLabels[] = { "Velocity", "Bend", "Pressure", "Timbre" };   // idx = lane_axis_+1
+// MIDI-2: Quantize presets — a real popover with strength (partial pull) + swing (off-beat delay).
+struct QuantItem { const char* label; float amount; float swing; };
+static const QuantItem kQuantItems[] = {
+    { "Full",         1.00f, 0.00f },
+    { "Soft 50%",     0.50f, 0.00f },
+    { "Soft 25%",     0.25f, 0.00f },
+    { "Swing light",  1.00f, 0.16f },
+    { "Swing medium", 1.00f, 0.33f },
+    { "Swing hard",   1.00f, 0.50f },
+};
+static constexpr int kNumQuant = static_cast<int>(sizeof(kQuantItems) / sizeof(kQuantItems[0]));
 
 // Grid/snap presets (beats). Straight + triplet subdivisions.
 struct GridPreset { double v; const char* label; };
@@ -346,7 +357,7 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
     const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
     float px, py, pw, ph; panel(px, py, pw, ph);
     // MIDI-1: an open inspector dropdown owns the next click — dispatch to the picked item, else close.
-    if (!audio_ && (xform_open_ || key_open_ || scale_open_ || lane_open_)) {
+    if (!audio_ && (xform_open_ || key_open_ || scale_open_ || lane_open_ || quant_open_)) {
         const MidiInsp m = midi_insp(px, py, pw);
         auto pick = [&](Rect anchor, int n) { for (int i = 0; i < n; ++i) if (hit(menu_item_rect(anchor, i), x, y)) return i; return -1; };
         if (xform_open_) { const int i = pick(m.xform, kNumXItems);
@@ -354,6 +365,9 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
         else if (key_open_)   { const int i = pick(m.key, kNumKeys);   if (i >= 0) scale_root_ = i - 1;      key_open_ = false;   if (i >= 0) return true; }
         else if (scale_open_) { const int i = pick(m.scale, kNumScales); if (i >= 0) { scale_type_ = i; if (scale_root_ < 0) scale_root_ = 0; } scale_open_ = false; if (i >= 0) return true; }
         else if (lane_open_)  { const int i = pick(m.lane, 4);         if (i >= 0) lane_axis_ = i - 1;       lane_open_ = false;  if (i >= 0) return true; }
+        else if (quant_open_) { const int i = pick(m.quant, kNumQuant);
+            if (i >= 0) { push_undo(); vivid::session::quantize_swing(notes_, sel_, cell_, kQuantItems[i].amount, kQuantItems[i].swing); dirty_ = true; }
+            quant_open_ = false; if (i >= 0) return true; }
         // a click elsewhere just closed the menu; fall through to normal handling
     }
     // Title strip: close / dock (both modes), MIDI follow/fit, audio per-mode controls, or drag-to-move.
@@ -377,11 +391,11 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
         if (hit(m.ghost, x, y)) { ghost_ = !ghost_; return true; }
         if (hit(m.step, x, y))  { step_mode_ = !step_mode_; step_cursor_ = 0.0; step_held_ = 0; return true; }
         // MIDI-1: Key / Scale / Lane open a real pick-list (mutually exclusive); clicking an open one closes it.
-        auto toggle = [&](bool& m1) { const bool was = m1; key_open_ = scale_open_ = lane_open_ = xform_open_ = false; m1 = !was; };
+        auto toggle = [&](bool& m1) { const bool was = m1; key_open_ = scale_open_ = lane_open_ = quant_open_ = xform_open_ = false; m1 = !was; };
         if (hit(m.key, x, y))   { toggle(key_open_);   return true; }
         if (hit(m.scale, x, y)) { toggle(scale_open_); return true; }
         if (hit(m.lane, x, y))  { toggle(lane_open_);  return true; }
-        if (hit(m.quant, x, y)) { on_key(GLFW_KEY_U, GLFW_MOD_SUPER); return true; }   // quantize to grid
+        if (hit(m.quant, x, y)) { toggle(quant_open_); return true; }   // strength + swing presets
         if (hit(m.xform, x, y)) { toggle(xform_open_); return true; }
         return true;   // a click anywhere in the inspector strip is consumed (no drag-through to the roll)
     }
@@ -839,7 +853,7 @@ void ClipEditor::draw(Renderer2D& r) {
           menu_button(r, m.key, key, hov(m.key), key_open_); }
         menu_button(r, m.scale, kScales[scale_type_].label, hov(m.scale), scale_open_);
         menu_button(r, m.lane, lane_axis_ < 0 ? "Velocity" : kAxisNames[lane_axis_], hov(m.lane), lane_open_);
-        menu_button(r, m.quant, "Quantize", hov(m.quant));
+        menu_button(r, m.quant, "Quantize", hov(m.quant), quant_open_);
         menu_button(r, m.xform, "\xE2\x8B\xAF Transform", hov(m.xform), xform_open_);
     } else {
         // AUDIO inspector controls (drive the same aud_req_ commit bits as the old header text).
@@ -1093,7 +1107,7 @@ void ClipEditor::draw(Renderer2D& r) {
 
     // MIDI-1: inspector dropdowns, drawn LAST so they overlay the roll. One shared painter for all four;
     // `selected` gets a subtle marker, hover a brighter one.
-    if (xform_open_ || key_open_ || scale_open_ || lane_open_) {
+    if (xform_open_ || key_open_ || scale_open_ || lane_open_ || quant_open_) {
         const MidiInsp m = midi_insp(px, py, pw);
         auto draw_menu = [&](Rect anchor, int n, int selected, const char* (*label)(int)) {
             const Rect menu{ anchor.x, anchor.y + anchor.h + 2.f, kXMenuW, n * kXItemH + 2.f };
@@ -1113,6 +1127,7 @@ void ClipEditor::draw(Renderer2D& r) {
         if (key_open_)   draw_menu(m.key,   kNumKeys,    scale_root_ + 1, [](int i) { return kKeyLabels[i]; });
         if (scale_open_) draw_menu(m.scale, kNumScales,  scale_type_,     [](int i) { return kScales[i].label; });
         if (lane_open_)  draw_menu(m.lane,  4,           lane_axis_ + 1,  [](int i) { return kLaneLabels[i]; });
+        if (quant_open_) draw_menu(m.quant, kNumQuant,   -1,              [](int i) { return kQuantItems[i].label; });
     }
 }
 

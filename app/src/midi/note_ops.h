@@ -35,6 +35,24 @@ inline void quantize_selected(std::vector<ClipNote>& notes, const std::vector<ui
         if (i < sel.size() && sel[i]) notes[i].start = std::round(notes[i].start / grid) * grid;
 }
 
+// Quantize with STRENGTH (0 = no move, 1 = full snap — a partial pull toward the grid) and SWING
+// (0..~0.6: delay odd grid positions by `swing` of a grid cell, the classic off-beat groove). When
+// `sel` is empty/all-false, quantizes every note (the "no selection = whole clip" convention).
+inline void quantize_swing(std::vector<ClipNote>& notes, const std::vector<uint8_t>& sel,
+                           double grid, float strength, float swing) {
+    if (grid <= 0.0) return;
+    strength = std::clamp(strength, 0.f, 1.f);
+    bool any_sel = false;
+    for (size_t i = 0; i < notes.size(); ++i) if (i < sel.size() && sel[i]) { any_sel = true; break; }
+    for (size_t i = 0; i < notes.size(); ++i) {
+        if (any_sel && !(i < sel.size() && sel[i])) continue;
+        const long long q = static_cast<long long>(std::llround(notes[i].start / grid));
+        double target = q * grid;
+        if (swing > 0.f && (q & 1)) target += grid * swing;          // push the off-beats late
+        notes[i].start += (target - notes[i].start) * strength;      // partial pull toward target
+    }
+}
+
 // Set the velocity of selected notes (clamped 0..1).
 inline void set_velocity_selected(std::vector<ClipNote>& notes, const std::vector<uint8_t>& sel, float v) {
     v = std::clamp(v, 0.f, 1.f);
