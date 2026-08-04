@@ -176,9 +176,9 @@ private:
     // Panel geometry (floating uses px_/py_; docked = bottom strip).
     void  panel(float& x, float& y, float& w, float& h) const;
     float gx() const, gy() const, gw() const, gh() const;
-    // ADR-0048: the inspector strip below the title strip (MIDI only this slice; audio keeps its legacy
-    // header until slice 3). The content canvas (gy/gh) sits below it.
-    float insp_h() const { return audio_ ? 0.f : 32.f; }
+    // ADR-0048: the inspector strip below the title strip (both modes). The content canvas (gy/gh)
+    // sits below it.
+    float insp_h() const { return 32.f; }
     float lane_h() const { return audio_ ? 0.f : 54.f; }        // velocity/expression lane height
     float ruler_h() const { return audio_ ? 0.f : 15.f; }       // bars/beats ruler strip
     float roll_top() const { return gy() + ruler_h(); }         // piano-roll top (below ruler)

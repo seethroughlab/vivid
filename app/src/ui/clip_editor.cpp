@@ -46,6 +46,23 @@ static MidiInsp midi_insp(float px, float py, float /*pw*/) {
     m.xform = take(104.f);             // ⋯ Transform menu
     return m;
 }
+// ADR-0048: the AUDIO inspector strip — real controls (warp / auto / pitch / slice / slice→MIDI), one
+// shared Rect each for draw + hit, driving the same `aud_req_` commit bits the old header text did.
+struct AudioInsp { Rect warp, autow, pitch, slice, to_midi; };
+static AudioInsp audio_insp(float px, float py, float /*pw*/) {
+    const float y = py + kEditorHeaderH + 5.f, h = 22.f;
+    float x = px + 10.f;
+    auto take = [&](float w) { Rect r{ x, y, w, h }; x += w + 6.f; return r; };
+    auto gap  = [&]() { x += 8.f; };
+    AudioInsp a;
+    a.warp    = take(196.f); gap();    // Off | Cplx | Beat | Rept
+    a.autow   = take(92.f);            // Auto-warp
+    a.pitch   = take(104.f); gap();    // PITCH stepper
+    a.slice   = take(150.f);           // Off | Tran | Grid
+    a.to_midi = take(116.f);           // Slice → MIDI
+    return a;
+}
+
 // The ⋯ Transform menu items — each replays the existing on_key handler (zero duplication).
 struct XItem { const char* label; int key; };
 static const XItem kXItems[] = {
@@ -337,24 +354,8 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
         // ADR-0048: hit-test the SAME rects the controls are drawn from (no magic-offset drift).
         if (hit(close_btn_rect(px, py, pw), x, y)) { close(); return true; }             // [✕]
         if (hit(dock_btn_rect(px, py, pw), x, y)) { docked_ = !docked_; drag_ = 0; return true; }  // dock
-        if (!audio_) {
-            if (hit(follow_btn_rect(px, py, pw), x, y)) { follow_ = !follow_; return true; }
-            if (hit(fit_btn_rect(px, py, pw), x, y)) { fit_view(); return true; }
-        } else {   // audio header controls stay legacy text until slice 3
-            if (x >= px + pw - 432.f && x < px + pw - 372.f) { aud_req_ |= 16; return true; }   // slice -> MIDI track
-            if (x >= px + pw - 358.f && x < px + pw - 274.f) {   // slice: cycle off->tran->grid
-                slice_mode_ = slice_mode_ == 0 ? 1 : slice_mode_ == 1 ? 3 : 0; aud_req_ |= 8; return true;
-            }
-            if (x >= px + pw - 268.f && x < px + pw - 186.f) {   // warp: cycle off->cplx->beat->rept
-                aud_warp_mode_ = aud_warp_mode_ >= 2 ? -1 : aud_warp_mode_ + 1; aud_req_ |= 1; return true;
-            }
-            if (x >= px + pw - 186.f && x < px + pw - 140.f) { aud_req_ |= 2; return true; }   // auto-warp
-            if (x >= px + pw - 140.f && x < px + pw - 70.f) {    // pitch -/+ (left half / right half)
-                aud_pitch_ = std::clamp(aud_pitch_ + (x < px + pw - 105.f ? -1.f : 1.f), -24.f, 24.f);
-                if (aud_warp_mode_ < 0) aud_warp_mode_ = 0;      // pitch implies warp on (Complex)
-                aud_req_ |= 1; return true;
-            }
-        }
+        if (hit(follow_btn_rect(px, py, pw), x, y)) { follow_ = !follow_; return true; }
+        if (hit(fit_btn_rect(px, py, pw), x, y)) { fit_view(); return true; }
         if (!docked_) { drag_ = 3; down_off_x_ = x - px_; down_off_y_ = y - py_; }       // start move
         return true;
     }
@@ -377,6 +378,20 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
         if (hit(m.quant, x, y)) { on_key(GLFW_KEY_U, GLFW_MOD_SUPER); return true; }   // quantize to grid
         if (hit(m.xform, x, y)) { xform_open_ = !xform_open_; return true; }
         return true;   // a click anywhere in the inspector strip is consumed (no drag-through to the roll)
+    }
+    // ADR-0048: AUDIO inspector strip — hit the SAME audio_insp() rects; drive the aud_req_ commit bits.
+    if (audio_ && y < py + kEditorHeaderH + insp_h()) {
+        const AudioInsp a = audio_insp(px, py, pw);
+        if (int c = segmented_hit(a.warp, 4, x, y); c >= 0) { aud_warp_mode_ = c - 1; aud_req_ |= 1; return true; }  // Off/Cplx/Beat/Rept
+        if (hit(a.autow, x, y)) { aud_req_ |= 2; return true; }                                                     // auto-warp
+        if (int s = stepper_hit(a.pitch, x, y)) {
+            aud_pitch_ = std::clamp(aud_pitch_ + (s > 0 ? 1.f : -1.f), -24.f, 24.f);
+            if (aud_warp_mode_ < 0) aud_warp_mode_ = 0;    // pitch implies warp on (Complex)
+            aud_req_ |= 1; return true;
+        }
+        if (int c = segmented_hit(a.slice, 3, x, y); c >= 0) { slice_mode_ = c == 0 ? 0 : c == 1 ? 1 : 3; aud_req_ |= 8; return true; }
+        if (hit(a.to_midi, x, y)) { aud_req_ |= 16; return true; }   // slice -> Sampler-driven MIDI track
+        return true;
     }
     // Content area.
     if (x >= gx() && x < gx() + gw() && y >= gy() && y < gy() + gh()) {
@@ -798,16 +813,16 @@ void ClipEditor::draw(Renderer2D& r) {
     // ADR-0048: shared title-strip controls (both modes) — dock/float toggle + close, real bounded buttons.
     icon_button(r, dock_btn_rect(px, py, pw), docked_ ? "float" : "dock", hov(dock_btn_rect(px, py, pw)));
     icon_button(r, close_btn_rect(px, py, pw), "\xE2\x9C\x95", hov(close_btn_rect(px, py, pw)), false, sty.red);  // ✕
+    icon_button(r, follow_btn_rect(px, py, pw), "Flw", hov(follow_btn_rect(px, py, pw)), follow_);   // follow (active)
+    icon_button(r, fit_btn_rect(px, py, pw), "Fit", hov(fit_btn_rect(px, py, pw)));                  // fit view
+    // Inspector strip background (shared shell zone).
+    r.draw_rect(px + 1.f, py + kEditorHeaderH + 1.f, pw - 2.f, insp_h() - 1.f, sty.region[0], sty.region[1], sty.region[2], 1.0f);
+    r.draw_rect(px + 1.f, py + kEditorHeaderH + insp_h(), pw - 2.f, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
     if (!audio_) {
-        // Title strip: follow / fit transport icons + a compact readout (grid · selection count).
-        icon_button(r, follow_btn_rect(px, py, pw), "Flw", hov(follow_btn_rect(px, py, pw)), follow_);   // follow (active)
-        icon_button(r, fit_btn_rect(px, py, pw), "Fit", hov(fit_btn_rect(px, py, pw)));                  // fit view
         { char rd[48]; std::snprintf(rd, sizeof rd, "%s \xC2\xB7 %d sel", kGrids[grid_idx_].label, selected_count());
           draw_text_r(r, follow_btn_rect(px, py, pw).x - 10.f, py + 9.f, rd, sty.dim, 1.0f, sty.fs_value); }
-        // Inspector strip: real controls, each drawn + hit from the SAME midi_insp() rect.
+        // MIDI inspector controls, each drawn + hit from the SAME midi_insp() rect.
         const MidiInsp m = midi_insp(px, py, pw);
-        r.draw_rect(px + 1.f, py + kEditorHeaderH + 1.f, pw - 2.f, insp_h() - 1.f, sty.region[0], sty.region[1], sty.region[2], 1.0f);
-        r.draw_rect(px + 1.f, py + kEditorHeaderH + insp_h(), pw - 2.f, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
         segmented(r, m.tool, { "Draw", "Select" }, tool_ == Tool::Draw ? 0 : 1,
                   segmented_hit(m.tool, 2, hover_x_, hover_y_), sty.gpu);
         stepper(r, m.grid, "GRID", kGrids[grid_idx_].label, stepper_hit(m.grid, hover_x_, hover_y_));
@@ -822,18 +837,16 @@ void ClipEditor::draw(Renderer2D& r) {
         menu_button(r, m.quant, "Quantize", hov(m.quant));
         menu_button(r, m.xform, "\xE2\x8B\xAF Transform", hov(m.xform), xform_open_);
     } else {
-        static const char* sm[] = { "slice off", "slice tran", "", "slice grid" };
-        r.draw_text(px + pw - 358.f, py + 8.f, sm[slice_mode_], 0.5f, 0.6f, 0.9f, 1.0f, 0.8f);
-        // A6: slice -> a Sampler-driven MIDI track (lit when a slice mode is active).
-        const bool sliceOn = slice_mode_ > 0;
-        r.draw_text(px + pw - 432.f, py + 8.f, "to MIDI", sliceOn ? 0.62f : 0.42f, sliceOn ? 0.8f : 0.46f, sliceOn ? 0.7f : 0.52f, 1.0f, 0.8f);
-        static const char* wm[] = { "off", "cplx", "beat", "rept" };
-        char wl[20]; std::snprintf(wl, sizeof wl, "warp %s", wm[aud_warp_mode_ + 1]);
-        const bool on = aud_warp_mode_ >= 0;
-        r.draw_text(px + pw - 268.f, py + 8.f, wl, 0.55f, on ? 0.82f : 0.6f, on ? 0.55f : 0.62f, 1.0f, 0.82f);
-        r.draw_text(px + pw - 182.f, py + 8.f, "auto", 0.62f, 0.72f, 0.9f, 1.0f, 0.82f);
-        char pl[16]; std::snprintf(pl, sizeof pl, "pit %+d", static_cast<int>(std::lround(aud_pitch_)));
-        r.draw_text(px + pw - 132.f, py + 8.f, pl, 0.6f, 0.72f, 0.78f, 1.0f, 0.82f);
+        // AUDIO inspector controls (drive the same aud_req_ commit bits as the old header text).
+        const AudioInsp a = audio_insp(px, py, pw);
+        segmented(r, a.warp, { "Off", "Cplx", "Beat", "Rept" }, aud_warp_mode_ + 1,
+                  segmented_hit(a.warp, 4, hover_x_, hover_y_), sty.gpu);
+        icon_button(r, a.autow, "Auto-warp", hov(a.autow));
+        { char pl[16]; std::snprintf(pl, sizeof pl, "%+d st", static_cast<int>(std::lround(aud_pitch_)));
+          stepper(r, a.pitch, "PITCH", pl, stepper_hit(a.pitch, hover_x_, hover_y_)); }
+        const int slc = slice_mode_ == 0 ? 0 : slice_mode_ == 1 ? 1 : 2;
+        segmented(r, a.slice, { "Off", "Tran", "Grid" }, slc, segmented_hit(a.slice, 3, hover_x_, hover_y_), sty.gpu);
+        icon_button(r, a.to_midi, "Slice \xE2\x86\x92 MIDI", hov(a.to_midi), slice_mode_ > 0);   // active when slicing
     }
 
     const float GX = roll_x0(), GY = gy(), GW = roll_w(), GH = gh();   // roll content (inset past the keys, MIDI)
@@ -880,9 +893,17 @@ void ClipEditor::draw(Renderer2D& r) {
             if (x >= GX && x < GX + GW) r.draw_rect(x, GY, 1.5f, GH, 0.95f, 0.35f, 0.35f, 1.0f);
         }
         r.pop_clip_rect();
-        r.draw_text(px + 12.f, py + ph - 18.f,
-                    "yellow handles = loop  \xC2\xB7  header: warp / auto / pit  \xC2\xB7  Cmd-scroll zoom  \xC2\xB7  \xE2\x8C\xA5 amp  \xC2\xB7  scroll pan  \xC2\xB7  F fit",
-                    0.45f, 0.48f, 0.53f, 1.0f, 0.78f);
+        // ADR-0048: the footer crawl is gone — a hover-status pill names what the hovered handle does.
+        {
+            const float hx0 = wxn(t0_), hx1 = wxn(t1_);
+            if (hover_y_ >= GY && hover_y_ < GY + GH &&
+                (std::abs(hover_x_ - hx0) < 6.f || std::abs(hover_x_ - hx1) < 6.f))
+                hover_status_ = "drag \xE2\x86\x92 trim loop handle";
+            else if (hover_x_ >= GX && hover_x_ < GX + GW && hover_y_ >= GY && hover_y_ < GY + GH)
+                hover_status_ = "scroll \xE2\x86\x92 zoom  \xC2\xB7  \xE2\x8C\xA5 amp  \xC2\xB7  drag marker \xE2\x86\x92 warp";
+        }
+        if (!hover_status_.empty())
+            hover_status(r, px + 12.f, py + ph - 26.f, hover_status_.c_str(), sty.gpu);
         return;
     }
 
