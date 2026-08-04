@@ -837,6 +837,7 @@ void run_frame_loop(App& app, Window& win) {
             draw_popup(ui, win.param_menu);       // node param-curation menu (show/hide + wire-reveal)
             win.param_chooser.draw(ui);   // Phase 2c: the curated-inspector "+ Add param" palette (modal, on top)
             clip_editor.set_playhead(beats);
+            clip_editor.set_hover(mx, my);   // ADR-0048: passive cursor → inspector control + handle hover
             clip_editor.draw(ui);  // editor window on top
             // The docked clip editor fills the dock and skips draw_device_dock (which paints the resize
             // strip), so draw the strip here — otherwise the dock's resize handle vanishes while editing.

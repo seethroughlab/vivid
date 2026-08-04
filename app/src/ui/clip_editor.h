@@ -44,6 +44,9 @@ public:
     void set_playhead(double abs_beats);
 
     void draw(Renderer2D& r);
+    // ADR-0048: passive mouse position (from the frame loop) so inspector controls + editable handles
+    // can show a hover state before a click. -1,-1 = no cursor over the editor.
+    void set_hover(double x, double y) { hover_x_ = x; hover_y_ = y; }
     bool on_down(double x, double y, double now, int mods);  // true if consumed (mods = GLFW_MOD_*)
     void on_move(double x, double y);
     void on_up(double x, double y);
@@ -136,6 +139,11 @@ private:
     std::vector<vivid::session::ClipNote> ghost_notes_;   // same-scene notes of other tracks
     std::function<void(int, int, float, bool)> audition_cb_;   // keyboard-audition sink
     int    audition_pitch_ = -1;       // pitch currently sounding from a keyboard-key press
+    // ADR-0048: inspector-strip UI state. hover_x/y_ = passive cursor (for control hover); xform_open_ =
+    // the ⋯ Transform menu is showing; hover_status_ = contextual "what will happen" text for this frame.
+    double hover_x_ = -1.0, hover_y_ = -1.0;
+    bool   xform_open_ = false;
+    std::string hover_status_;         // set during draw/hit; drawn as a pill (replaces the footer crawl)
     // Per-clip view memory: each clip remembers its zoom + scroll so
     // reopening it restores the view instead of re-fitting. (fold/scale/ghost are global
     // modes, so they intentionally stay put.) Session-scoped UI state (not in the document
@@ -168,6 +176,9 @@ private:
     // Panel geometry (floating uses px_/py_; docked = bottom strip).
     void  panel(float& x, float& y, float& w, float& h) const;
     float gx() const, gy() const, gw() const, gh() const;
+    // ADR-0048: the inspector strip below the title strip (MIDI only this slice; audio keeps its legacy
+    // header until slice 3). The content canvas (gy/gh) sits below it.
+    float insp_h() const { return audio_ ? 0.f : 32.f; }
     float lane_h() const { return audio_ ? 0.f : 54.f; }        // velocity/expression lane height
     float ruler_h() const { return audio_ ? 0.f : 15.f; }       // bars/beats ruler strip
     float roll_top() const { return gy() + ruler_h(); }         // piano-roll top (below ruler)
