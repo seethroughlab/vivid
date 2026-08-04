@@ -102,6 +102,10 @@ public:
 
     std::vector<VisualNode>&       nodes()       { return nodes_; }
     const std::vector<VisualNode>& nodes() const { return nodes_; }
+
+    // The GPU device/queue this graph renders on (for UI-side texture uploads, e.g. chooser previews).
+    WGPUDevice device() const { return dev_; }
+    WGPUQueue  queue()  const { return q_; }
     int  missing_op_count() const;             // nodes whose op type isn't a real operator (ADR-0019)
     std::vector<int> missing_op_node_indices() const;   // indices of those broken nodes (diagnostics panel)
     int  add_node(const std::string& type);   // returns new node index (fresh id)

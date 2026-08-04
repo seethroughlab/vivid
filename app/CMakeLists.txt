@@ -365,6 +365,25 @@ add_custom_target(vivid_shader_library ALL
     VERBATIM)
 add_dependencies(vivid_shader_library vivid)   # the bundle dir has to exist first
 
+# ADR-0050: the SHIPPED operator preview thumbnails (site/assets/reference/<slug>.png, captured by
+# tools/operator_audit/capture_previews.py). The add-node chooser draws each visual op's thumbnail from
+# here; a non-bundle build reads <exe_dir>/reference instead. Same own-target pattern as the shaders so
+# a re-captured PNG isn't left stale in the bundle.
+if(APPLE)
+    set(_preview_dest "$<TARGET_BUNDLE_CONTENT_DIR:vivid>/Resources/reference")
+else()
+    set(_preview_dest "$<TARGET_FILE_DIR:vivid>/reference")
+endif()
+file(GLOB VIVID_PREVIEW_FILES CONFIGURE_DEPENDS
+     "${CMAKE_CURRENT_SOURCE_DIR}/../site/assets/reference/*.png")
+add_custom_target(vivid_reference_previews ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_preview_dest}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${VIVID_PREVIEW_FILES} "${_preview_dest}"
+    DEPENDS ${VIVID_PREVIEW_FILES}
+    COMMENT "Copying the operator preview thumbnails into the app"
+    VERBATIM)
+add_dependencies(vivid_reference_previews vivid)   # the bundle dir has to exist first
+
 # ADR-0021/P2: the bundled EXAMPLE projects. Each examples/demos/projects/<name>/ is a folder
 # project (project.json + its .glsl); copy the tree into Resources/examples so File > Open Example
 # can list them. Same bundle/non-bundle destination convention as the shader library above.

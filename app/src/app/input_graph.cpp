@@ -293,7 +293,7 @@ bool generator_chooser_open_at(Window& win, App& app, double mx, double my) {
     // Per-row CATALOG preview: draw each generator TYPE from its defaults into the row swatch.
     vivid::session::Session* s = app.session;
     win.generator_chooser.set_preview_drawer(
-        [s](vivid::ui::Renderer2D& r, const vivid::ui::ChooserEntry& e, float x, float y, float w, float h) {
+        [s](vivid::ui::Renderer2D& r, const vivid::ui::ChooserEntry& e, float x, float y, float w, float h) -> bool {
             vivid::ui::DrawBridge db{ &r, x, y, x, y, w, h };
             VividThumbnailContext tc{};
             tc.surface_width = w; tc.surface_height = h;
@@ -303,7 +303,7 @@ bool generator_chooser_open_at(Window& win, App& app, double mx, double my) {
             tc.accent  = VividColor{ a[0], a[1], a[2], 1.f };
             tc.time    = glfwGetTime() * 2.0;                // gentle ~120bpm animation, transport-independent
             tc.purpose = VIVID_PREVIEW_CATALOG;
-            vivid::session::session_op_draw_catalog_thumbnail(s, e.spawn.type.c_str(), &tc);
+            return vivid::session::session_op_draw_catalog_thumbnail(s, e.spawn.type.c_str(), &tc) != 0;
         });
     const Rect cell = vivid::ui::clip_cell_rect(pt, ps);
     win.generator_chooser.show(cell.x + win.sidebar_w, cell.y + cell.h,

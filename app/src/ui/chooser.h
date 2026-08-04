@@ -50,9 +50,11 @@ public:
     void set_entries(std::vector<ChooserEntry> entries);   // the catalog, rebuilt on each show()
 
     // ADR-0050: optional per-row preview. When set, each row reserves a small left swatch and the owner
-    // draws into it (e.g. an operator's CATALOG thumbnail); unset => no swatch, byte-identical layout to
-    // before. One owner-level callback (not a per-entry closure), like clip_editor's audition sink.
-    using PreviewDrawer = std::function<void(Renderer2D&, const ChooserEntry&, float x, float y, float w, float h)>;
+    // paints into it (e.g. an operator's CATALOG thumbnail or a bundled preview image); unset => no
+    // swatch, byte-identical layout to before. The owner returns whether it actually painted — false
+    // falls back to the accent dot, so rows with no preview still read. One owner-level callback (not a
+    // per-entry closure), like clip_editor's audition sink.
+    using PreviewDrawer = std::function<bool(Renderer2D&, const ChooserEntry&, float x, float y, float w, float h)>;
     void set_preview_drawer(PreviewDrawer fn) { preview_fn_ = std::move(fn); }
 
     // Keys (the owner routes them while open() is true).
