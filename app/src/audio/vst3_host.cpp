@@ -8,6 +8,7 @@
 #include "audio/sample_engine/sample_decode.h"        // decode_audio_native (direct WAV→AudioClip-node load)
 #include "audio/clip_dsp.h"                           // A2: per-clip warp stretcher (ClipDsp + process_clip)
 #include "audio/audio_op_runtime.h"                   // AO-1: native audio operators (opaque; no operator_api leak)
+#include "audio/sampler_op.h"                          // ADR-0049: SamplerInfo/SamplerSlice (read API)
 #include "audio/audio_graph.h"                        // AG-0: per-track audio signal graph (ADR-0012)
 #include "audio/clap_host.h"                           // CLAP plugin hosting (ClapHandle, clap_run, clap_load_plugin)
 #include "audio/plugin_catalog.h"                     // A2: PluginFormat (kFmtVST3 / kFmtCLAP)
@@ -3009,7 +3010,39 @@ int session_audio_graph_load_sampler(Session* s, int t, int node_id, const char*
     const uint32_t n = static_cast<uint32_t>(data->samples_L.size());
     if (!vivid::audio_op_load_sampler(op, L, R, n, data->sample_rate, nullptr, nullptr, 0, base_note))
         return 0;   // atomic bank swap inside the op — live-safe, no republish
+    vivid::audio_op_set_sampler_source(op, path);   // ADR-0049: retain the source path for the editor identity
     return static_cast<int>(n);
+}
+
+// ADR-0049: the Sampler editor's read side, resolved through a node id. sample_info returns 1 if a
+// sample is loaded (fills geometry + slice count + playback mode); slices fills up to `cap` and returns
+// the true count; source returns the loaded path ("" if none). All UI/main-thread, like the peaks read.
+int session_sampler_info(Session* s, int t, int node_id, ::vivid::SamplerInfo* out) {
+    Track* tr = graph_track(s, t);
+    if (!tr || !out) return 0;
+    vivid::AudioOp* op = nullptr;
+    { std::lock_guard<std::mutex> lk(tr->gmtx);
+      const int idx = tr->agraph.node_index(node_id);
+      if (idx >= 0 && idx < static_cast<int>(tr->agnodes.size())) op = tr->agnodes[idx].op; }
+    return (op && vivid::audio_op_sampler_info(op, *out)) ? 1 : 0;
+}
+int session_sampler_slices(Session* s, int t, int node_id, ::vivid::SamplerSlice* out, int cap) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    vivid::AudioOp* op = nullptr;
+    { std::lock_guard<std::mutex> lk(tr->gmtx);
+      const int idx = tr->agraph.node_index(node_id);
+      if (idx >= 0 && idx < static_cast<int>(tr->agnodes.size())) op = tr->agnodes[idx].op; }
+    return op ? vivid::audio_op_sampler_slices(op, out, cap) : 0;
+}
+const char* session_sampler_source(Session* s, int t, int node_id) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return "";
+    vivid::AudioOp* op = nullptr;
+    { std::lock_guard<std::mutex> lk(tr->gmtx);
+      const int idx = tr->agraph.node_index(node_id);
+      if (idx >= 0 && idx < static_cast<int>(tr->agnodes.size())) op = tr->agnodes[idx].op; }
+    return op ? vivid::audio_op_sampler_source(op) : "";
 }
 
 // Copy a Sampler node's loaded-sample peak envelope for its waveform thumbnail (the UI node card).

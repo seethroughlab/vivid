@@ -5,6 +5,7 @@
 #include "midi/midi_clip.h"   // ClipNote (clip editing API)
 
 namespace vivid { class OpRegistry; }   // shared operator registry (native audio ops)
+namespace vivid { struct SamplerInfo; struct SamplerSlice; }   // audio/sampler_op.h (ADR-0049 read API)
 struct VividThumbnailContext;           // operator_api/types.h — global scope (a C struct, not namespaced)
 
 // Multi-track session façade over the extracted VST3 host (vst3_host_common.h is
@@ -408,6 +409,10 @@ int         session_audio_graph_load_sampler(Session*, int track, int node_id, c
 int         session_audio_graph_node_sampler_peaks(Session*, int track, int node_id, float* out, int n);
 // The Sampler node's playhead position (0..1) for the animated waveform thumbnail, or -1 if silent.
 float       session_audio_graph_node_sampler_playhead(Session*, int track, int node_id);
+// ADR-0049: the Sampler editor's read side by node id (sample geometry / slice→note map / source path).
+int         session_sampler_info(Session*, int track, int node_id, ::vivid::SamplerInfo* out);       // 1 if loaded
+int         session_sampler_slices(Session*, int track, int node_id, ::vivid::SamplerSlice* out, int cap);  // count
+const char* session_sampler_source(Session*, int track, int node_id);                                // "" if none
 // A2: add a VST3/CLAP plugin as a graph NODE (the peer of add_op/add_source, which are native-only).
 // `format` is a PluginFormat (audio/plugin_catalog.h); `is_source` = instrument (fans in to Output)
 // vs effect (splices before Output) — take it from the plugin's CLASS, never from its port counts (a

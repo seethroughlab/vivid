@@ -19,6 +19,34 @@ struct SamplerLoadable {
     virtual void load_pcm(const float* L, const float* R, size_t n, uint32_t sr,
                           const uint32_t* slice_starts, const uint32_t* slice_ends,
                           int nslices, int base_note) = 0;
+    // ADR-0049: remember where the sample came from, so the Sampler editor can show its identity.
+    // Optional (default no-op); the host sets it after load_pcm since load_pcm carries only PCM.
+    virtual void set_source_path(const char* /*path*/) {}
+};
+
+// ADR-0049: the READ side a Sampler editor needs beyond copy_peaks — the loaded sample's geometry and
+// its slice→note mapping, so the UI can draw slice markers, the key-zone strip, and the root marker
+// without guessing. UI/main-thread only (mirrors copy_peaks' safety: reads the bank the UI thread owns).
+struct SamplerInfo {
+    unsigned long long frames = 0;   // total sample length (frames, concatenated across regions)
+    uint32_t sample_rate = 0;
+    int      channels = 0;           // 1 mono / 2 stereo (0 = nothing loaded)
+    int      slice_count = 0;        // 1 for a melodic load; N for a sliced drum-rack
+    int      base_note = 0;          // root pitch of slice 0
+    int      gate = 0;               // 0 one-shot / 1 gated (the `gate` param)
+};
+struct SamplerSlice {
+    uint32_t start = 0, end = 0;     // [start,end) frames within the concatenated buffer (0..frames)
+    int      root_note = 0, lo_note = 0, hi_note = 127;   // the slice→key mapping
+};
+struct SamplerInspectable {
+    virtual ~SamplerInspectable() = default;
+    // Loaded-sample geometry + playback mode. Returns false if nothing is loaded.
+    virtual bool sample_info(SamplerInfo& out) const = 0;
+    // Per-slice region + note map, in order. Fills up to `cap`; returns the total slice count.
+    virtual int  slices(SamplerSlice* out, int cap) const = 0;
+    // The loaded sample's source path (for identity), or "" if unknown.
+    virtual const char* source_path() const = 0;
 };
 
 // Read side of the same escape hatch: the UI reads a downsampled peak envelope of the loaded
