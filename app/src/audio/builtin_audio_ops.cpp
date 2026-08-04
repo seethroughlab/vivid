@@ -226,7 +226,7 @@ struct MovieAudioOp : OperatorBase, AudioProcessable {
 //     transposes the sample — a playable melodic instrument.
 //   - slice→MIDI  (nslices  > 0): one single-note region per slice at base_note+i (drum-rack),
 //     now click-free with an envelope.
-struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPreviewable {
+struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPreviewable, SamplerInspectable {
     VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_SOURCE; }   // ADR-0046
     static constexpr const char* kDisplayName = "Sampler";
     static constexpr const char* kSummary = "Plays pitched PCM per note with ADSR + polyphony (melodic or drum-rack).";
@@ -265,6 +265,7 @@ struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPrevi
     // normalized position (0..1 across the whole waveform, -1 = nothing playing) for the UI to draw.
     std::vector<uint32_t>  region_base_;
     uint64_t               total_frames_ = 0;
+    std::string            src_path_;                // ADR-0049: loaded-sample source path (identity)
     uint32_t               voice_base_[kV] = {};       // concatenated base frame of each voice's region
     std::atomic<float>     playhead_{ -1.f };
 
@@ -351,6 +352,36 @@ struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPrevi
         if (!out || n <= 0 || peaks_.empty()) return 0;
         const int have = static_cast<int>(peaks_.size());
         for (int i = 0; i < n; ++i) out[i] = peaks_[std::min(have - 1, i * have / n)];
+        return n;
+    }
+
+    // --- ADR-0049: read side for the Sampler editor (UI/main thread; reads the bank the UI thread owns) ---
+    void set_source_path(const char* p) override { src_path_ = p ? p : ""; }
+    const char* source_path() const override { return src_path_.c_str(); }
+    bool sample_info(SamplerInfo& out) const override {
+        const auto* b = bank_.load(std::memory_order_acquire);
+        if (!b || b->groups.empty() || b->groups[0].regions.empty() || total_frames_ == 0) return false;
+        const auto& regs = b->groups[0].regions;
+        const auto& d0 = regs[0].data;
+        out.frames      = total_frames_;
+        out.sample_rate = d0 ? d0->sample_rate : 0;
+        out.channels    = (d0 && d0->stereo) ? 2 : 1;
+        out.slice_count = static_cast<int>(regs.size());
+        out.base_note   = regs[0].root_note;
+        out.gate        = gate.value >= 0.5f ? 1 : 0;
+        return true;
+    }
+    int slices(SamplerSlice* out, int cap) const override {
+        const auto* b = bank_.load(std::memory_order_acquire);
+        if (!b || b->groups.empty()) return 0;
+        const auto& regs = b->groups[0].regions;
+        const int n = static_cast<int>(regs.size());
+        for (int i = 0; i < n && i < cap && out; ++i) {
+            const uint32_t start = i < static_cast<int>(region_base_.size()) ? region_base_[i] : 0u;
+            const uint32_t len   = regs[i].data ? static_cast<uint32_t>(regs[i].data->samples_L.size()) : 0u;
+            out[i].start = start; out[i].end = start + len;
+            out[i].root_note = regs[i].root_note; out[i].lo_note = regs[i].lo_note; out[i].hi_note = regs[i].hi_note;
+        }
         return n;
     }
 

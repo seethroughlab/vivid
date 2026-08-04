@@ -6,6 +6,7 @@
 // past the voice cap is not silently dropped), (e) the voice engine's loop wrap, and (f) that
 // steady-state processing performs ZERO heap allocations (program-global operator-new counter).
 #include "audio/audio_op_runtime.h"
+#include "audio/sampler_op.h"            // ADR-0049: SamplerInfo / SamplerSlice (read API)
 #include "audio/builtin_audio_ops.h"
 #include "audio/sample_engine/voice.h"   // engine-level loop-wrap check
 #include "gpu/op_runtime.h"
@@ -17,6 +18,7 @@
 #include <cstdlib>
 #include <memory>
 #include <new>
+#include <string>
 #include <vector>
 
 static std::atomic<long> g_allocs{ 0 };
@@ -189,5 +191,75 @@ int main() {
     }
 
     audio_op_destroy(smp);
+
+    // ==== ADR-0049: the Sampler read API (SamplerInspectable) the Sampler editor draws from ====
+    // 5. Sliced drum-rack: 4 equal slices over 800 stereo frames, base C1 (36).
+    {
+        const uint32_t sr = 44100, N = 800;
+        std::vector<float> L(N), R(N);
+        for (uint32_t i = 0; i < N; ++i) L[i] = R[i] = std::sin(static_cast<float>(i) * 0.05f);
+        const uint32_t starts[4] = { 0, 200, 400, 600 }, ends[4] = { 200, 400, 600, 800 };
+        AudioOp* op = audio_op_create(reg, "Sampler");
+        CHECK(op != nullptr);
+        CHECK(audio_op_load_sampler(op, L.data(), R.data(), N, sr, starts, ends, 4, 36));
+        audio_op_set_sampler_source(op, "/samples/amen.wav");
+
+        SamplerInfo info{};
+        CHECK(audio_op_sampler_info(op, info));
+        CHECK(info.channels == 2);           // stereo (R present)
+        CHECK(info.sample_rate == sr);
+        CHECK(info.slice_count == 4);
+        CHECK(info.base_note == 36);
+        CHECK(info.frames == N);             // 4 slices of 200, concatenated = 800
+        CHECK(std::string(audio_op_sampler_source(op)) == "/samples/amen.wav");
+
+        SamplerSlice sl[8];
+        const int n = audio_op_sampler_slices(op, sl, 8);
+        CHECK(n == 4);
+        for (int i = 0; i < 4; ++i) {
+            CHECK(sl[i].start == static_cast<uint32_t>(i) * 200u);
+            CHECK(sl[i].end   == static_cast<uint32_t>(i + 1) * 200u);
+            CHECK(sl[i].root_note == 36 + i);                 // ascending: slice i -> base+i (one note per key)
+            CHECK(sl[i].lo_note == 36 + i && sl[i].hi_note == 36 + i);
+        }
+        CHECK(audio_op_sampler_slices(op, sl, 2) == 4);        // a small cap still reports the true count
+        audio_op_destroy(op);
+    }
+
+    // 6. Melodic direct load (no slices): one mono region spanning the whole keyboard.
+    {
+        const uint32_t sr = 48000, N = 500;
+        std::vector<float> L(N, 0.5f);
+        AudioOp* op = audio_op_create(reg, "Sampler");
+        CHECK(op != nullptr);
+        CHECK(audio_op_load_sampler(op, L.data(), nullptr, N, sr, nullptr, nullptr, 0, 60));
+        SamplerInfo info{};
+        CHECK(audio_op_sampler_info(op, info));
+        CHECK(info.channels == 1);           // mono (R null)
+        CHECK(info.slice_count == 1);
+        CHECK(info.base_note == 60);
+        CHECK(info.frames == N);
+        SamplerSlice sl[2];
+        CHECK(audio_op_sampler_slices(op, sl, 2) == 1);
+        CHECK(sl[0].start == 0 && sl[0].end == N);
+        CHECK(sl[0].root_note == 60);
+        CHECK(sl[0].lo_note == 0 && sl[0].hi_note == 127);    // the melodic region spans the keyboard
+        audio_op_destroy(op);
+    }
+
+    // 7. Nothing loaded → info false, no slices, empty source; a non-Sampler op cross-casts to "not a sampler".
+    {
+        AudioOp* empty = audio_op_create(reg, "Sampler");
+        SamplerInfo info{};
+        CHECK(!audio_op_sampler_info(empty, info));
+        CHECK(audio_op_sampler_slices(empty, nullptr, 0) == 0);
+        CHECK(std::string(audio_op_sampler_source(empty)).empty());
+        audio_op_destroy(empty);
+
+        AudioOp* tone = audio_op_create(reg, "TestTone");
+        CHECK(!audio_op_sampler_info(tone, info));            // not a sampler → false, no crash
+        audio_op_destroy(tone);
+    }
+
     return vivid::test::summary("test_sampler_op");
 }

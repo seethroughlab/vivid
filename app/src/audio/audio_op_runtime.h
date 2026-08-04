@@ -21,6 +21,8 @@ class OpRegistry;
 namespace session { struct NoteEvent; }
 
 struct AudioOp;   // opaque native audio-operator instance
+struct SamplerInfo;   // audio/sampler_op.h — sample geometry + playback mode (ADR-0049)
+struct SamplerSlice;  // audio/sampler_op.h — per-slice region + note map (ADR-0049)
 
 // --- UI/main thread ---
 AudioOp*    audio_op_create(OpRegistry& reg, const char* type_name);  // null if not a valid audio op
@@ -34,6 +36,12 @@ bool        audio_op_load_sampler(AudioOp*, const float* L, const float* R, size
 int         audio_op_sampler_peaks(const AudioOp*, float* out, int n);
 // The sampler's playhead position (0..1) for the animated thumbnail, or -1 (not a sampler / silent).
 float       audio_op_sampler_playhead(const AudioOp*);
+// ADR-0049: the Sampler editor's read side — sample geometry + slice→note map + source identity
+// (RTTI cross-cast to SamplerInspectable / SamplerLoadable). UI/main thread.
+bool        audio_op_sampler_info(const AudioOp*, SamplerInfo& out);         // false if nothing loaded
+int         audio_op_sampler_slices(const AudioOp*, SamplerSlice* out, int cap);  // count; fills up to cap
+const char* audio_op_sampler_source(const AudioOp*);                        // loaded path ("" if unknown)
+void        audio_op_set_sampler_source(AudioOp*, const char* path);        // remember the source path
 // Enumerate registered audio operators for the device pickers. want_source: true =
 // instruments/generators (no audio input), false = effects (has audio input).
 int         audio_op_registry_count(OpRegistry& reg, bool want_source);

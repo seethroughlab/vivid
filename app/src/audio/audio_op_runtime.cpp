@@ -109,6 +109,28 @@ float audio_op_sampler_playhead(const AudioOp* a) {
     return sp ? sp->playhead() : -1.f;
 }
 
+// ADR-0049: the richer read side (sample geometry + slice→note map + source identity).
+bool audio_op_sampler_info(const AudioOp* a, SamplerInfo& out) {
+    if (!a) return false;
+    auto* si = dynamic_cast<const SamplerInspectable*>(a->inst.op.get());
+    return si ? si->sample_info(out) : false;
+}
+int audio_op_sampler_slices(const AudioOp* a, SamplerSlice* out, int cap) {
+    if (!a) return 0;
+    auto* si = dynamic_cast<const SamplerInspectable*>(a->inst.op.get());
+    return si ? si->slices(out, cap) : 0;
+}
+const char* audio_op_sampler_source(const AudioOp* a) {
+    if (!a) return "";
+    auto* si = dynamic_cast<const SamplerInspectable*>(a->inst.op.get());
+    return si ? si->source_path() : "";
+}
+void audio_op_set_sampler_source(AudioOp* a, const char* path) {
+    if (!a) return;
+    auto* sl = dynamic_cast<SamplerLoadable*>(a->inst.op.get());
+    if (sl) sl->set_source_path(path);
+}
+
 // Registry inspection (UI thread) — enumerate audio operators for the device pickers.
 // want_source: true = instruments/generators (no audio input), false = effects.
 static bool descriptor_is_source(const VividOperatorDescriptor* d) {
