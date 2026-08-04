@@ -170,6 +170,7 @@ private:
     double last_down_ = -1; int last_idx_ = -1;   // double-click tracking
     double marq_x_ = 0, marq_y_ = 0; bool marq_add_ = false;   // marquee current corner + additive
     int    lane_idx_ = -1;        // note whose velocity a lane-drag targets
+    double vel_x0_ = 0, vel_y0_ = 0;   // MIDI-3: velocity ramp-drag start point (draw a line across the lane)
     int    lane_axis_ = -1;       // bottom lane: -1 velocity, 0 bend, 1 pressure, 2 timbre
     bool   bend_snap_ = false;    // quantize painted bend to whole semitones
     uint32_t tool_seed_ = 1;      // varies humanize between repeated presses
@@ -229,6 +230,9 @@ private:
     float lane_value_at(double y) const;
     float lane_t_at(double x) const;         // x -> normalized t within paint_note_
     float lane_y_for(float v) const;
+    // MIDI-3: set velocities of the notes under the ramp span [vel_x0_..x1] by interpolating a line
+    // from the drag start to (x1,y1) — one gesture for crescendo / set / flatten.
+    void apply_vel_ramp(double x1, double y1);
     void  finish_paint();
 };
 

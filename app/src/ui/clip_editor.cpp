@@ -470,17 +470,10 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
         }
         // Bottom lane: velocity bars (lane_axis_ < 0) or a painted expression curve.
         if (y >= lane_top()) {
-            if (lane_axis_ < 0) {                             // velocity: drag the nearest note's bar
-                int best = -1; double bestd = 1e18;
-                for (size_t i = 0; i < notes_.size(); ++i) {
-                    double d = std::fabs(x - xb(notes_[i].start));
-                    if (d < bestd) { bestd = d; best = static_cast<int>(i); }
-                }
-                if (best >= 0 && bestd < 40.0) {
-                    push_undo();
-                    if (!sel_[best]) { clear_sel(); sel_[best] = 1; }
-                    drag_ = 5; lane_idx_ = best;
-                }
+            if (lane_axis_ < 0) {                             // velocity: drag a ramp across the notes
+                push_undo();
+                drag_ = 5; vel_x0_ = x; vel_y0_ = y;
+                apply_vel_ramp(x, y);                         // a click sets the note under the cursor
             } else {                                          // expression: paint into the note under x
                 paint_note_ = -1;
                 for (size_t i = 0; i < notes_.size(); ++i) {
@@ -589,15 +582,7 @@ void ClipEditor::on_move(double x, double y) {
         paint_.push_back({ lane_t_at(x), lane_value_at(y) });
         return;
     }
-    if (drag_ == 5) {                                        // velocity lane drag
-        if (lane_idx_ >= 0 && lane_idx_ < static_cast<int>(notes_.size())) {
-            const float top = gy() + roll_h() + 4.f, bot = gy() + gh() - 4.f;
-            float v = (bot - static_cast<float>(y)) / std::max(1.f, bot - top);
-            vivid::session::set_velocity_selected(notes_, sel_, std::clamp(v, 0.f, 1.f));
-            dirty_ = true;
-        }
-        return;
-    }
+    if (drag_ == 5) { apply_vel_ramp(x, y); return; }        // velocity ramp-drag
     if (drag_ != 1 && drag_ != 2) return;
     const double dbeat = beat_at(x) - down_beat_;
     const int    dpitch = pitch_at(y) - down_pitch_;
@@ -658,6 +643,30 @@ float ClipEditor::lane_y_for(float v) const {
     float f = (lane_axis_ == 0) ? (v / kBendRange + 1.f) * 0.5f : v;
     f = std::clamp(f, 0.f, 1.f);
     return bot - f * (bot - top);
+}
+// MIDI-3: draw a velocity line across the notes the drag spans — start note gets the start velocity,
+// end note the end velocity, everything between interpolates. A near-vertical drag (or a click) just
+// sets the note under the cursor, so the single-note case still works.
+void ClipEditor::apply_vel_ramp(double x1, double y1) {
+    if (notes_.empty()) return;
+    const float top = lane_top() + 6.f, bot = gy() + gh() - 4.f;
+    auto vel_at = [&](double yy) { return std::clamp(static_cast<float>((bot - yy) / std::max(1.f, bot - top)), 0.f, 1.f); };
+    const float v0 = vel_at(vel_y0_), v1 = vel_at(y1);
+    const double xa = std::min(vel_x0_, x1), xz = std::max(vel_x0_, x1);
+    bool any = false;
+    for (auto& n : notes_) {
+        const double nx = xb(n.start);
+        if (nx < xa - 6.0 || nx > xz + 6.0) continue;
+        const double f = (std::fabs(x1 - vel_x0_) < 1.0) ? 1.0 : std::clamp((nx - vel_x0_) / (x1 - vel_x0_), 0.0, 1.0);
+        n.vel = std::clamp(static_cast<float>(v0 + (v1 - v0) * f), 0.f, 1.f);
+        any = true;
+    }
+    if (!any) {   // a click clear of any note in the span → set just the nearest note
+        int best = -1; double bd = 1e18;
+        for (size_t i = 0; i < notes_.size(); ++i) { const double d = std::fabs(x1 - xb(notes_[i].start)); if (d < bd) { bd = d; best = static_cast<int>(i); } }
+        if (best >= 0 && bd < 40.0) notes_[best].vel = v1;
+    }
+    dirty_ = true;
 }
 float ClipEditor::lane_t_at(double x) const {
     if (paint_note_ < 0 || paint_note_ >= static_cast<int>(notes_.size())) return 0.f;
