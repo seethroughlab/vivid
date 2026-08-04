@@ -22,6 +22,44 @@ static constexpr float kEditorHeaderH = 30.f;
 // x-ranges in each). More controls migrate to real widgets + a laid-out inspector strip in later slices.
 static Rect close_btn_rect(float px, float py, float pw) { return { px + pw - 26.f, py + 6.f, 20.f, 18.f }; }
 static Rect dock_btn_rect (float px, float py, float pw) { return { px + pw - 76.f, py + 6.f, 44.f, 18.f }; }
+// Title-strip transport buttons, right side (left of the dock/close buttons).
+static Rect fit_btn_rect  (float px, float py, float pw) { return { px + pw - 108.f, py + 6.f, 26.f, 18.f }; }
+static Rect follow_btn_rect(float px, float py, float pw){ return { px + pw - 138.f, py + 6.f, 26.f, 18.f }; }
+
+// ADR-0048: the MIDI inspector strip — real controls, packed left-to-right, one shared Rect each for
+// draw + hit. `midi_insp()` is pure geometry (from the panel), so draw() and on_down() lay out identically.
+struct MidiInsp { Rect tool, grid, fold, scale, ghost, step, lane, quant, xform; };
+static MidiInsp midi_insp(float px, float py, float /*pw*/) {
+    const float y = py + kEditorHeaderH + 5.f, h = 22.f;
+    float x = px + 10.f;
+    auto take = [&](float w) { Rect r{ x, y, w, h }; x += w + 6.f; return r; };
+    auto gap  = [&]() { x += 8.f; };
+    MidiInsp m;
+    m.tool  = take(112.f); gap();      // Draw | Select
+    m.grid  = take(116.f); gap();      // GRID stepper (wide enough for kicker + value)
+    m.fold  = take(46.f);              // toggles
+    m.ghost = take(52.f);
+    m.step  = take(46.f);
+    m.scale = take(90.f);  gap();      // scale (root + type)
+    m.lane  = take(96.f);  gap();      // velocity/expression lane
+    m.quant = take(84.f);              // Quantize
+    m.xform = take(104.f);             // ⋯ Transform menu
+    return m;
+}
+// The ⋯ Transform menu items — each replays the existing on_key handler (zero duplication).
+struct XItem { const char* label; int key; };
+static const XItem kXItems[] = {
+    { "Quantize (\xE2\x8C\x98U)", GLFW_KEY_U },   // Cmd+U; item passes SUPER below
+    { "Invert",       GLFW_KEY_I },
+    { "Retrograde",   GLFW_KEY_R },
+    { "Humanize",     GLFW_KEY_H },
+    { "Strum",        GLFW_KEY_T },
+    { "To scale",     GLFW_KEY_Y },
+    { "Glide",        GLFW_KEY_APOSTROPHE },
+};
+static constexpr int kNumXItems = static_cast<int>(sizeof(kXItems) / sizeof(kXItems[0]));
+static constexpr float kXItemH = 22.f, kXMenuW = 150.f;
+static Rect xform_item_rect(Rect xbtn, int i) { return { xbtn.x, xbtn.y + xbtn.h + 2.f + i * kXItemH, kXMenuW, kXItemH }; }
 
 // Grid/snap presets (beats). Straight + triplet subdivisions.
 struct GridPreset { double v; const char* label; };
@@ -75,9 +113,9 @@ void ClipEditor::panel(float& x, float& y, float& w, float& h) const {
     else         { x = px_; y = py_;                    w = kFloatW;       h = kFloatH; }
 }
 float ClipEditor::gx() const { float x,y,w,h; panel(x,y,w,h); return x + 10.f; }
-float ClipEditor::gy() const { float x,y,w,h; panel(x,y,w,h); return y + kEditorHeaderH + 10.f; }
+float ClipEditor::gy() const { float x,y,w,h; panel(x,y,w,h); return y + kEditorHeaderH + insp_h() + 8.f; }
 float ClipEditor::gw() const { float x,y,w,h; panel(x,y,w,h); return w - 20.f; }
-float ClipEditor::gh() const { float x,y,w,h; panel(x,y,w,h); return h - kEditorHeaderH - 20.f; }
+float ClipEditor::gh() const { float x,y,w,h; panel(x,y,w,h); return h - kEditorHeaderH - insp_h() - 18.f; }
 
 int ClipEditor::pitch_of_row(int r) const {
     if (fold_) {
@@ -283,12 +321,26 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
     if (!open_) return false;
     const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
     float px, py, pw, ph; panel(px, py, pw, ph);
-    // Header: close [X], dock toggle, per-mode controls, or drag-to-move.
+    // ADR-0048: the ⋯ Transform dropdown, while open, owns the next click.
+    if (!audio_ && xform_open_) {
+        const MidiInsp m = midi_insp(px, py, pw);
+        for (int i = 0; i < kNumXItems; ++i)
+            if (hit(xform_item_rect(m.xform, i), x, y)) {
+                const int k = kXItems[i].key;
+                on_key(k, k == GLFW_KEY_U ? GLFW_MOD_SUPER : 0);   // replay the exact keyboard handler
+                xform_open_ = false; return true;
+            }
+        xform_open_ = false;   // a click elsewhere just closes the menu; fall through
+    }
+    // Title strip: close / dock (both modes), MIDI follow/fit, audio per-mode controls, or drag-to-move.
     if (y < py + kEditorHeaderH) {
-        // ADR-0048: hit-test the SAME rects the header controls are drawn from (no magic-offset drift).
+        // ADR-0048: hit-test the SAME rects the controls are drawn from (no magic-offset drift).
         if (hit(close_btn_rect(px, py, pw), x, y)) { close(); return true; }             // [✕]
         if (hit(dock_btn_rect(px, py, pw), x, y)) { docked_ = !docked_; drag_ = 0; return true; }  // dock
-        if (audio_) {
+        if (!audio_) {
+            if (hit(follow_btn_rect(px, py, pw), x, y)) { follow_ = !follow_; return true; }
+            if (hit(fit_btn_rect(px, py, pw), x, y)) { fit_view(); return true; }
+        } else {   // audio header controls stay legacy text until slice 3
             if (x >= px + pw - 432.f && x < px + pw - 372.f) { aud_req_ |= 16; return true; }   // slice -> MIDI track
             if (x >= px + pw - 358.f && x < px + pw - 274.f) {   // slice: cycle off->tran->grid
                 slice_mode_ = slice_mode_ == 0 ? 1 : slice_mode_ == 1 ? 3 : 0; aud_req_ |= 8; return true;
@@ -302,23 +354,29 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
                 if (aud_warp_mode_ < 0) aud_warp_mode_ = 0;      // pitch implies warp on (Complex)
                 aud_req_ |= 1; return true;
             }
-        } else {
-            if (x >= px + pw - 124.f) { tool_ = tool_ == Tool::Select ? Tool::Draw : Tool::Select; return true; }
-            if (x >= px + pw - 214.f) {   // scale (shift = scale type)
-                if (shift) scale_type_ = (scale_type_ + 1) % kNumScales;
-                else       scale_root_ = (scale_root_ + 2) % 13 - 1;
-                return true;
-            }
-            if (x >= px + pw - 296.f) {   // step-input toggle (resets the cursor to the top)
-                step_mode_ = !step_mode_; step_cursor_ = 0.0; step_held_ = 0; return true;
-            }
-            if (x >= px + pw - 366.f) {   // fold: show only occupied pitch rows
-                fold_ = !fold_; rebuild_fold(); fit_view(); return true;
-            }
-            if (x >= px + pw - 436.f) { ghost_ = !ghost_; return true; }   // ghost reference notes
         }
         if (!docked_) { drag_ = 3; down_off_x_ = x - px_; down_off_y_ = y - py_; }       // start move
         return true;
+    }
+    // ADR-0048: MIDI inspector strip — hit the SAME midi_insp() rects the controls are drawn from.
+    if (!audio_ && y < py + kEditorHeaderH + insp_h()) {
+        const MidiInsp m = midi_insp(px, py, pw);
+        if (int c = segmented_hit(m.tool, 2, x, y); c >= 0) { tool_ = c == 0 ? Tool::Draw : Tool::Select; return true; }
+        if (int s = stepper_hit(m.grid, x, y)) {
+            grid_idx_ = (grid_idx_ + (s > 0 ? 1 : kNumGrids - 1)) % kNumGrids; cell_ = kGrids[grid_idx_].v; return true;
+        }
+        if (hit(m.fold, x, y))  { fold_ = !fold_; rebuild_fold(); fit_view(); return true; }
+        if (hit(m.ghost, x, y)) { ghost_ = !ghost_; return true; }
+        if (hit(m.step, x, y))  { step_mode_ = !step_mode_; step_cursor_ = 0.0; step_held_ = 0; return true; }
+        if (hit(m.scale, x, y)) {
+            if (shift) scale_type_ = (scale_type_ + 1) % kNumScales;
+            else       scale_root_ = (scale_root_ + 2) % 13 - 1;   // off -> C -> D ... -> B -> off
+            return true;
+        }
+        if (hit(m.lane, x, y))  { lane_axis_ = lane_axis_ >= 2 ? -1 : lane_axis_ + 1; return true; }
+        if (hit(m.quant, x, y)) { on_key(GLFW_KEY_U, GLFW_MOD_SUPER); return true; }   // quantize to grid
+        if (hit(m.xform, x, y)) { xform_open_ = !xform_open_; return true; }
+        return true;   // a click anywhere in the inspector strip is consumed (no drag-through to the roll)
     }
     // Content area.
     if (x >= gx() && x < gx() + gw() && y >= gy() && y < gy() + gh()) {
@@ -735,20 +793,34 @@ void ClipEditor::draw(Renderer2D& r) {
     float px, py, pw, ph; panel(px, py, pw, ph);
     const Style& sty = style();
     editor_panel(r, { px, py, pw, ph }, title_.c_str(), sty.gpu, kEditorHeaderH);
+    auto hov = [&](Rect rr) { return hit(rr, hover_x_, hover_y_); };
+    hover_status_.clear();
+    // ADR-0048: shared title-strip controls (both modes) — dock/float toggle + close, real bounded buttons.
+    icon_button(r, dock_btn_rect(px, py, pw), docked_ ? "float" : "dock", hov(dock_btn_rect(px, py, pw)));
+    icon_button(r, close_btn_rect(px, py, pw), "\xE2\x9C\x95", hov(close_btn_rect(px, py, pw)), false, sty.red);  // ✕
     if (!audio_) {
-        const bool draw = tool_ == Tool::Draw;
-        char sc[16];
-        if (scale_root_ < 0) std::snprintf(sc, sizeof sc, "scale off");
-        else std::snprintf(sc, sizeof sc, "%s %s", kPitchNames[scale_root_], kScales[scale_type_].label);
-        r.draw_text(px + pw - 430.f, py + 8.f, "ghost",
-                    ghost_ ? 0.72f : 0.5f, ghost_ ? 0.74f : 0.55f, ghost_ ? 0.82f : 0.6f, 1.0f, 0.82f);
-        r.draw_text(px + pw - 360.f, py + 8.f, "fold",
-                    fold_ ? 0.55f : 0.5f, fold_ ? 0.82f : 0.55f, fold_ ? 0.85f : 0.6f, 1.0f, 0.82f);
-        r.draw_text(px + pw - 290.f, py + 8.f, "step",
-                    step_mode_ ? 0.95f : 0.5f, step_mode_ ? 0.6f : 0.55f, step_mode_ ? 0.28f : 0.6f, 1.0f, 0.82f);
-        r.draw_text(px + pw - 210.f, py + 8.f, sc, 0.55f, 0.78f, 0.6f, 1.0f, 0.8f);   // scale (click cycles)
-        r.draw_text(px + pw - 120.f, py + 8.f, draw ? "Draw" : "Select",
-                    draw ? 0.55f : 0.6f, draw ? 0.82f : 0.72f, draw ? 0.55f : 0.85f, 1.0f, 0.82f);
+        // Title strip: follow / fit transport icons + a compact readout (grid · selection count).
+        icon_button(r, follow_btn_rect(px, py, pw), "Flw", hov(follow_btn_rect(px, py, pw)), follow_);   // follow (active)
+        icon_button(r, fit_btn_rect(px, py, pw), "Fit", hov(fit_btn_rect(px, py, pw)));                  // fit view
+        { char rd[48]; std::snprintf(rd, sizeof rd, "%s \xC2\xB7 %d sel", kGrids[grid_idx_].label, selected_count());
+          draw_text_r(r, follow_btn_rect(px, py, pw).x - 10.f, py + 9.f, rd, sty.dim, 1.0f, sty.fs_value); }
+        // Inspector strip: real controls, each drawn + hit from the SAME midi_insp() rect.
+        const MidiInsp m = midi_insp(px, py, pw);
+        r.draw_rect(px + 1.f, py + kEditorHeaderH + 1.f, pw - 2.f, insp_h() - 1.f, sty.region[0], sty.region[1], sty.region[2], 1.0f);
+        r.draw_rect(px + 1.f, py + kEditorHeaderH + insp_h(), pw - 2.f, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
+        segmented(r, m.tool, { "Draw", "Select" }, tool_ == Tool::Draw ? 0 : 1,
+                  segmented_hit(m.tool, 2, hover_x_, hover_y_), sty.gpu);
+        stepper(r, m.grid, "GRID", kGrids[grid_idx_].label, stepper_hit(m.grid, hover_x_, hover_y_));
+        icon_button(r, m.fold,  "Fold",  hov(m.fold),  fold_);
+        icon_button(r, m.ghost, "Ghost", hov(m.ghost), ghost_);
+        icon_button(r, m.step,  "Step",  hov(m.step),  step_mode_);
+        { char sc[20];
+          if (scale_root_ < 0) std::snprintf(sc, sizeof sc, "Scale off");
+          else std::snprintf(sc, sizeof sc, "%s %s", kPitchNames[scale_root_], kScales[scale_type_].label);
+          menu_button(r, m.scale, sc, hov(m.scale)); }
+        menu_button(r, m.lane, lane_axis_ < 0 ? "Velocity" : kAxisNames[lane_axis_], hov(m.lane));
+        menu_button(r, m.quant, "Quantize", hov(m.quant));
+        menu_button(r, m.xform, "\xE2\x8B\xAF Transform", hov(m.xform), xform_open_);
     } else {
         static const char* sm[] = { "slice off", "slice tran", "", "slice grid" };
         r.draw_text(px + pw - 358.f, py + 8.f, sm[slice_mode_], 0.5f, 0.6f, 0.9f, 1.0f, 0.8f);
@@ -763,9 +835,6 @@ void ClipEditor::draw(Renderer2D& r) {
         char pl[16]; std::snprintf(pl, sizeof pl, "pit %+d", static_cast<int>(std::lround(aud_pitch_)));
         r.draw_text(px + pw - 132.f, py + 8.f, pl, 0.6f, 0.72f, 0.78f, 1.0f, 0.82f);
     }
-    // ADR-0048: real bounded controls (shared draw/hit rect) — replacing the old bare "dock"/"X" text.
-    icon_button(r, dock_btn_rect(px, py, pw), docked_ ? "float" : "dock");
-    icon_button(r, close_btn_rect(px, py, pw), "\xE2\x9C\x95", false, false, sty.red);   // ✕ (red glyph)
 
     const float GX = roll_x0(), GY = gy(), GW = roll_w(), GH = gh();   // roll content (inset past the keys, MIDI)
     recess(r, { gx(), GY, gw(), GH });
@@ -1003,12 +1072,32 @@ void ClipEditor::draw(Renderer2D& r) {
         r.pop_clip_rect();
     }
 
-    char foot[200];
-    std::snprintf(foot, sizeof foot,
-                  "%s \xC2\xB7 grid %s \xC2\xB7 %d sel \xC2\xB7 lane %s \xC2\xB7 E lane/J snap \xC2\xB7 tools: I invert R retro H human T strum Y scale ' glide \xC2\xB7 paint in lane; tap=erase",
-                  tool_ == Tool::Draw ? "Draw" : "Select", kGrids[grid_idx_].label, selected_count(),
-                  lane_axis_ < 0 ? "vel" : kAxisNames[lane_axis_]);
-    r.draw_text(px + 12.f, py + ph - 18.f, foot, 0.45f, 0.48f, 0.53f, 1.0f, 0.76f);
+    // ADR-0048: the footer instruction crawl is GONE. A hover-status pill names what the hovered thing
+    // will do; the key-only power tools now live in the ⋯ Transform menu (drawn on top, below).
+    {
+        bool re = false;
+        const int hn = hit_note(hover_x_, hover_y_, re);
+        if (hn >= 0) hover_status_ = re ? "drag right edge \xE2\x86\x92 resize note"
+                                        : "drag \xE2\x86\x92 move  \xC2\xB7  double-click \xE2\x86\x92 delete";
+    }
+    if (!hover_status_.empty())
+        hover_status(r, px + 12.f, py + ph - 26.f, hover_status_.c_str(), sty.gpu);
+
+    if (xform_open_) {   // the ⋯ Transform dropdown, over the roll
+        const MidiInsp m = midi_insp(px, py, pw);
+        const Rect menu{ m.xform.x, m.xform.y + m.xform.h + 2.f, kXMenuW, kNumXItems * kXItemH + 2.f };
+        r.draw_rect(menu.x, menu.y, menu.w, menu.h, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
+        r.draw_rect_outline(menu.x, menu.y, menu.w, menu.h, 1.f, sty.border[0], sty.border[1], sty.border[2], 1.0f);
+        r.draw_rect(menu.x, menu.y, sty.accent_bar, menu.h, sty.gpu[0], sty.gpu[1], sty.gpu[2], 1.0f);
+        for (int i = 0; i < kNumXItems; ++i) {
+            const Rect it = xform_item_rect(m.xform, i);
+            const bool h = hit(it, hover_x_, hover_y_);
+            if (h) r.draw_rect(it.x + 1.f, it.y, it.w - 2.f, it.h, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 1.0f);
+            const float* tc = h ? sty.text : sty.body;
+            r.draw_text(it.x + 12.f, it.y + (kXItemH - 15.f * sty.fs_label) * 0.5f, kXItems[i].label,
+                        tc[0], tc[1], tc[2], 1.0f, sty.fs_label);
+        }
+    }
 }
 
 }  // namespace vivid::ui
