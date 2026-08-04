@@ -30,6 +30,7 @@ namespace vivid::ui {
 class NodeGraph : public GraphModelAdapter, public CardDelegate {
 public:
     NodeGraph();
+    ~NodeGraph();   // releases cached chooser-preview textures
 
     // ADR-0023 Layer 1: the shared node-enumeration contract (op nodes only; the bridge data-nodes
     // are a visuals-domain overlay). draw() drives the shared canvas card loop (GraphCanvas::draw_cards)
@@ -242,6 +243,13 @@ private:
 
     Chooser chooser_;                  // the shared Tab palette (ui/chooser.h)
     void chooser_spawn(const Chooser::Entry& e);   // create the node the chooser handed back
+
+    // ADR-0050: bundled per-op preview thumbnails drawn in the add-node chooser. Lazily decoded +
+    // uploaded on first draw, cached by slug (a null view = "no preview, draw the accent dot"), and
+    // released in the destructor. Keyed by slugify(op type name).
+    struct PreviewTex { WGPUTexture tex = nullptr; WGPUTextureView view = nullptr; };
+    std::unordered_map<std::string, PreviewTex> preview_cache_;
+    WGPUTextureView preview_view(const std::string& slug);   // load-or-get; null if there is no preview
 
     vivid::VisualGraph* vg_ = nullptr;
     const vivid::ShaderLibrary* shaders_ = nullptr;   // ADR-0016 (optional; chooser badge)

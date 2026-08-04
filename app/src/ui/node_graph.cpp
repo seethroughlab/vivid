@@ -5,9 +5,12 @@
 #include "ui/chooser_rank.h"   // ADR-0046: demote recipe ops below primitives
 #include "gpu/visual_graph.h"    // VisualNode / nodes()
 #include "gpu/loaded_operator.h" // UI-4b: reach an op's dylib editor via dynamic_cast
+#include "cli/image_analysis_tools.h"  // ADR-0050: load_image (PNG -> RGBA8) for chooser previews
+#include "platform/platform.h"         // executable_path() -> Resources/reference
 #include <cmath>
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <filesystem>
 
 namespace vivid::ui {
@@ -121,6 +124,71 @@ static const vivid::ParamBase* node_pb(const vivid::VisualGraph* vg, int i, int 
 NodeGraph::NodeGraph() {
     data_.push_back({ 560.f, 540.f, 168.f, 72.f, "Output \xC2\xB7 Level", "master.level", 0.f, 0, {}, 0 });
     // out-of-box reactivity is seeded in set_visual_graph (needs the default chain's ids).
+}
+
+NodeGraph::~NodeGraph() {
+    for (auto& [slug, p] : preview_cache_) {
+        if (p.view) wgpuTextureViewRelease(p.view);
+        if (p.tex)  wgpuTextureRelease(p.tex);
+    }
+}
+
+namespace {
+// Match site/generate_reference.py::slugify (lower, [^a-z0-9]+ -> '-', trim '-') so a chooser row's op
+// name maps to its bundled preview file name.
+std::string preview_slug(const std::string& name) {
+    std::string s; s.reserve(name.size());
+    bool prev_dash = false;
+    for (char c : name) {
+        const char lc = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if ((lc >= 'a' && lc <= 'z') || (lc >= '0' && lc <= '9')) { s += lc; prev_dash = false; }
+        else if (!prev_dash) { s += '-'; prev_dash = true; }
+    }
+    while (!s.empty() && s.front() == '-') s.erase(s.begin());
+    while (!s.empty() && s.back()  == '-') s.pop_back();
+    return s;
+}
+
+// The bundled preview directory: Resources/reference (app bundle) or <exe_dir>/reference (non-bundle),
+// mirroring the shader-library resolution (gpu/shader_library.cpp).
+std::string preview_dir() {
+    namespace fs = std::filesystem;
+    const std::string exe = vivid::platform::executable_path();
+    if (exe.empty()) return {};
+    const fs::path exe_dir = fs::path(exe).parent_path();
+    const fs::path bundled = (exe_dir / ".." / "Resources" / "reference").lexically_normal();
+    if (fs::exists(bundled)) return bundled.string();
+    return (exe_dir / "reference").lexically_normal().string();   // non-bundle fallback
+}
+}  // namespace
+
+WGPUTextureView NodeGraph::preview_view(const std::string& slug) {
+    if (auto it = preview_cache_.find(slug); it != preview_cache_.end())
+        return it->second.view;   // may be null (cached "no preview")
+    PreviewTex out{};             // cache the result either way so we never re-attempt a missing/failed load
+    if (vg_ && vg_->device() && !slug.empty()) {
+        namespace fs = std::filesystem;
+        const std::string path = (fs::path(preview_dir()) / (slug + ".png")).string();
+        std::vector<uint8_t> rgba; uint32_t w = 0, h = 0;
+        if (!path.empty() && vivid::load_image(path, rgba, w, h) && w > 0 && h > 0) {
+            WGPUTextureDescriptor td{};
+            td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+            td.dimension = WGPUTextureDimension_2D;
+            td.size = { w, h, 1 };
+            td.format = WGPUTextureFormat_RGBA8Unorm;
+            td.mipLevelCount = 1; td.sampleCount = 1;
+            if (WGPUTexture t = wgpuDeviceCreateTexture(vg_->device(), &td)) {
+                WGPUTexelCopyTextureInfo dst{}; dst.texture = t; dst.mipLevel = 0; dst.origin = {0,0,0}; dst.aspect = WGPUTextureAspect_All;
+                WGPUTexelCopyBufferLayout lay{}; lay.offset = 0; lay.bytesPerRow = w * 4; lay.rowsPerImage = h;
+                WGPUExtent3D ext{ w, h, 1 };
+                wgpuQueueWriteTexture(vg_->queue(), &dst, rgba.data(), static_cast<size_t>(w) * h * 4, &lay, &ext);
+                out.tex  = t;
+                out.view = wgpuTextureCreateView(t, nullptr);
+            }
+        }
+    }
+    preview_cache_[slug] = out;
+    return out.view;
 }
 
 void NodeGraph::set_visual_graph(vivid::VisualGraph* vg) {
@@ -945,6 +1013,16 @@ void NodeGraph::chooser_show(double sx, double sy) {
     // stay DEFAULT), so the partition reads it directly.
     demote_recipes(entries, [](const Chooser::Entry& e) { return e.role; });
     chooser_.set_entries(std::move(entries));
+    // ADR-0050: draw each visual op's bundled preview thumbnail in its row. Rows with no committed
+    // preview (+ bridge/data-source rows) return false and fall back to the accent dot.
+    chooser_.set_preview_drawer([this](Renderer2D& r, const Chooser::Entry& e,
+                                       float x, float y, float w, float h) -> bool {
+        if (e.spawn.kind != SpawnKind::VisualOp) return false;
+        WGPUTextureView v = preview_view(preview_slug(e.spawn.type));
+        if (!v) return false;
+        r.draw_texture(x, y, w, h, v);
+        return true;
+    });
     chooser_.show(sx, sy, bx0_, by0_, bx1_, by1_);
 }
 

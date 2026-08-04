@@ -104,13 +104,16 @@ void Chooser::draw(Renderer2D& r) const {
         const float iy = py + kHdrH + vi * kRowH;
         if (hi == sel_) r.draw_rect(px + 2.f, iy, w - 4.f, kRowH, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 0.9f);
         const float* acc = e.accent ? e.accent : sty.dim;
-        // ADR-0050: when the owner supplies a preview painter, a 24x24 swatch replaces the accent dot
-        // in the left gutter and the text column shifts right past it. Otherwise a 5x5 accent dot.
+        // ADR-0050: when the owner supplies a preview painter, each row reserves a 24x24 swatch and the
+        // text column shifts right — uniformly, so the list stays aligned. The painter returns whether it
+        // actually drew; if not (no preview for this row), we fall back to the accent dot centered in the
+        // swatch area. Without a painter at all, it's the classic 5x5 dot in the narrow gutter.
         float tx = px + 24.f;                // left text column (label + summary)
         if (preview_fn_) {
             const float sw = 24.f, sxp = px + 6.f, syp = iy + 3.f;
-            preview_fn_(r, e, sxp, syp, sw, sw);
             tx = sxp + sw + 6.f;
+            if (!preview_fn_(r, e, sxp, syp, sw, sw))
+                r.draw_rect(sxp + sw * 0.5f - 2.5f, iy + 12.f, 5.f, 5.f, acc[0], acc[1], acc[2], e.enabled ? 1.0f : 0.4f);
         } else {
             r.draw_rect(px + 10.f, iy + 9.f, 5.f, 5.f, acc[0], acc[1], acc[2], e.enabled ? 1.0f : 0.4f);
         }
