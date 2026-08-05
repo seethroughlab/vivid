@@ -6,6 +6,7 @@
 #include "packages/package_manager.h"   // install_package
 #include "app/app.h"                     // op_registry + op_loaders
 #include "app/node_presets.h"            // ADR-0021/P4: node presets
+#include "cli/control_json.h"            // ADR-0047: port_stream_name (typed rejection message)
 
 #include <string>
 #include <vector>
@@ -63,6 +64,16 @@ void register_visuals_handlers(Handlers& handlers_) {
         if (port < 0 || (!output_primary && port >= nports))
             return err(code::kOutOfRange, "port " + std::to_string(port) + " out of range [0," + std::to_string(nports) + ")");
         const int src_port = b.value("src_port", 0);   // which OUTPUT of the source (multi-lane producers)
+        // ADR-0047: typed connection validation — reject a wire whose stream types don't match (the
+        // visual peer of the audio note-edge check). Only when actually connecting (in_idx>=0); a
+        // disconnect (input_id<0) always passes.
+        if (in_idx >= 0 && !c.vgraph->can_connect(idx, port, in_idx, src_port)) {
+            const VividPortDescriptor* od = c.vgraph->output_port_desc(in_idx, src_port);
+            const VividPortDescriptor* id = c.vgraph->input_port_desc(idx, port);
+            const char* os = od ? control_json::port_stream_name(*od) : nullptr;
+            const char* is = id ? control_json::port_stream_name(*id) : nullptr;
+            return err(code::kBadArg, std::string("incompatible ports: ") + (os ? os : "?") + " -> " + (is ? is : "?"));
+        }
         c.vgraph->set_input(idx, port, in_idx, src_port);   // N-input: wire src's out `src_port` -> node's input `port`
         tidy_layout(c);                            // re-tidy: node positions depend on the edges
         return ok();

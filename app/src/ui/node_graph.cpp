@@ -1451,7 +1451,11 @@ void NodeGraph::on_up(double x, double y) {
         }
     } else if (drag_mode_ == 4 && wire_from_ >= 0) {
         int tport = 0; int target = nearest_op_in(wx, wy, 18.0 / canvas_.view().scale, tport);
-        if (target >= 0 && vg_) { set_op_input_port(target, tport, wire_from_); note_edit_("Connect"); }
+        // ADR-0047: refuse a wire whose stream types don't match (the drag sources output port 0, as
+        // set_op_input_port does) — the wire just doesn't form, mirroring a rejected audio note edge.
+        if (target >= 0 && vg_ && vg_->can_connect(target, tport, wire_from_, 0)) {
+            set_op_input_port(target, tport, wire_from_); note_edit_("Connect");
+        }
     } else if (drag_mode_ == 6) {   // ADR-0033 P1: resolve the marquee against every op card
         std::vector<SelItem> items;
         const int n = vg_ ? int(vg_->nodes().size()) : 0;
