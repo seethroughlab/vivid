@@ -13,7 +13,8 @@ int main() {
     // The baseline this build understands. Pinned deliberately: bumping it means old files get
     // MIGRATED, so the bump and the migration have to be written together.
     //   v2 the dynamic-track set · v3 Composite's `mode` became an enum index (ADR-0016 / S5c)
-    CHECK(kSessionSchemaVersion == 3);
+    //   v4 graph sticky notes + per-node labels (ADR-0033 P5) — purely additive, read back with defaults
+    CHECK(kSessionSchemaVersion == 4);
 
     int fv = -1;
 
