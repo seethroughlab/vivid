@@ -503,6 +503,27 @@ void NodeGraph::get_node(int i, float& x, float& y, std::string& source, std::st
 void NodeGraph::reset_nodes() { data_.clear(); reg_.clear_mappings(); ++data_gen_; }   // ADR-0028: drop cached indices
 
 int NodeGraph::op_count() const { return vg_ ? int(vg_->nodes().size()) : 0; }
+
+// ADR-0033 P1: the single id<->index choke point (VisualGraph is index-addressed; VisualNode.id is the
+// stable key). O(n) scan — fine at these node counts, and the ONLY place ids become indices so the
+// selection (kept as stable ids) can drive index-based APIs safely across deletions.
+int NodeGraph::op_index_of_id(int id) const {
+    if (!vg_ || id < 0) return -1;
+    const auto& ns = vg_->nodes();
+    for (int i = 0; i < int(ns.size()); ++i) if (ns[i].id == id) return i;
+    return -1;
+}
+// Keep sel_op_ (the inspector target index) equal to the selection's primary; -1 when empty. Called
+// after any mutation of sel_ so the dock + pane-focus routing (active_graph reads selected_op()) agree.
+void NodeGraph::resync_sel_op_() { sel_op_ = op_index_of_id(sel_.primary()); }
+
+// Single-select node index i, replacing the multi-selection (the plain-click / keyboard-nav case).
+void NodeGraph::select_op(int i) {
+    const int n = vg_ ? int(vg_->nodes().size()) : 0;
+    sel_.replace((i >= 0 && i < n) ? vg_->nodes()[i].id : -1);
+    sel_op_ = (i >= 0 && i < n) ? i : -1;
+}
+
 // UX Ph4 F3: keyboard delete — mirrors the mouse ×-button path (node_graph.cpp on_down) but keeps a
 // selection on a neighbour so the keyboard flow can continue. Output is never removable.
 bool NodeGraph::delete_op(int i) {
@@ -511,7 +532,18 @@ bool NodeGraph::delete_op(int i) {
     sync_op_pos();
     const int n = int(vg_->nodes().size());
     sel_op_ = (n > 0) ? std::min(i, n - 1) : -1;   // stay in the visual graph on a neighbour (or deselect)
+    sel_.replace(sel_op_ >= 0 ? vg_->nodes()[sel_op_].id : -1);   // ADR-0033 P1: keep the set in sync
     note_edit_("Delete Node");
+    return true;
+}
+
+// ADR-0033 P1: remove by stable id (keyboard multi-delete). Structural only — the caller re-syncs the
+// selection + notes one undo entry after the whole batch, since ids stay valid across sibling removals.
+bool NodeGraph::delete_op_by_id(int id) {
+    const int i = op_index_of_id(id);
+    if (i < 0 || vg_->nodes()[i].is_output()) return false;
+    vg_->remove_node(i);
+    sync_op_pos();
     return true;
 }
 int NodeGraph::op_input_port_count(int i) const { return vg_ ? op_in_count(vg_, i) : 0; }
@@ -765,7 +797,7 @@ void NodeGraph::collect_nodes(std::vector<AdapterNode>& out) const {
         op_node_rect(i, a.rect.x, a.rect.y, a.rect.w, a.rect.h);
         float ar, ag, ab; op_accent(node, ar, ag, ab);
         a.accent[0] = ar; a.accent[1] = ag; a.accent[2] = ab;
-        a.selected = (i == sel_op_);
+        a.selected = sel_.contains(node.id) || i == sel_op_;   // ADR-0033 P1: ring every selected card
         // ADR-0016/0020: a node's live error is its own compile error, else the registry's last
         // hot-reload error for its op type (a compiled op keeps its old dylib running).
         std::string err = node.error();
@@ -951,6 +983,11 @@ void NodeGraph::draw(Renderer2D& r) {
         node_port(r, px, py, 5.f, 0.31f, 0.80f, 0.75f);
     }
 
+    // ADR-0033 P1: the marquee rubber-band, drawn in world space so it tracks the cards under zoom/pan.
+    if (drag_mode_ == 6)
+        node_marquee(r, { float(marq_x0_), float(marq_y0_),
+                          float(marq_x1_ - marq_x0_), float(marq_y1_ - marq_y0_) });
+
     r.set_transform(0.f, 0.f, 1.f);   // back to identity for chrome
     r.pop_clip_rect();
 }
@@ -1071,7 +1108,7 @@ int NodeGraph::drop_spawn(const std::string& op_type, double sx, double sy,
 
 void NodeGraph::draw_overlays(Renderer2D& r) { chooser_.draw(r); }
 
-bool NodeGraph::on_down(double x, double y) {
+bool NodeGraph::on_down(double x, double y, bool shift, bool super) {
     cx_ = x; cy_ = y;
     if (chooser_.open()) {   // click a row to spawn it, click anywhere else to dismiss
         bool dismissed = false;
@@ -1109,11 +1146,23 @@ bool NodeGraph::on_down(double x, double y) {
     for (int i = 0; i < n; ++i) {
         float ox, oy, ow, oh; op_node_rect(i, ox, oy, ow, oh);
         if (!vg_->nodes()[i].is_output() && hit({ ox + ow - 15.f, oy + 3.f, 12.f, 12.f }, wx, wy)) {
-            vg_->remove_node(i); sel_op_ = -1; sync_op_pos(); note_edit_("Delete Node"); return true;
+            vg_->remove_node(i); sel_.clear(); sel_op_ = -1; sync_op_pos(); note_edit_("Delete Node"); return true;
         }
         if (hit({ ox, oy, ow, oh }, wx, wy)) {
+            const int id = vg_->nodes()[i].id;
+            // ADR-0033 P1: ⇧/⌘-click toggles this card's membership (no drag). The blue ring follows.
+            if (shift || super) { sel_.toggle(id); resync_sel_op_(); return true; }
             if (vg_->nodes()[i].is_output()) { vg_->set_active_output(i); note_edit_("Set Output"); }  // clicking selects the viewer source
-            sel_op_ = i;  // select for the inspector (dock)
+            // Plain click on an UNselected card replaces the selection; clicking one already in the set
+            // keeps the set (so the whole group drags together) but re-anchors the primary to it.
+            if (!sel_.contains(id)) sel_.replace(id); else sel_.set_primary(id);
+            sel_op_ = i;  // the inspector / primary target
+            // Snapshot every selected op's world position so on_move can shift them by one shared delta.
+            grp_start_.clear();
+            for (int sid : sel_.ids()) {
+                const int si = op_index_of_id(sid);
+                if (si >= 0 && si < int(op_pos_.size())) grp_start_.push_back({ sid, op_pos_[si] });
+            }
             drag_mode_ = 2; drag_idx_ = i; dx_ = wx - ox; dy_ = wy - oy; return true;
         }
     }
@@ -1126,8 +1175,14 @@ bool NodeGraph::on_down(double x, double y) {
         if (hit({ data_[i].x, data_[i].y, data_[i].w, data_[i].h }, wx, wy)) {
             drag_mode_ = 1; drag_idx_ = i; dx_ = wx - data_[i].x; dy_ = wy - data_[i].y; return true;
         }
-    // empty canvas within the network pane -> pan the view (screen coords)
+    // empty canvas within the network pane. ADR-0033 P1: ⇧-drag rubber-bands a marquee (⌘ makes it
+    // additive); a plain drag pans the view (screen coords), preserving the existing gesture.
     if (x >= bx0_ && x < bx1_ && y >= by0_ && y < by1_) {
+        if (shift) {
+            drag_mode_ = 6; marq_add_ = super;
+            marq_x0_ = marq_x1_ = wx; marq_y0_ = marq_y1_ = wy;   // world corners
+            return true;
+        }
         drag_mode_ = 5; pan_last_x_ = float(x); pan_last_y_ = float(y); return true;
     }
     return false;
@@ -1140,8 +1195,24 @@ void NodeGraph::on_move(double x, double y) {
         data_[drag_idx_].x = float(wx - dx_); data_[drag_idx_].y = float(wy - dy_);
         note_edit_("Move Node", "move-node");
     } else if (drag_mode_ == 2 && drag_idx_ >= 0 && drag_idx_ < int(op_pos_.size())) {
-        op_pos_[drag_idx_] = { float(wx - dx_), float(wy - dy_) };
+        // ADR-0033 P1 group-drag: the grabbed node follows the cursor; every other selected node
+        // shifts by the same world delta (measured from the grabbed node's grab-time position).
+        const float tgt_x = float(wx - dx_), tgt_y = float(wy - dy_);
+        const int drag_id = (drag_idx_ < int(vg_->nodes().size())) ? vg_->nodes()[drag_idx_].id : -1;
+        float start_x = tgt_x, start_y = tgt_y;
+        for (const auto& e : grp_start_) if (e.first == drag_id) { start_x = e.second.first; start_y = e.second.second; break; }
+        const float ddx = tgt_x - start_x, ddy = tgt_y - start_y;
+        if (grp_start_.empty()) {
+            op_pos_[drag_idx_] = { tgt_x, tgt_y };
+        } else {
+            for (const auto& e : grp_start_) {
+                const int si = op_index_of_id(e.first);
+                if (si >= 0 && si < int(op_pos_.size())) op_pos_[si] = { e.second.first + ddx, e.second.second + ddy };
+            }
+        }
         note_edit_("Move Node", "move-node");
+    } else if (drag_mode_ == 6) {   // ADR-0033 P1: extend the marquee's far corner (world coords)
+        marq_x1_ = wx; marq_y1_ = wy;
     } else if (drag_mode_ == 5) {  // pan: move the view offset (screen-space delta)
         canvas_.pan(float(x) - pan_last_x_, float(y) - pan_last_y_);   // ADR-0023 #3d: shared camera gesture
         pan_last_x_ = float(x); pan_last_y_ = float(y);
@@ -1169,8 +1240,20 @@ void NodeGraph::on_up(double x, double y) {
     } else if (drag_mode_ == 4 && wire_from_ >= 0) {
         int tport = 0; int target = nearest_op_in(wx, wy, 18.0 / canvas_.view().scale, tport);
         if (target >= 0 && vg_) { set_op_input_port(target, tport, wire_from_); note_edit_("Connect"); }
+    } else if (drag_mode_ == 6) {   // ADR-0033 P1: resolve the marquee against every op card
+        std::vector<SelItem> items;
+        const int n = vg_ ? int(vg_->nodes().size()) : 0;
+        items.reserve(n);
+        for (int i = 0; i < n; ++i) {
+            float ox, oy, ow, oh; op_node_rect(i, ox, oy, ow, oh);
+            items.push_back({ vg_->nodes()[i].id, { ox, oy, ow, oh } });
+        }
+        sel_.resolve_marquee(items,
+            { float(marq_x0_), float(marq_y0_), float(marq_x1_ - marq_x0_), float(marq_y1_ - marq_y0_) },
+            marq_add_);
+        resync_sel_op_();
     }
-    drag_mode_ = 0; drag_idx_ = -1; wire_from_ = -1;
+    drag_mode_ = 0; drag_idx_ = -1; wire_from_ = -1; grp_start_.clear();
 }
 
 }  // namespace vivid::ui

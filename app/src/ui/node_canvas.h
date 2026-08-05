@@ -135,6 +135,15 @@ inline void node_error_note(Renderer2D& r, float tx, float ty, float tw, float t
     r.draw_text(tx + 4.f, ty + th - 12.f, first.c_str(), 0.98f, 0.55f, 0.55f, 1.0f, 0.62f);
 }
 
+// ADR-0033 P1: the marquee (rubber-band) rectangle drawn during a multi-select drag. Drawn in WORLD
+// space by both editors (inside the shared NodeView transform) so the band tracks the cards under
+// zoom/pan. `m` may have inverted extents at the call site; normalize before drawing.
+inline void node_marquee(Renderer2D& r, const Rect& m) {
+    const Style& s = style();
+    r.draw_rect(m.x, m.y, m.w, m.h, s.sel[0], s.sel[1], s.sel[2], 0.14f);              // translucent fill
+    r.draw_rect_outline(m.x, m.y, m.w, m.h, 1.f, s.sel[0], s.sel[1], s.sel[2], 0.85f); // 1px border
+}
+
 // A recessed preview panel (a node thumbnail well): a 1px frame + a near-black inset. Each editor
 // fills it with its own content — the visuals graph blits a GPU texture, the audio graph draws a
 // live waveform (node_waveform), an op can draw itself.

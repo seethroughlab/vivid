@@ -5,6 +5,7 @@
 #include "mapping.h"
 #include "ui/param_widget.h"   // NodeWidget + node_widget_kind (dock draw / input agree)
 #include "ui/node_canvas.h"    // NodeView — the shared pan/zoom transform (ADR-0023)
+#include "ui/graph_selection.h" // GraphSelection — shared multi-select set + marquee (ADR-0033 P1)
 #include "ui/graph_canvas.h"   // GraphCanvas — the shared graph-area draw skeleton (ADR-0023 Layer 2)
 #include "ui/graph_adapter.h"  // GraphModelAdapter — the shared node-enumeration contract (ADR-0023 Layer 1)
 #include "ui/chooser.h"        // the shared Tab palette (also used by the audio graph)
@@ -122,7 +123,13 @@ public:
     // Visual-node selection + inspector: the bottom dock edits the selected node's
     // base param values (the resolved value = clamp(base + live modulation)).
     int  selected_op() const { return sel_op_; }
-    void select_op(int i) { sel_op_ = i; }
+    void select_op(int i);   // single-select node index i (replaces the multi-selection); -1 clears
+    // ADR-0033 P1: the multi-selection (set of stable op-node ids). sel_op_ tracks its primary as an
+    // index (the inspector target). Read-only to callers; mutated by the gesture FSM + keyboard.
+    const GraphSelection& selection() const { return sel_; }
+    // Keyboard multi-delete: remove the op with stable id `id` (Output is never removable). Structural
+    // only — does NOT touch the selection or note undo; the caller re-syncs the set and notes one edit.
+    bool delete_op_by_id(int id);
     // Keyboard editing (UX Ph4 F3): guarded delete of op `i` (Output is never removable) + how many
     // input ports op `i` accepts (for keyboard wiring's target-port cycling). delete_op folds the edit
     // into undo and moves the selection to a neighbour (staying in the visual graph). Returns false if
@@ -169,7 +176,9 @@ public:
     void layout_nodes();                 // auto-arrange op nodes into a layered left->right layout
     void draw(Renderer2D& r);            // includes live node thumbnails (draw_texture)
     void draw_overlays(Renderer2D& r);   // chooser etc. — drawn after the node graph
-    bool on_down(double x, double y);
+    // ADR-0033 P1: shift/super carry the modifier state at press (kept GLFW-free — the shell computes
+    // them). shift = additive/marquee, super(⌘) = toggle a card / additive marquee.
+    bool on_down(double x, double y, bool shift, bool super);
     void on_move(double x, double y);
     void on_up(double x, double y);
     void zoom_at(double sx, double sy, float factor);   // scroll-wheel zoom around the cursor
@@ -228,7 +237,7 @@ private:
     std::vector<std::pair<float, float>> op_pos_;
     bool op_pos_init_ = false;
 
-    // 0 none, 1 data-node drag, 2 op-node drag, 3 data->param wire, 4 op->op wire, 5 pan
+    // 0 none, 1 data-node drag, 2 op-node drag, 3 data->param wire, 4 op->op wire, 5 pan, 6 marquee
     int    drag_mode_ = 0;
     int    drag_idx_ = -1;     // dragged node (data for mode 1, op for mode 2)
     int    wire_from_ = -1;    // data node (mode 3) or op node (mode 4) the wire starts at
@@ -236,7 +245,14 @@ private:
     int    pmreq_src_  = -1;   // Gesture B: the data node the dropped wire started from
     double pmreq_sx_ = 0, pmreq_sy_ = 0;   // Gesture B: the drop SCREEN position (where to open the menu)
     double dx_ = 0, dy_ = 0, cx_ = 0, cy_ = 0;
-    int    sel_op_ = -1;     // selected visual node (inspector target), -1 = none
+    int    sel_op_ = -1;     // selected visual node (inspector target = sel_'s primary), -1 = none
+    GraphSelection sel_;     // ADR-0033 P1: the multi-selection (stable op-node ids); view-state, never persisted
+    // Marquee gesture (drag_mode_ 6): the rubber-band corners in WORLD coords + whether it's additive (⌘).
+    double marq_x0_ = 0, marq_y0_ = 0, marq_x1_ = 0, marq_y1_ = 0;
+    bool   marq_add_ = false;
+    // Group-drag (drag_mode_ 2): each selected op's stable id + its op_pos_ at grab time, so every
+    // selected node moves by the same world delta. Snapshotted on press, cleared on release.
+    std::vector<std::pair<int, std::pair<float, float>>> grp_start_;
     GraphCanvas canvas_;   // ADR-0023 Layer 2: the shared draw skeleton AND the owner of the pan/zoom camera (#1)
     float  pan_last_x_ = 0.f, pan_last_y_ = 0.f;     // last cursor during a canvas pan
     void to_world(double sx, double sy, double& wx, double& wy) const { canvas_.view().to_world(sx, sy, wx, wy); }
@@ -261,6 +277,8 @@ private:
     int  find_source_node(const std::string& src) const;
 
     void sync_op_pos();
+    int  op_index_of_id(int id) const;   // ADR-0033 P1: stable op-node id -> current index, -1 if gone (O(n))
+    void resync_sel_op_();               // ADR-0033 P1: sel_op_ = index of sel_.primary() (-1 if empty)
     CardPorts card_ports(int i) const;   // shared card port-row layout (ADR-0023)
     void op_node_rect(int i, float& x, float& y, float& w, float& h) const;
     bool op_in_port(int i, int port, float& px, float& py) const;  // texture input port `port`; false if out of range

@@ -453,7 +453,8 @@ AdapterNode AudioNodeGraph::node_from_box(const AudioNodeBox& b, int idx) const 
                      : (b.kind == 5 ? sty.mod
                      : ((b.kind == 3 || b.kind == 4) ? sty.control : sty.gold)));
     a.accent[0] = acc[0]; a.accent[1] = acc[1]; a.accent[2] = acc[2];
-    a.selected = (b.node_id == sel_node_ && sel_node_ >= 0);
+    a.selected = (b.node_id == sel_node_ && sel_node_ >= 0)
+              || (sel_multi_ && sel_multi_->contains(b.node_id));   // ADR-0033 P1: ring every selected card
     // ADR-0019: a plugin node whose load terminally failed LOOKS broken (NOT while still loading).
     a.broken = P::session_audio_graph_node_plugin_failed(s_, track_, b.node_id) == 1;
     const char* type = P::session_track_audio_graph_node_type(s_, track_, idx);
@@ -699,6 +700,11 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const
                 canvas_.ghost_wire(r, p.x + 6.f, p.y + 6.f,
                                    static_cast<float>(wcx), static_cast<float>(wcy), sty.gold); break; }
     }
+
+    // ADR-0033 P1: the marquee rubber-band, drawn in world space so it tracks the cards under zoom/pan.
+    if (marquee_)
+        node_marquee(r, { static_cast<float>(marq_x0_), static_cast<float>(marq_y0_),
+                          static_cast<float>(marq_x1_ - marq_x0_), static_cast<float>(marq_y1_ - marq_y0_) });
 
     r.set_transform(0.f, 0.f, 1.f);   // ADR-0023 #3: back to identity — the chrome below is screen-space
     // Adding a node is Tab (the unified catalog: native ops + VST3 + CLAP). No on-canvas hint — the
