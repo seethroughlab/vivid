@@ -172,6 +172,41 @@ void register_visuals_handlers(Handlers& handlers_) {
         return ok();
     };
 
+    // ADR-0033 P5: per-node label — a user rename shown instead of op_type (mirrors set_scene_name).
+    handlers_["set_node_name"] = [](const ControlCtx& c, const json& b) {
+        if (!c.graph || !c.vgraph) return err(code::kNoGraph, "no graph");
+        const int idx = op_index_by_id(c.vgraph, b.value("node_id", -1));
+        if (idx < 0) return err(code::kNotFound, "no node with that node_id");
+        c.graph->set_op_name_at(idx, b.value("name", std::string()));
+        json r = ok(); r["node_id"] = b.value("node_id", -1); r["name"] = c.graph->op_name_at(idx); return r;
+    };
+
+    // ADR-0033 P5: sticky-note annotations — persisted, MCP-addressable explainability text.
+    handlers_["add_annotation"] = [](const ControlCtx& c, const json& b) {
+        if (!c.graph) return err(code::kNoGraph, "no graph");
+        const int id = c.graph->add_annotation(b.value("x", 560.f), b.value("y", 488.f));
+        if (b.contains("text")) c.graph->set_annotation_text(id, b.value("text", std::string()));
+        json r = ok(); r["id"] = id; return r;
+    };
+    handlers_["set_annotation_text"] = [](const ControlCtx& c, const json& b) {
+        if (!c.graph) return err(code::kNoGraph, "no graph");
+        if (!c.graph->set_annotation_text(b.value("id", -1), b.value("text", std::string())))
+            return err(code::kNotFound, "no annotation with that id");
+        return ok();
+    };
+    handlers_["move_annotation"] = [](const ControlCtx& c, const json& b) {
+        if (!c.graph) return err(code::kNoGraph, "no graph");
+        if (!c.graph->move_annotation(b.value("id", -1), b.value("x", 0.f), b.value("y", 0.f)))
+            return err(code::kNotFound, "no annotation with that id");
+        return ok();
+    };
+    handlers_["remove_annotation"] = [](const ControlCtx& c, const json& b) {
+        if (!c.graph) return err(code::kNoGraph, "no graph");
+        if (!c.graph->remove_annotation(b.value("id", -1)))
+            return err(code::kNotFound, "no annotation with that id");
+        return ok();
+    };
+
 }
 
 }  // namespace vivid

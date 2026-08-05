@@ -28,6 +28,7 @@ struct VisualNode {
                                 // Lets a multi-output producer (e.g. a LanePalette emitting r/g/b lanes)
                                 // feed different consumer ports from one node. 0 for every legacy edge.
     int   id = 0;               // stable identity (params + mappings + persistence)
+    std::string label;          // ADR-0033 P5: optional user rename shown instead of op_type (empty = op_type)
     std::vector<float> params;  // resolved param values (collect_params order 0..n-1)
     std::vector<float> base;    // manual base values (inspector); resolved = clamp(base + mod)
     std::vector<std::string> file_params;  // FILE/TEXT param string values (parallel to params; non-file slots empty)

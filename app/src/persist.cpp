@@ -388,6 +388,7 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
             params[g.op_param_label_at(i, p)] = g.op_param_base_at(i, p);
         json jn = { {"op_type", g.op_type_at(i)}, {"in", in}, {"id", id}, {"x", x}, {"y", y},
                     {"base", { base[0], base[1], base[2], base[3] }}, {"params", params} };
+        if (const std::string name = g.op_name_at(i); !name.empty()) jn["name"] = name;   // ADR-0033 P5 label
         if (const int inb = g.op_input_b_at(i); inb >= 0) jn["in_b"] = inb;   // legacy 2-in (read by old vivid)
         if (auto ins = g.op_inputs_at(i); !ins.empty()) jn["ins"] = ins;      // N-input edge array (authority)
         if (auto sps = g.op_in_src_ports_at(i); !sps.empty()) jn["in_ports"] = sps;  // source-output-port per edge (multi-lane)
@@ -411,6 +412,14 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
         chain.push_back(jn);
     }
     jg["chain"] = chain;
+    // ADR-0033 P5: sticky-note annotations (free-floating explainability text on the canvas).
+    json annos = json::array();
+    for (int i = 0; i < g.annotation_count(); ++i) {
+        int aid = 0; std::string text; float ax = 0.f, ay = 0.f, aw = 0.f, ah = 0.f;
+        if (g.get_annotation(i, aid, text, ax, ay, aw, ah))
+            annos.push_back({ {"id", aid}, {"text", text}, {"x", ax}, {"y", ay}, {"w", aw}, {"h", ah} });
+    }
+    if (!annos.empty()) jg["annotations"] = annos;
     float vox = 0.f, voy = 0.f, vscale = 1.f; g.get_view(vox, voy, vscale);
     jg["view"] = { {"ox", vox}, {"oy", voy}, {"scale", vscale} };
     j["graph"] = jg;
@@ -885,6 +894,8 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                 }
                 if (ch[i].contains("asset"))   // CustomShader .glsl reference (project-relative)
                     g.set_op_asset_at(i, ch[i]["asset"].get<std::string>());
+                if (ch[i].contains("name"))    // ADR-0033 P5: user label (absent in v3 ⇒ op_type)
+                    g.set_op_name_at(i, ch[i]["name"].get<std::string>());
                 if (ch[i].contains("file_params") && ch[i]["file_params"].is_object())   // FILE/TEXT params (Image path)
                     for (int l = 0; l < g.op_param_count_at(i); ++l) {
                         const char* name = g.op_param_label_at(i, l);
@@ -931,6 +942,11 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                 else                                                        // legacy: packed integer char_id
                     g.add_node_raw(title, jn.value("char_id", 0), x, y);
             }
+        if (jg.contains("annotations"))   // ADR-0033 P5: sticky notes (absent in v3 ⇒ none)
+            for (const auto& ja : jg["annotations"])
+                g.add_annotation_raw(ja.value("id", 0), ja.value("text", std::string()),
+                                     ja.value("x", 560.f), ja.value("y", 488.f),
+                                     ja.value("w", 180.f), ja.value("h", 96.f));
         if (jg.contains("shader") && jg["shader"].size() >= 2)
             g.set_shader(jg["shader"][0].get<float>(), jg["shader"][1].get<float>());
         if (jg.contains("view")) {

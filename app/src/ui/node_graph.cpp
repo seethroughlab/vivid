@@ -500,7 +500,80 @@ void NodeGraph::get_node(int i, float& x, float& y, std::string& source, std::st
     if (i < 0 || i >= int(data_.size())) return;
     x = data_[i].x; y = data_[i].y; source = data_[i].source; title = data_[i].title;
 }
-void NodeGraph::reset_nodes() { data_.clear(); reg_.clear_mappings(); ++data_gen_; }   // ADR-0028: drop cached indices
+void NodeGraph::reset_nodes() {
+    data_.clear(); reg_.clear_mappings(); ++data_gen_;   // ADR-0028: drop cached indices
+    annos_.clear(); next_anno_id_ = 0;                   // ADR-0033 P5: notes reload from the session
+}
+
+// ADR-0033 P5: per-node label (proxies to the VisualNode's persisted `label`).
+std::string NodeGraph::op_name_at(int i) const {
+    return (vg_ && i >= 0 && i < int(vg_->nodes().size())) ? vg_->nodes()[i].label : std::string();
+}
+void NodeGraph::set_op_name_at(int i, const std::string& name) {
+    if (vg_ && i >= 0 && i < int(vg_->nodes().size())) vg_->nodes()[i].label = name;
+}
+
+// ADR-0033 P5: sticky-note annotations.
+int NodeGraph::anno_index_of_(int id) const {
+    for (int i = 0; i < int(annos_.size()); ++i) if (annos_[i].id == id) return i;
+    return -1;
+}
+int NodeGraph::add_annotation(float x, float y) {
+    const int id = next_anno_id_++;
+    annos_.push_back({ id, x, y, 180.f, 96.f, std::string() });   // default note size
+    return id;
+}
+void NodeGraph::add_annotation_raw(int id, const std::string& text, float x, float y, float w, float h) {
+    annos_.push_back({ id, x, y, w, h, text });
+    if (id >= next_anno_id_) next_anno_id_ = id + 1;   // keep ids monotonic across a load
+}
+bool NodeGraph::remove_annotation(int id) {
+    const int i = anno_index_of_(id);
+    if (i < 0) return false;
+    annos_.erase(annos_.begin() + i);
+    return true;
+}
+bool NodeGraph::set_annotation_text(int id, const std::string& text) {
+    const int i = anno_index_of_(id);
+    if (i < 0) return false;
+    annos_[i].text = text;
+    return true;
+}
+bool NodeGraph::move_annotation(int id, float x, float y) {
+    const int i = anno_index_of_(id);
+    if (i < 0) return false;
+    annos_[i].x = x; annos_[i].y = y;
+    return true;
+}
+bool NodeGraph::get_annotation(int i, int& id, std::string& text, float& x, float& y, float& w, float& h) const {
+    if (i < 0 || i >= int(annos_.size())) return false;
+    const Annotation& a = annos_[i];
+    id = a.id; text = a.text; x = a.x; y = a.y; w = a.w; h = a.h;
+    return true;
+}
+std::string NodeGraph::annotation_text_of(int id) const {
+    const int i = anno_index_of_(id);
+    return (i >= 0) ? annos_[i].text : std::string();
+}
+int NodeGraph::annotation_at_world(double wx, double wy) const {
+    // Top-most first (later notes draw on top), so a click grabs the visible one.
+    for (int i = int(annos_.size()) - 1; i >= 0; --i) {
+        const Annotation& a = annos_[i];
+        if (wx >= a.x && wx < a.x + a.w && wy >= a.y && wy < a.y + a.h) return a.id;
+    }
+    return -1;
+}
+int NodeGraph::annotation_at_screen(double sx, double sy) const {
+    double wx, wy; to_world(sx, sy, wx, wy);
+    return annotation_at_world(wx, wy);
+}
+int NodeGraph::add_note_centered() {
+    // Place the note near the viewport centre (in world space) so it lands where the user is looking.
+    double wx, wy; to_world((bx0_ + bx1_) * 0.5, (by0_ + by1_) * 0.5, wx, wy);
+    const int id = add_annotation(static_cast<float>(wx) - 90.f, static_cast<float>(wy) - 48.f);
+    note_edit_("Add Note");
+    return id;
+}
 
 int NodeGraph::op_count() const { return vg_ ? int(vg_->nodes().size()) : 0; }
 
@@ -804,7 +877,10 @@ void NodeGraph::collect_nodes(std::vector<AdapterNode>& out) const {
         if (err.empty() && vg_->registry())
             err = vg_->registry()->reload_error(node.op_type);
         a.broken = !err.empty();
-        a.title = node.op_type;
+        // ADR-0033 P5: show the user rename over op_type; while THIS node is being renamed, show the
+        // live edit buffer + a caret so typing is visible on the card.
+        if (i == edit_node_ && edit_buf_) a.title = *edit_buf_ + "|";
+        else a.title = node.label.empty() ? node.op_type : node.label;
         a.error = std::move(err);
         out.push_back(std::move(a));
     }
@@ -987,6 +1063,17 @@ void NodeGraph::draw(Renderer2D& r) {
     if (drag_mode_ == 6)
         node_marquee(r, { float(marq_x0_), float(marq_y0_),
                           float(marq_x1_ - marq_x0_), float(marq_y1_ - marq_y0_) });
+    // ADR-0033 P5: sticky notes — drawn last so they float on top of the graph. The note being typed
+    // shows the live edit buffer + a caret; others show their committed text (word-wrapped).
+    for (const auto& a : annos_) {
+        const bool editing = (a.id == edit_anno_);
+        node_sticky(r, { a.x, a.y, a.w, a.h }, editing);
+        const std::string shown = (editing && edit_buf_) ? (*edit_buf_ + "|") : a.text;
+        r.draw_text_wrapped(a.x + 8.f, a.y + 9.f, shown.c_str(), a.w - 16.f,
+                            sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
+        // delete × (top-right); hit-tested in on_down.
+        r.draw_text(a.x + a.w - 13.f, a.y + 3.f, "\xC3\x97", sty.dim[0], sty.dim[1], sty.dim[2], 0.9f, sty.fs_label);
+    }
 
     r.set_transform(0.f, 0.f, 1.f);   // back to identity for chrome
     r.pop_clip_rect();
@@ -1123,6 +1210,17 @@ bool NodeGraph::on_down(double x, double y, bool shift, bool super) {
     cx_ = wx; cy_ = wy;  // world cursor for drag-preview wires
     const double hr = 13.0 / canvas_.view().scale, pr = 12.0 / canvas_.view().scale;
 
+    // ADR-0033 P5: sticky notes float on top — hit-test them before nodes/ports. Top-most first.
+    for (int i = int(annos_.size()) - 1; i >= 0; --i) {
+        const Annotation& a = annos_[i];
+        if (hit({ a.x + a.w - 15.f, a.y + 2.f, 14.f, 14.f }, wx, wy)) {   // delete ×
+            remove_annotation(a.id); note_edit_("Delete Note"); return true;
+        }
+        if (hit({ a.x, a.y, a.w, a.h }, wx, wy)) {                        // body → drag
+            drag_mode_ = 7; anno_drag_ = a.id; dx_ = wx - a.x; dy_ = wy - a.y; return true;
+        }
+    }
+
     // disconnect an op input or a param port
     int oiPort = 0; int oi = nearest_op_in(wx, wy, hr, oiPort);
     if (oi >= 0) { set_op_input_port(oi, oiPort, -1); note_edit_("Disconnect"); return true; }
@@ -1213,6 +1311,9 @@ void NodeGraph::on_move(double x, double y) {
         note_edit_("Move Node", "move-node");
     } else if (drag_mode_ == 6) {   // ADR-0033 P1: extend the marquee's far corner (world coords)
         marq_x1_ = wx; marq_y1_ = wy;
+    } else if (drag_mode_ == 7 && anno_drag_ >= 0) {   // ADR-0033 P5: drag a sticky note
+        move_annotation(anno_drag_, float(wx - dx_), float(wy - dy_));
+        note_edit_("Move Note", "move-note");
     } else if (drag_mode_ == 5) {  // pan: move the view offset (screen-space delta)
         canvas_.pan(float(x) - pan_last_x_, float(y) - pan_last_y_);   // ADR-0023 #3d: shared camera gesture
         pan_last_x_ = float(x); pan_last_y_ = float(y);
@@ -1253,7 +1354,7 @@ void NodeGraph::on_up(double x, double y) {
             marq_add_);
         resync_sel_op_();
     }
-    drag_mode_ = 0; drag_idx_ = -1; wire_from_ = -1; grp_start_.clear();
+    drag_mode_ = 0; drag_idx_ = -1; wire_from_ = -1; grp_start_.clear(); anno_drag_ = -1;
 }
 
 }  // namespace vivid::ui

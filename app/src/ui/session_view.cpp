@@ -682,6 +682,11 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
       const bool rlh = hit(rl, mx, my);
       item_box(ui, rl, sty.gpu, rlh);
       ui.draw_text(rl.x + 8.f, rl.y + 2.f, "Re-layout", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
+    // ADR-0033 P5: the "+ Note" sticky-note create button, left of Re-layout.
+    { const Rect nb = graph_add_note_rect(w.win_w, w.win_h, w.split_x, w.dock_h);
+      const bool nbh = hit(nb, mx, my);
+      item_box(ui, nb, sty.gold, nbh);
+      ui.draw_text(nb.x + 8.f, nb.y + 2.f, "+ Note", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
     ui.pop_clip_rect();
 
     // DAW | visuals splitter (on top, unclipped): a full-height rule from the transport to the dock,

@@ -68,6 +68,26 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
         }
         return;  // swallow all keys while the modal is up
     }
+    // ADR-0033 P5: in-canvas text editing (a sticky note or a node rename) owns the keyboard while
+    // active — before the choosers / musical typing / shortcuts, so typed text never leaks into them.
+    if (win->text_edit_kind != 0) {
+        if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+            if (key == GLFW_KEY_BACKSPACE) { if (!win->text_edit_buf.empty()) win->text_edit_buf.pop_back(); }
+            else if (key == GLFW_KEY_ESCAPE) {          // cancel — leave the prior text unchanged
+                win->text_edit_kind = 0; win->text_edit_target = -1; win->text_edit_buf.clear();
+            }
+            else if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {   // commit
+                if (app->graph) {
+                    if (win->text_edit_kind == 1) app->graph->set_op_name_at(win->text_edit_target, win->text_edit_buf);
+                    else                          app->graph->set_annotation_text(win->text_edit_target, win->text_edit_buf);
+                    if (app->edit_gateway)
+                        app->edit_gateway->note_edit(win->text_edit_kind == 1 ? "Rename Node" : "Edit Note", "");
+                }
+                win->text_edit_kind = 0; win->text_edit_target = -1; win->text_edit_buf.clear();
+            }
+        }
+        return;  // swallow all keys while editing text
+    }
     // The operator chooser captures the keyboard while open (repeat allowed for nav).
     if (app->graph && app->graph->chooser_open()) {
         if (action == GLFW_PRESS || action == GLFW_REPEAT) {
@@ -207,6 +227,12 @@ void char_callback(GLFWwindow* w, unsigned int cp) {
         if (!super && cp >= 0x20 && cp < 0x7f) win->gemini_key_buf.push_back(static_cast<char>(cp));  // ⌘V is handled in key_callback
         return;
     }
+    if (win->text_edit_kind != 0) {   // ADR-0033 P5: typing into a sticky note / node rename
+        const bool super = glfwGetKey(w, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS ||
+                           glfwGetKey(w, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS;
+        if (!super && cp >= 0x20 && cp < 0x7f) win->text_edit_buf.push_back(static_cast<char>(cp));
+        return;
+    }
     if (vivid::input::audio_chooser_char(*win, cp)) return;    // the audio chooser has the keyboard
     if (vivid::input::generator_chooser_char(*win, cp)) return;   // ADR-0050 generator picker filter typing
     if (vivid::input::param_chooser_char(*win, cp)) return;    // ...or the "+ Add param" palette (Phase 2c)
@@ -296,6 +322,13 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         && hit(vivid::ui::graph_relayout_rect(win->win_w, win->win_h, win->split_x, win->dock_h), mx, my)) {
         app->graph->layout_nodes();
         if (app->edit_gateway) app->edit_gateway->note_edit("Auto-Layout", "");
+        return;
+    }
+    // ADR-0033 P5: the "+ Note" chrome — create a sticky note at the viewport centre and start typing.
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app->graph
+        && hit(vivid::ui::graph_add_note_rect(win->win_w, win->win_h, win->split_x, win->dock_h), mx, my)) {
+        const int id = app->graph->add_note_centered();   // notes the "Add Note" undo entry itself
+        win->text_edit_kind = 2; win->text_edit_target = id; win->text_edit_buf.clear();   // type into it now
         return;
     }
     // (The File menu is now a native OS menu — see platform/menu_bar.*.)
@@ -533,8 +566,26 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (vivid::input::clipgrid_mixer(*win, *app, mx, my, tracks, scenes)) return;
     // A visuals node's header chevron opens its show/hide-params menu (before on_down would start a drag).
     if (vivid::input::graph_param_curate_click(*win, *app, button, action, mx, my)) return;
+    // ADR-0033 P5: double-click a sticky note to edit its text, or a node to rename it. Notes float on
+    // top, so they win the hit-test. Single clicks fall through to on_down (select / drag / pan).
+    if (app->graph && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        const double now = glfwGetTime();
+        const int note = app->graph->annotation_at_screen(mx, my);
+        const int node = (note < 0) ? app->graph->op_at(mx, my) : -1;
+        const bool dbl = (now - win->vg_last_click_t) < 0.35;
+        if (note >= 0 && dbl && note == win->vg_last_click_note) {
+            win->text_edit_kind = 2; win->text_edit_target = note;
+            win->text_edit_buf = app->graph->annotation_text_of(note); win->vg_last_click_t = -1; return;
+        }
+        if (node >= 0 && dbl && node == win->vg_last_click_node) {
+            win->text_edit_kind = 1; win->text_edit_target = node;
+            win->text_edit_buf = app->graph->op_name_at(node); win->vg_last_click_t = -1; return;
+        }
+        win->vg_last_click_t = now; win->vg_last_click_note = note; win->vg_last_click_node = node;
+    }
+    // ADR-0033 P1: shift/super carry multi-select modifiers into the visual gesture FSM.
     if (app->graph && app->graph->on_down(mx, my, (mods & GLFW_MOD_SHIFT) != 0, (mods & GLFW_MOD_SUPER) != 0))
-        return;  // node graph consumed it (it owns the visuals column) — ADR-0033 P1 mods for multi-select
+        return;  // node graph consumed it (it owns the visuals column)
     // clip cells (single-click arms/launches, double-click opens editor) + scene-launch buttons.
     if (vivid::input::clipgrid_cells(*win, *app, mx, my, tracks, scenes)) return;
 }

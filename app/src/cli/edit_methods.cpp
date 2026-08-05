@@ -18,6 +18,12 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "set_node_param",      { "Set Param",          true  } },
         { "set_node_file_param", { "Set File",           true  } },
         { "set_node_asset",      { "Set Asset",          true  } },
+        // ---- annotations + labels (ADR-0033 P5) ----
+        { "set_node_name",       { "Rename Node",        false } },
+        { "add_annotation",      { "Add Note",           false } },
+        { "set_annotation_text", { "Edit Note",          false } },
+        { "move_annotation",     { "Move Note",          true  } },
+        { "remove_annotation",   { "Delete Note",        false } },
         // ---- the bridge (G2) ----
         { "connect_mapping",     { "Connect Mapping",    false } },
         { "map_audio_to_visual_param", { "Connect Mapping", false } },

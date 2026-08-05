@@ -1020,7 +1020,8 @@ void register_introspection_handlers(Handlers& handlers_) {
             for (int l = 0; l < g.op_param_count_at(i); ++l)
                 params.push_back({ {"name", g.op_param_label_at(i, l)}, {"base", g.op_param_base_at(i, l)},
                                    {"value", g.op_param_value_at(i, l)}, {"wired", g.op_param_wired_at(i, l)} });
-            nodes.push_back({ {"id", id}, {"op", g.op_kind_name(i)}, {"input", in},
+            nodes.push_back({ {"id", id}, {"op", g.op_kind_name(i)}, {"name", g.op_name_at(i)},  // ADR-0033 P5 label
+                              {"input", in},
                               {"inputs", g.op_inputs_at(i)},   // all texture input edges (port order)
                               {"x", x}, {"y", y}, {"params", params} });
         }
@@ -1029,9 +1030,16 @@ void register_introspection_handlers(Handlers& handlers_) {
             float x = 0, y = 0; std::string source, title; g.get_node(i, x, y, source, title);
             dnodes.push_back({ {"source", source}, {"title", title} });
         }
+        json annos = json::array();   // ADR-0033 P5: sticky notes
+        for (int i = 0; i < g.annotation_count(); ++i) {
+            int aid = 0; std::string text; float ax = 0, ay = 0, aw = 0, ah = 0;
+            if (g.get_annotation(i, aid, text, ax, ay, aw, ah))
+                annos.push_back({ {"id", aid}, {"text", text}, {"x", ax}, {"y", ay}, {"w", aw}, {"h", ah} });
+        }
         json r = ok();
         r["nodes"] = nodes;
         r["data_nodes"] = dnodes;
+        r["annotations"] = annos;
         if (c.vgraph) { r["active_output"] = c.vgraph->active_output_id(); r["generator"] = c.vgraph->generator(); }
         return r;
     };

@@ -433,6 +433,40 @@ def add_data_node(source: str) -> dict:
     return _post("add_data_node", {"source": source})
 
 
+# ---------------- annotations + labels (ADR-0033 P5) ----------------
+@mcp.tool
+def set_node_name(node_id: int, name: str) -> dict:
+    """Rename a visual graph node — a user label shown on its card instead of the op type. An empty
+    name resets it to the op type. Persists with the session; reported by get_graph. Undoable."""
+    return _post("set_node_name", {"node_id": node_id, "name": name})
+
+
+@mcp.tool
+def add_annotation(x: float = 560.0, y: float = 488.0, text: str = "") -> dict:
+    """Add a sticky note to the visual graph canvas at world position (x,y) — free-floating
+    explainability text (not a graph node; no wiring). Returns its id. Persists; undoable.
+    Use it to leave intent in the session for a human or another agent."""
+    return _post("add_annotation", {"x": x, "y": y, "text": text})
+
+
+@mcp.tool
+def set_annotation_text(id: int, text: str) -> dict:
+    """Set a sticky note's text (id from add_annotation / get_graph annotations). Undoable."""
+    return _post("set_annotation_text", {"id": id, "text": text})
+
+
+@mcp.tool
+def move_annotation(id: int, x: float, y: float) -> dict:
+    """Move a sticky note to world position (x,y). Undoable."""
+    return _post("move_annotation", {"id": id, "x": x, "y": y})
+
+
+@mcp.tool
+def remove_annotation(id: int) -> dict:
+    """Delete a sticky note by id. Undoable."""
+    return _post("remove_annotation", {"id": id})
+
+
 # ---------------- mapping (the bridge) ----------------
 @mcp.tool
 def connect_mapping(src: str, dst: str, amount: float = 1.0, curve: float = 0.0,
