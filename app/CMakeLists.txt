@@ -586,6 +586,17 @@ if(VIVID_BUILD_TESTS AND APPLE)
     add_test(NAME test_clap_plugin_roundtrip COMMAND test_clap_plugin_roundtrip)
     set_tests_properties(test_clap_plugin_roundtrip PROPERTIES LABELS "AUDIO_ENGINE")
 
+    # ADR-0045 Tier 2a: the plugin watchdog, driven through the real render path with a deliberately-slow
+    # build of the same CLAP fixture (VIVID_TEST_CLAP_SLOW_MS).
+    add_executable(test_plugin_watchdog tests/test_plugin_watchdog.cpp ${_audio_engine_srcs})
+    target_include_directories(test_plugin_watchdog PRIVATE src src/audio src/gpu tests)
+    target_link_libraries(test_plugin_watchdog PRIVATE ${_audio_engine_libs})
+    add_dependencies(test_plugin_watchdog vivid_test_clap)    # the .clap must exist before the test runs
+    target_compile_definitions(test_plugin_watchdog PRIVATE
+        VIVID_TEST_CLAP_PATH="$<TARGET_BUNDLE_DIR:vivid_test_clap>")
+    add_test(NAME test_plugin_watchdog COMMAND test_plugin_watchdog)
+    set_tests_properties(test_plugin_watchdog PROPERTIES LABELS "AUDIO_ENGINE")
+
     # ADR-0034 Phase 1: control-edge modulation reaches a CLAP plugin param (uses the same fixture).
     add_executable(test_clap_modulation tests/test_clap_modulation.cpp ${_audio_engine_srcs})
     target_include_directories(test_clap_modulation PRIVATE src src/audio src/gpu tests)

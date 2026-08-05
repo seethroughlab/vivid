@@ -6,6 +6,7 @@
 // which gave everything internal linkage and is exactly what kept vst3_host.cpp a single TU.
 
 #include "vivid_audio_context.h"
+#include "audio/plugin_watchdog.h"   // ADR-0045 Tier 2a: PluginFaultState
 #include "base64.h"
 #include "pluginterfaces/base/funknown.h"
 #include "pluginterfaces/base/ipluginbase.h"
@@ -531,6 +532,7 @@ struct Vst3Handle {
     IEditController*   controller            = nullptr;
     bool               controller_is_owned   = false; // created separately; we must terminate+release
     bool               processing            = false;  // setProcessing(true) called
+    vivid::audio::PluginFaultState watchdog;           // ADR-0045 Tier 2a: over-budget strikes + faulted latch
     Vst3ComponentHandler component_handler;           // stub for setComponentHandler
     ParamQueue         param_q;                        // UI->audio parameter changes
 
