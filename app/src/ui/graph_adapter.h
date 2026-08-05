@@ -28,6 +28,7 @@ struct AdapterNode {
     float       accent[3] = { 0.5f, 0.5f, 0.5f };  // card accent color (by value — sources are per-node locals)
     bool        selected = false;   // the inspector selection (drives the blue ring in card())
     bool        broken   = false;   // ADR-0019 error state (drives the red border + "!" badge in card())
+    bool        bypassed = false;   // ADR-0033 P3 — routed around; card dims + a "BYP" badge is drawn
     std::string title;              // header label
     std::string error;              // first error line (empty = healthy); the editor draws it over the preview
 };

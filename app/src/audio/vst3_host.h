@@ -446,6 +446,9 @@ int         session_audio_graph_load_plugin_node(Session*, int track, int node_i
                                                  int format, int is_source, const char* uid,
                                                  const char* state);
 int         session_audio_graph_remove_node(Session*, int track, int node_id);      // 1 ok / 0 fail (effects only)
+// ADR-0033 Phase 3: per-node bypass (route signal around it). set: recompiles + republishes; 1 ok / 0 bad node.
+int         session_audio_graph_set_node_bypass(Session*, int track, int node_id, int on);
+int         session_audio_graph_node_bypassed(Session*, int track, int node_id);    // 1 if bypassed
 int         session_audio_graph_connect(Session*, int track, int from_id, int to_id);   // 1 ok / 0 (dup/cycle/bad)
 // ADR-0022 P4: the session-global (gnid) node API — address a node by its session-global id instead
 // of (track, local node id). Delegates to the per-track functions (identical behaviour). The MCP +
@@ -459,6 +462,8 @@ const char* session_graph_node_param_name(Session*, int gnid, int i);
 float       session_graph_node_param_get(Session*, int gnid, int i);
 void        session_graph_node_param_set(Session*, int gnid, int i, float v);
 int         session_graph_remove_node(Session*, int gnid);
+int         session_graph_node_set_bypass(Session*, int gnid, int on);   // ADR-0033 P3
+int         session_graph_node_bypassed(Session*, int gnid);             // ADR-0033 P3; 1 if bypassed
 int         session_graph_connect(Session*, int from_gnid, int to_gnid, int kind);      // intra OR cross-track; 0 audio/1 note
 int         session_graph_disconnect(Session*, int from_gnid, int to_gnid, int kind);
 int         session_graph_connect_control(Session*, int from_gnid, int to_gnid, int dest_param, float amount, float curve, int invert, int bipolar);

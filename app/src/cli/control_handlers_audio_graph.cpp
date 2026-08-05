@@ -102,6 +102,23 @@ void register_audio_graph_handlers(Handlers& handlers_) {
         if (new_ids.empty()) return err(code::kNotFound, "no duplicable nodes among those ids");
         json r = ok(); r["ids"] = new_ids; return r;
     };
+    // ADR-0033 P3: bypass a set of audio nodes (route signal around each). An effect passes its input
+    // through untouched, a source/generator gates to silence, a modulator emits no control. Persisted +
+    // undoable; recompiles + republishes the track plan. `bypass` false restores them.
+    handlers_["set_node_bypass"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        std::vector<int> ids;
+        if (b.contains("ids") && b["ids"].is_array())
+            for (const auto& j : b["ids"]) if (j.is_number_integer()) ids.push_back(j.get<int>());
+        if (ids.empty()) return err(code::kBadArg, "ids: expected a non-empty array of node ids");
+        const int on = b.value("bypass", true) ? 1 : 0;
+        int n = 0;
+        for (int id : ids) n += P::session_audio_graph_set_node_bypass(c.session, track, id, on);
+        if (n == 0) return err(code::kNotFound, "no matching nodes among those ids");
+        json r = ok(); r["count"] = n; return r;
+    };
     // ADR-0015: `kind` picks the signal the edge carries — "audio" (default; sums at the
     // destination) or "note" (merges). A note edge is how an instrument gets its notes once the
     // graph, rather than an invisible per-track broadcast, is doing the routing.
@@ -438,6 +455,8 @@ void register_audio_graph_handlers(Handlers& handlers_) {
                 params.push_back(jp);
             }
             if (!params.empty()) jn["params"] = params;
+            if (P::session_audio_graph_node_bypassed(c.session, track, nid))   // ADR-0033 P3 (omit when live)
+                jn["bypassed"] = true;
             nodes.push_back(jn);
         }
         r["nodes"] = nodes;

@@ -603,4 +603,11 @@ if(VIVID_BUILD_TESTS AND APPLE)
     target_link_libraries(test_missing_instrument_cue PRIVATE ${_audio_engine_libs})
     add_test(NAME test_missing_instrument_cue COMMAND test_missing_instrument_cue)
     set_tests_properties(test_missing_instrument_cue PROPERTIES LABELS "AUDIO_ENGINE")
+
+    # ADR-0033 Phase 3: node bypass through the session executor (effect passthrough / source silence).
+    add_executable(test_node_bypass tests/test_node_bypass.cpp ${_audio_engine_srcs})
+    target_include_directories(test_node_bypass PRIVATE src src/audio src/gpu tests)
+    target_link_libraries(test_node_bypass PRIVATE ${_audio_engine_libs})
+    add_test(NAME test_node_bypass COMMAND test_node_bypass)
+    set_tests_properties(test_node_bypass PROPERTIES LABELS "AUDIO_ENGINE")
 endif()

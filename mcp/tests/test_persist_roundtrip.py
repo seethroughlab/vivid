@@ -61,8 +61,9 @@ def build_project() -> None:
     ok("new_project")
     # Two tracks: a native instrument (TestTone) and an audio track.
     t0 = ok("add_track", {"kind": "instrument", "instrument": "TestTone"})
-    ok("add_track", {"kind": "audio"})
+    t1 = ok("add_track", {"kind": "audio"})
     ti = t0.get("track", t0.get("index", 0))
+    ta = t1.get("track", t1.get("index", 1))
     # Note clips on the instrument track across two scenes (varied pitch/timing).
     ok("set_clip", {"track": ti, "scene": 0, "length": 4.0,
                     "notes": [{"p": 60, "s": 0.0, "d": 0.5, "v": 0.9},
@@ -80,6 +81,11 @@ def build_project() -> None:
     # ADR-0033 P5: a per-node label + a sticky note (both persist in the "graph" block; schema v4).
     ok("set_node_name", {"node_id": bl, "name": "Soft Blur"})
     ok("add_annotation", {"x": 720.0, "y": 300.0, "text": "master.level drives the blur"})
+    # ADR-0033 P3: a native effect node on the AUDIO track, bypassed — its "bypassed" flag must survive
+    # the round-trip (this is what proves bypass persistence end-to-end). On the audio track (no note
+    # subgraph) so the assertion is the flag itself, not entangled with note-node id ordering.
+    fx = ok("audio_graph_add_op", {"track": ta, "op": "Bitcrush"})["node"]
+    ok("set_node_bypass", {"track": ta, "ids": [fx], "bypass": True})
 
 
 def snapshot() -> dict:
@@ -134,6 +140,7 @@ def main() -> int:
             "a mapping": len(g.get("mappings", [])) >= 1,
             "a node label": any(n.get("name") for n in g.get("chain", [])),   # ADR-0033 P5
             "an annotation": len(g.get("annotations", [])) >= 1,             # ADR-0033 P5
+            "a bypassed node": '"bypassed"' in json.dumps(before),           # ADR-0033 P3
         }
         missing = [k for k, v in checks.items() if not v]
         if missing:

@@ -111,6 +111,11 @@ struct AudioGraphNode {
     // must say which ports it has, or the wire has nowhere honest to land.
     bool        control_in  = false;
     bool        control_out = false;
+    // ADR-0033 Phase 3: bypass. Keeps the node (and graph shape) but routes signal AROUND it —
+    // an effect passes its input through untouched, a source/generator gates to silence, a
+    // modulator emits no control (driven params fall back to their base). UI-thread authoring
+    // state; the compiler copies it onto each CompiledStep so the audio thread reads it lock-free.
+    bool        bypassed = false;
     ProcessFn   process = nullptr;
     void*       ctx = nullptr;
     std::string label;               // for debugging / UI
@@ -147,6 +152,9 @@ struct ControlIn {
 struct CompiledStep {
     ProcessFn process = nullptr;
     void*     ctx = nullptr;
+    // ADR-0033 Phase 3: this node is bypassed — the executor routes signal around it (effect =
+    // passthrough, source = silence). Copied from AudioGraphNode::bypassed at compile time.
+    bool      bypassed = false;
     int       in_buf[kMaxInputs];
     int       n_in = 0;
     int       out_buf = -1;
@@ -198,6 +206,10 @@ public:
     // ADR-0022: declare a node's CONTROL ports (a modulator emits; anything with a drivable param
     // takes). Default: neither, which is every node in the graph as it stands.
     void set_control_ports(int id, bool control_in, bool control_out);
+    // ADR-0033 Phase 3: mark a node bypassed (routed around) or live. Authoring state; takes effect
+    // on the next compile(). No-op for an unknown id.
+    void set_node_bypass(int id, bool on);
+    bool node_bypassed(int id) const;
     void remove_node(int id);                    // also drops incident edges
     // Remove a node but first "heal" the graph: reconnect each of its predecessors to each of its
     // successors, so signal keeps flowing when a middle node is deleted (delete-and-bridge).

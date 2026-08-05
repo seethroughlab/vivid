@@ -12,8 +12,8 @@ void CompiledAudioGraph::run(float* pool, uint32_t frames, uint32_t stride) cons
         float* outL = pool + static_cast<size_t>(s.out_buf) * 2 * stride;
         float* outR = outL + stride;
         if (s.n_in == 0) {
-            // Source: no audio inputs. Its processor writes out; a null processor is silence.
-            if (s.process) s.process(s.ctx, nullptr, nullptr, outL, outR, frames);
+            // Source: no audio inputs. Its processor writes out; a null (or bypassed) processor is silence.
+            if (s.process && !s.bypassed) s.process(s.ctx, nullptr, nullptr, outL, outR, frames);
             else { std::memset(outL, 0, frames * sizeof(float)); std::memset(outR, 0, frames * sizeof(float)); }
             continue;
         }
@@ -31,8 +31,8 @@ void CompiledAudioGraph::run(float* pool, uint32_t frames, uint32_t stride) cons
             const float* akR = akL + stride;
             for (uint32_t i = 0; i < frames; ++i) { inL[i] += akL[i]; inR[i] += akR[i]; }
         }
-        // Process (null = passthrough: out = summed in).
-        if (s.process) s.process(s.ctx, inL, inR, outL, outR, frames);
+        // Process (null or bypassed = passthrough: out = summed in).
+        if (s.process && !s.bypassed) s.process(s.ctx, inL, inR, outL, outR, frames);
         else { std::memcpy(outL, inL, frames * sizeof(float)); std::memcpy(outR, inR, frames * sizeof(float)); }
     }
 }
@@ -57,6 +57,16 @@ bool AudioGraph::node_pos(int id, float& x, float& y) const {
 
 void AudioGraph::clear_positions() {
     for (AudioGraphNode& n : nodes_) { n.positioned = false; n.ui_x = 0.f; n.ui_y = 0.f; }
+}
+
+void AudioGraph::set_node_bypass(int id, bool on) {
+    const int i = node_index(id);
+    if (i < 0) return;
+    nodes_[i].bypassed = on;
+}
+bool AudioGraph::node_bypassed(int id) const {
+    const int i = node_index(id);
+    return i >= 0 && nodes_[i].bypassed;
 }
 
 void AudioGraph::pin_param(int id, int p) {
@@ -318,6 +328,7 @@ bool AudioGraph::compile(CompiledAudioGraph& out) const {
         CompiledStep s;
         s.process = nodes_[idx].process;
         s.ctx = nodes_[idx].ctx;
+        s.bypassed = nodes_[idx].bypassed;   // ADR-0033 P3: carry bypass onto the RT plan
         s.n_in = static_cast<int>(preds[idx].size());
         for (int k = 0; k < s.n_in; ++k) s.in_buf[k] = preds[idx][k];   // predecessor out_buf == its index
         s.out_buf = idx;

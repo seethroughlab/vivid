@@ -688,5 +688,47 @@ int main() {
         CHECK(cg.note_buf_count == 0);
     }
 
+    // --- ADR-0033 P3: bypass. Effect bypass = passthrough; source bypass = silence; the graph shape
+    //     (nodes + edges) is preserved either way, and toggling back restores the signal. ---
+    {
+        AudioGraph g;
+        ConstSrc s{ 0.5f }; Gain g2{ 2.0f };
+        const int src = g.add_node(true,  false, const_src, &s,  "src");
+        const int fx  = g.add_node(false, false, gain_fx,   &g2, "gain");
+        const int out = g.add_node(false, true,  nullptr,   nullptr, "out");
+        g.set_output_id(out);
+        CHECK(g.connect(src, fx));
+        CHECK(g.connect(fx, out));
+
+        auto eval = [&](float& v) {
+            CompiledAudioGraph cg;
+            CHECK(g.compile(cg));
+            std::vector<float> pool(static_cast<size_t>(cg.pool_buffers()) * 2 * stride, 0.f);
+            cg.run(pool.data(), frames, stride);
+            v = out0(cg, pool, stride);
+        };
+        float v = 0.f;
+
+        // Baseline: 0.5 * 2 = 1.0.
+        eval(v); CHECK(std::fabs(v - 1.0f) < 1e-6f);
+
+        // Bypass the effect: it passes its input straight through, so out == the source (0.5). The
+        // gain op is NOT applied. Nodes + edges are untouched (shape preserved).
+        g.set_node_bypass(fx, true);
+        CHECK(g.node_bypassed(fx));
+        CHECK(has_edge(g, src, fx) && has_edge(g, fx, out) && g.nodes().size() == 3);
+        eval(v); CHECK(std::fabs(v - 0.5f) < 1e-6f);
+
+        // Also bypass the source: it gates to silence, so the whole chain is silent.
+        g.set_node_bypass(src, true);
+        eval(v); CHECK(std::fabs(v) < 1e-6f);
+
+        // Un-bypass both: the original signal returns exactly.
+        g.set_node_bypass(src, false);
+        g.set_node_bypass(fx, false);
+        CHECK(!g.node_bypassed(src) && !g.node_bypassed(fx));
+        eval(v); CHECK(std::fabs(v - 1.0f) < 1e-6f);
+    }
+
     return vivid::test::summary("test_audio_graph");
 }

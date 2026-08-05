@@ -65,6 +65,7 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "graph_set_control_shape",  { "Shape Modulation",      true  } },
         { "graph_set_node_key_range", { "Set Key Range",         true  } },
         { "graph_remove_node",        { "Remove Audio Node",     false } },
+        { "set_node_bypass",          { "Bypass",                false } },   // ADR-0033 P3
         { "audio_graph_connect_control",    { "Connect Modulation",    false } },
         { "audio_graph_disconnect_control", { "Disconnect Modulation", false } },
         { "session_connect_control",        { "Connect Modulation",    false } },

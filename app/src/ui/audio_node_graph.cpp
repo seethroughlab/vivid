@@ -457,6 +457,13 @@ AdapterNode AudioNodeGraph::node_from_box(const AudioNodeBox& b, int idx) const 
               || (sel_multi_ && sel_multi_->contains(b.node_id));   // ADR-0033 P1: ring every selected card
     // ADR-0019: a plugin node whose load terminally failed LOOKS broken (NOT while still loading).
     a.broken = P::session_audio_graph_node_plugin_failed(s_, track_, b.node_id) == 1;
+    // ADR-0033 P3: a bypassed node reads "off" — desaturate + darken its accent so the card looks muted
+    // (the "BYP" badge in after_card is the explicit cue).
+    a.bypassed = P::session_audio_graph_node_bypassed(s_, track_, b.node_id) == 1;
+    if (a.bypassed) {
+        const float g = 0.30f * (a.accent[0] + a.accent[1] + a.accent[2]) / 3.f + 0.10f;   // toward flat gray
+        a.accent[0] = a.accent[1] = a.accent[2] = g;
+    }
     const char* type = P::session_track_audio_graph_node_type(s_, track_, idx);
     a.title = (type && *type) ? type : (b.kind == 2 ? "Output" : (b.kind == 3 ? "MIDI In" : "?"));
     a.error = a.broken ? "plugin unavailable \xE2\x80\x94 silent" : "";
@@ -481,6 +488,10 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
     const AudioNodeBox b{ kind, a.id, a.rect.x, a.rect.y, a.rect.w, a.rect.h };
     const float* acc = a.accent;
     const bool node_err = a.broken;
+    // ADR-0033 P3: a bypassed node gets a translucent scrim over its body (drawn under the overlay text
+    // below, which stays legible) — the muted accent + "BYP" badge complete the "routed around" cue.
+    if (a.bypassed)
+        r.draw_rect(b.x + 1.f, b.y + 1.f, b.w - 2.f, b.h - 2.f, 0.06f, 0.06f, 0.07f, 0.45f);
     // ADR-0023 LOD: fade the card text out as the camera zooms out (illegible when small). The cards,
     // accents, port dots and the waveform preview stay; the title fades last (larger fs), the small
     // tag/port/param labels first. text_alpha() returns 0 below the fade floor, so those draws no-op.
@@ -498,8 +509,13 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
     const char* tag = b.kind == 0 ? "inst"
                     : (b.kind == 1 ? "fx"
                     : (b.kind == 3 ? "midi" : (b.kind == 4 ? "note" : (b.kind == 5 ? "mod" : "out"))));
-    if (a_small > 0.01f) { const float tw = r.text_width(tag, 0.6f);   // right-aligned kind tag in the header
-      r.draw_text(b.x + b.w - tw - 8.f, b.y + 7.f, tag, acc[0], acc[1], acc[2], 0.85f * a_small, 0.6f); }
+    if (a_small > 0.01f) {
+      // ADR-0033 P3: a bypassed node shows an amber "BYP" in place of its kind tag (right-aligned).
+      const char* rt = a.bypassed ? "BYP" : tag;
+      const float tw = r.text_width(rt, 0.6f);
+      if (a.bypassed) r.draw_text(b.x + b.w - tw - 8.f, b.y + 7.f, rt, 0.95f, 0.72f, 0.24f, 0.95f * a_small, 0.6f);
+      else            r.draw_text(b.x + b.w - tw - 8.f, b.y + 7.f, rt, acc[0], acc[1], acc[2], 0.85f * a_small, 0.6f);
+    }
     if (b.kind == 1) {   // effect: removable
         const Rect x = remove_rect(b);
         if (const float ta = canvas_.text_alpha(sty.fs_label); ta > 0.01f)
