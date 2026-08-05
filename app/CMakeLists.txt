@@ -610,4 +610,11 @@ if(VIVID_BUILD_TESTS AND APPLE)
     target_link_libraries(test_node_bypass PRIVATE ${_audio_engine_libs})
     add_test(NAME test_node_bypass COMMAND test_node_bypass)
     set_tests_properties(test_node_bypass PROPERTIES LABELS "AUDIO_ENGINE")
+
+    # ADR-0033 Phase 4: node solo / audition through the session executor (sibling mute + restore).
+    add_executable(test_node_solo tests/test_node_solo.cpp ${_audio_engine_srcs})
+    target_include_directories(test_node_solo PRIVATE src src/audio src/gpu tests)
+    target_link_libraries(test_node_solo PRIVATE ${_audio_engine_libs})
+    add_test(NAME test_node_solo COMMAND test_node_solo)
+    set_tests_properties(test_node_solo PROPERTIES LABELS "AUDIO_ENGINE")
 endif()

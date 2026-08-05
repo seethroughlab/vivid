@@ -5,6 +5,7 @@
 #include "audio/audio_graph.h"
 #include "test_helpers.h"
 
+#include <algorithm>   // std::find (signal-path membership checks)
 #include <atomic>
 #include <cmath>
 #include <cstdlib>
@@ -728,6 +729,48 @@ int main() {
         g.set_node_bypass(fx, false);
         CHECK(!g.node_bypassed(src) && !g.node_bypassed(fx));
         eval(v); CHECK(std::fabs(v - 1.0f) < 1e-6f);
+    }
+
+    // --- ADR-0033 P4: collect_signal_path — a node's signal path is itself + ancestors + descendants
+    //     (Audio+Note edges, both directions), and sibling branches are excluded. Two branches merging
+    //     at the output: src1 -> fx -> out, and src2 -> out. ---
+    {
+        AudioGraph g;
+        ConstSrc s1{ 0.5f }, s2{ 0.25f }; Gain gg{ 2.0f };
+        const int src1 = g.add_node(true,  false, const_src, &s1, "src1");
+        const int fx   = g.add_node(false, false, gain_fx,   &gg, "fx");
+        const int src2 = g.add_node(true,  false, const_src, &s2, "src2");
+        const int out  = g.add_node(false, true,  nullptr,   nullptr, "out");
+        g.set_output_id(out);
+        CHECK(g.connect(src1, fx)); CHECK(g.connect(fx, out)); CHECK(g.connect(src2, out));
+
+        auto has = [](const std::vector<int>& v, int id) {
+            return std::find(v.begin(), v.end(), id) != v.end();
+        };
+        std::vector<int> p;
+
+        // fx: ancestor src1, descendant out, itself — NOT the sibling src2.
+        g.collect_signal_path(fx, p);
+        CHECK(p.size() == 3);
+        CHECK(has(p, fx) && has(p, src1) && has(p, out) && !has(p, src2));
+
+        // src1: its whole chain to output — NOT src2.
+        g.collect_signal_path(src1, p);
+        CHECK(p.size() == 3);
+        CHECK(has(p, src1) && has(p, fx) && has(p, out) && !has(p, src2));
+
+        // src2: only itself + the shared output — NOT src1/fx.
+        g.collect_signal_path(src2, p);
+        CHECK(p.size() == 2);
+        CHECK(has(p, src2) && has(p, out) && !has(p, src1) && !has(p, fx));
+
+        // out: everything feeds it, so the path is the whole graph.
+        g.collect_signal_path(out, p);
+        CHECK(p.size() == 4);
+
+        // absent id → empty (not even the id).
+        g.collect_signal_path(9999, p);
+        CHECK(p.empty());
     }
 
     return vivid::test::summary("test_audio_graph");

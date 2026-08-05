@@ -464,6 +464,7 @@ AdapterNode AudioNodeGraph::node_from_box(const AudioNodeBox& b, int idx) const 
         const float g = 0.30f * (a.accent[0] + a.accent[1] + a.accent[2]) / 3.f + 0.10f;   // toward flat gray
         a.accent[0] = a.accent[1] = a.accent[2] = g;
     }
+    a.soloed = P::session_audio_graph_node_soloed(s_, track_, b.node_id) == 1;   // ADR-0033 P4
     const char* type = P::session_track_audio_graph_node_type(s_, track_, idx);
     a.title = (type && *type) ? type : (b.kind == 2 ? "Output" : (b.kind == 3 ? "MIDI In" : "?"));
     a.error = a.broken ? "plugin unavailable \xE2\x80\x94 silent" : "";
@@ -492,6 +493,15 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
     // below, which stays legible) — the muted accent + "BYP" badge complete the "routed around" cue.
     if (a.bypassed)
         r.draw_rect(b.x + 1.f, b.y + 1.f, b.w - 2.f, b.h - 2.f, 0.06f, 0.06f, 0.07f, 0.45f);
+    // ADR-0033 P4: a soloed node gets a green border (distinct from the blue selection ring and the
+    // amber BYP badge) — drawn as four thin edges just outside the card.
+    if (a.soloed) {
+        const float g0 = 0.30f, g1 = 0.85f, g2 = 0.45f, t = 2.f;   // green, 2px
+        r.draw_rect(b.x - t, b.y - t, b.w + 2 * t, t, g0, g1, g2, 1.f);            // top
+        r.draw_rect(b.x - t, b.y + b.h, b.w + 2 * t, t, g0, g1, g2, 1.f);          // bottom
+        r.draw_rect(b.x - t, b.y - t, t, b.h + 2 * t, g0, g1, g2, 1.f);            // left
+        r.draw_rect(b.x + b.w, b.y - t, t, b.h + 2 * t, g0, g1, g2, 1.f);          // right
+    }
     // ADR-0023 LOD: fade the card text out as the camera zooms out (illegible when small). The cards,
     // accents, port dots and the waveform preview stay; the title fades last (larger fs), the small
     // tag/port/param labels first. text_alpha() returns 0 below the fade floor, so those draws no-op.
@@ -510,11 +520,13 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
                     : (b.kind == 1 ? "fx"
                     : (b.kind == 3 ? "midi" : (b.kind == 4 ? "note" : (b.kind == 5 ? "mod" : "out"))));
     if (a_small > 0.01f) {
-      // ADR-0033 P3: a bypassed node shows an amber "BYP" in place of its kind tag (right-aligned).
-      const char* rt = a.bypassed ? "BYP" : tag;
+      // Right-aligned status/kind tag. Priority: bypassed (amber "BYP") > soloed (green "SOLO") > the
+      // plain kind tag. Bypass wins because a bypassed node is silent regardless of solo (ADR-0033 P3/P4).
+      const char* rt = a.bypassed ? "BYP" : (a.soloed ? "SOLO" : tag);
       const float tw = r.text_width(rt, 0.6f);
-      if (a.bypassed) r.draw_text(b.x + b.w - tw - 8.f, b.y + 7.f, rt, 0.95f, 0.72f, 0.24f, 0.95f * a_small, 0.6f);
-      else            r.draw_text(b.x + b.w - tw - 8.f, b.y + 7.f, rt, acc[0], acc[1], acc[2], 0.85f * a_small, 0.6f);
+      if      (a.bypassed) r.draw_text(b.x + b.w - tw - 8.f, b.y + 7.f, rt, 0.95f, 0.72f, 0.24f, 0.95f * a_small, 0.6f);
+      else if (a.soloed)   r.draw_text(b.x + b.w - tw - 8.f, b.y + 7.f, rt, 0.30f, 0.85f, 0.45f, 0.95f * a_small, 0.6f);
+      else                 r.draw_text(b.x + b.w - tw - 8.f, b.y + 7.f, rt, acc[0], acc[1], acc[2], 0.85f * a_small, 0.6f);
     }
     if (b.kind == 1) {   // effect: removable
         const Rect x = remove_rect(b);

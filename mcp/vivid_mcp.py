@@ -1038,6 +1038,15 @@ def set_node_bypass(track: int, ids: list[int], bypass: bool = True) -> dict:
 
 
 @mcp.tool
+def set_node_solo(track: int, ids: list[int], solo: bool = True) -> dict:
+    """Solo / audition audio nodes (ids from get_audio_graph): hear ONLY each node's signal path — the
+    node plus everything feeding it (ancestors) and everything it feeds (descendants) — muting sibling
+    branches on the track. Multiple soloed nodes union their paths. Pass solo=False to un-solo. This is
+    a performance action: NOT undoable and NOT persisted (like launching a clip). Returns {count:<nodes>}."""
+    return _post("set_node_solo", {"track": track, "ids": ids, "solo": solo})
+
+
+@mcp.tool
 def audio_graph_connect(track: int, from_node: int, to_node: int, kind: str = "audio") -> dict:
     """Add an edge between two audio-graph nodes (ids from get_audio_graph). `kind` is the SIGNAL
     the wire carries: "audio" (multiple edges into a node sum, stereo) or "note" (ADR-0015: notes

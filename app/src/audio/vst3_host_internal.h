@@ -250,6 +250,14 @@ struct Track {
     // in the master sum. Meters stay PRE-mute — a muted track still shows its own level.
     std::atomic<bool>     mute{false}, solo{false};
     std::atomic<float>    mix_scale{1.f};
+    // ADR-0033 P4: node solo / audition. `soloed_node_ids` is the UI-set state (stable node ids the
+    // user is auditioning; guarded by gmtx like every agraph edit). `node_audible_mask` is the derived
+    // per-node multiplier (bit i, i == node index == out_buf, 1 = audible): the union of each soloed
+    // node's signal path (ancestors + node + descendants); ~0 when nothing is soloed. Recomputed on the
+    // UI thread whenever the solo set or the graph topology changes, read by the audio thread in the
+    // executor. Performance state — never persisted or undone (unlike track solo above).
+    std::vector<int>      soloed_node_ids;
+    std::atomic<uint64_t> node_audible_mask{~0ull};
     MeterState            meter;   // ADR-0025: level/transient/3-band/spectrum ring (shared with Master)
     // Note-derived bridge sources (the note peer of level/transient): the audio thread scans this
     // block's t.nev note stream and publishes the most-recent note-on's pitch/velocity + a note-on

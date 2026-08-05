@@ -69,6 +69,35 @@ bool AudioGraph::node_bypassed(int id) const {
     return i >= 0 && nodes_[i].bypassed;
 }
 
+void AudioGraph::collect_signal_path(int id, std::vector<int>& out) const {
+    out.clear();
+    if (node_index(id) < 0) return;
+    // Two independent BFS frontiers from `id`: upstream over incoming edges (ancestors) and downstream
+    // over outgoing edges (descendants), Audio+Note only. `seen` dedups across both directions (and the
+    // seed), so a diamond is visited once. edges_ is small (<= kGraphMaxNodes^2), so the linear rescan
+    // per popped node is fine — this runs on a UI-thread solo toggle, not per audio block.
+    auto is_signal = [](EdgeKind k) { return k == EdgeKind::Audio || k == EdgeKind::Note; };
+    std::vector<int> seen{ id };
+    auto push = [&](int nid) {
+        if (std::find(seen.begin(), seen.end(), nid) != seen.end()) return false;
+        seen.push_back(nid);
+        return true;
+    };
+    std::vector<int> up{ id };
+    for (size_t h = 0; h < up.size(); ++h) {
+        const int cur = up[h];
+        for (const AudioGraphEdge& e : edges_)
+            if (is_signal(e.kind) && e.to_id == cur && push(e.from_id)) up.push_back(e.from_id);
+    }
+    std::vector<int> down{ id };
+    for (size_t h = 0; h < down.size(); ++h) {
+        const int cur = down[h];
+        for (const AudioGraphEdge& e : edges_)
+            if (is_signal(e.kind) && e.from_id == cur && push(e.to_id)) down.push_back(e.to_id);
+    }
+    out = std::move(seen);
+}
+
 void AudioGraph::pin_param(int id, int p) {
     const int i = node_index(id);
     if (i < 0 || p < 0) return;

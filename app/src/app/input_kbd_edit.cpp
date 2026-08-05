@@ -9,6 +9,7 @@
 //   \      switch visual<->audio pane          Delete / Backspace  delete the selected node
 //   W      start a wire from the selection's output, then W again on a target to commit
 //   B      toggle bypass on the audio selection (route signal around the node) — ADR-0033 P3
+//   S      toggle solo/audition on the audio selection (hear only its signal path) — ADR-0033 P4
 //   , / .  cycle the target input port (visual multi-input)     Shift+Backspace  disconnect an input
 #include "app/input_internal.h"
 
@@ -246,6 +247,26 @@ bool bypass(Window& win, App& app, Graph g) {
     return true;
 }
 
+// S — toggle solo / audition on the audio selection (hear only the node's signal path, muting sibling
+// branches). ADR-0033 P4. Audio graph only; group toggle (any not-soloed -> solo all; else clear).
+// PERFORMANCE state — no note_edit (not undoable), not persisted. Caller guards out Cmd/Ctrl so the
+// global save shortcut (Cmd+S) is untouched.
+bool solo(Window& win, App& app, Graph g) {
+    if (g != Graph::Audio || !app.session) return false;
+    const int tr = audio_track(win, app);
+    if (tr < 0) return true;
+    std::vector<int> ids(win.audio_sel.ids().begin(), win.audio_sel.ids().end());
+    if (ids.empty()) {
+        if (win.sel_audio_node == Window::kNoAudioNode) return true;
+        ids.push_back(win.sel_audio_node);
+    }
+    bool any_unsoloed = false;
+    for (int id : ids) if (!S::session_audio_graph_node_soloed(app.session, tr, id)) { any_unsoloed = true; break; }
+    const int on = any_unsoloed ? 1 : 0;
+    for (int id : ids) S::session_audio_graph_set_node_solo(app.session, tr, id, on);
+    return true;
+}
+
 }  // namespace
 
 bool kbd_edit_key(Window& win, App& app, int key, int mods) {
@@ -261,6 +282,7 @@ bool kbd_edit_key(Window& win, App& app, int key, int mods) {
         case GLFW_KEY_BACKSLASH: return switch_pane(win, app);
         case GLFW_KEY_W:     return wire(win, app, g);
         case GLFW_KEY_B:     return bypass(win, app, g);
+        case GLFW_KEY_S:     return (mods & (GLFW_MOD_SUPER | GLFW_MOD_CONTROL)) ? false : solo(win, app, g);   // plain S; ⌘S stays save
         case GLFW_KEY_COMMA:  if (win.kbd_wire_dom) { win.kbd_wire_port = std::max(0, win.kbd_wire_port - 1); return true; } return false;
         case GLFW_KEY_PERIOD: if (win.kbd_wire_dom) { win.kbd_wire_port = std::min(3, win.kbd_wire_port + 1); return true; } return false;
         case GLFW_KEY_DELETE: return del(win, app, g);
