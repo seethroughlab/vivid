@@ -20,11 +20,15 @@
 
 struct InstancesFromSignal : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName        = "InstancesFromSignal";
-    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_ADAPTER;   // ADR-0046
+    // ADR-0046: a RECIPE, not a primitive. It bundles a whole workflow — signal aging, fired-event kicks,
+    // layout, palette, position framing, orientation and scaling — in one node. It stands in for the
+    // decomposable graph Signal -> LaneRamp/LanePalette -> InstancesFromLanes -> Instancer3D, which lets
+    // the same source drive layout, colour and geometry independently. Ranked below primitives.
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_RECIPE;
     static constexpr const char* kDisplayName = "Instances From Signal";
     static constexpr const char* kSummary =
-        "Draws one 3D instance per element of an incoming signal (pitch->layout+colour, velocity->size); "
-        "chords bloom, arps trail. Feed it a Notes node — or any signal producer.";
+        "Recipe: one 3D instance per element of an incoming signal (pos->layout+colour, amp->size); chords "
+        "bloom, arps trail. Prefer LaneRamp/LanePalette -> InstancesFromLanes -> Instancer3D to recombine.";
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> size   {"size",   0.5f, 0.05f, 3.f};    // base instance scale

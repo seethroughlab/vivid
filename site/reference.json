@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-05T20:24:02.123250+00:00",
+  "generated_at": "2026-08-05T20:28:29.049120+00:00",
   "app_version": "0.1.1",
   "build_type": "debug",
   "operator_abi": 17,
@@ -1579,8 +1579,8 @@
       "slug": "instancesfromsignal",
       "domain": "visual",
       "kind": "gpu_visual",
-      "role": "adapter",
-      "summary": "Draws one 3D instance per element of an incoming signal (pitch->layout+colour, velocity->size); chords bloom, arps trail. Feed it a Notes node \u2014 or any signal producer.",
+      "role": "recipe",
+      "summary": "Recipe: one 3D instance per element of an incoming signal (pos->layout+colour, amp->size); chords bloom, arps trail. Prefer LaneRamp/LanePalette -> InstancesFromLanes -> Instancer3D to recombine.",
       "keywords": [],
       "params": [
         {
