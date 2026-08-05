@@ -25,7 +25,9 @@ namespace vivid {
 // bare float 0..1 that the shader multiplied by 4 — so a pre-v3 file's 0.25 means "add", not
 // "normal". Loading one rescales that value (see session_from_json); without this, every project
 // that ever picked a blend mode would silently render a different one.
-constexpr int kSessionSchemaVersion = 3;
+// v4 (ADR-0033 P5): added graph sticky notes (jg["annotations"]) + per-node labels (chain "name").
+// Both are purely additive and read back with defaults, so a v3 file loads unchanged (absent ⇒ none).
+constexpr int kSessionSchemaVersion = 4;
 
 enum class SessionVersionStatus { Ok, Migrated, TooNew };
 

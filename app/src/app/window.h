@@ -122,6 +122,16 @@ struct Window {
     bool        show_gemini_key = false;
     std::string gemini_key_buf;
     int         music_eval_job  = -1;
+    // ADR-0033 P5: in-canvas text editing for a sticky note or a node rename. kind 0 = none,
+    // 1 = renaming op node `text_edit_target` (an op INDEX), 2 = editing annotation `text_edit_target`
+    // (a note ID). text_edit_buf holds the live text; char_callback appends, key_callback commits/cancels.
+    int         text_edit_kind = 0;
+    int         text_edit_target = -1;
+    std::string text_edit_buf;
+    // Double-click tracking for the visual graph (double-click a note to edit it / a node to rename it).
+    double      vg_last_click_t = -1;
+    int         vg_last_click_note = -1;
+    int         vg_last_click_node = -1;
     // ADR-0027: characteristics menu · bridge map-source picker · op-node menu · audio-node "→ visuals"
     // param_menu: the node param-curation menu (show/hide params; a dropped wire reveals+connects one).
     vivid::ui::PopupMenu menu, map_menu, node_menu, audio_node_menu, param_menu;

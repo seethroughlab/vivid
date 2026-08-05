@@ -68,6 +68,32 @@ public:
     void add_node_raw(const std::string& title, const std::string& source, float x, float y);
     void add_node_raw(const std::string& title, int char_id, float x, float y);   // legacy load (decodes char_id)
     void set_shader(float x, float y) { sx_ = x; sy_ = y; }
+
+    // ADR-0033 P5: per-node label — a user rename shown instead of the op_type. Empty = op_type.
+    std::string op_name_at(int i) const;                 // "" if the node uses its op_type
+    void        set_op_name_at(int i, const std::string& name);
+
+    // ADR-0033 P5: sticky-note annotations — free-floating persisted text on the visual canvas,
+    // addressable by MCP so intent lives in the session. Not graph nodes (no ports/wiring); a pure
+    // explainability overlay. Positions are WORLD coords (drawn under the shared camera transform).
+    int  add_annotation(float x, float y);               // new note at (x,y), returns its stable id
+    void add_annotation_raw(int id, const std::string& text, float x, float y, float w, float h);  // load
+    bool remove_annotation(int id);
+    bool set_annotation_text(int id, const std::string& text);
+    bool move_annotation(int id, float x, float y);
+    int  annotation_count() const { return static_cast<int>(annos_.size()); }
+    bool get_annotation(int i, int& id, std::string& text, float& x, float& y, float& w, float& h) const;
+    std::string annotation_text_of(int id) const;        // "" if no such id
+    int  annotation_at_world(double wx, double wy) const; // note id under a world point, -1 if none
+    int  annotation_at_screen(double sx, double sy) const;// note id under a SCREEN point, -1 if none
+    int  add_note_centered();                             // create a note at the viewport centre, notes undo; returns id
+
+    // ADR-0033 P5: the shell primes the active in-canvas text edit each frame BEFORE draw, so the
+    // note/label being typed shows the live buffer + a caret. anno_id / node_idx = the edit target
+    // (-1 = none); `buf` points at the shell's edit buffer (Window::text_edit_buf). Not owned.
+    void set_text_edit(int anno_id, int node_idx, const std::string* buf) {
+        edit_anno_ = anno_id; edit_node_ = node_idx; edit_buf_ = buf;
+    }
     const std::vector<vivid::Mapping>& mappings() const { return reg_.mappings(); }
     void add_mapping(const std::string& src, const std::string& dst, float amt,
                      float curve = 0.f, bool invert = false, float lo = 0.f, float hi = 1.f,
@@ -224,6 +250,16 @@ private:
     // was cleared — indices only ever append or clear, never shift, so an index stays valid otherwise).
     struct Pub { float* cell; int data_idx; uint32_t data_gen; std::string id; };
     std::vector<Pub> pubs_;
+    // ADR-0033 P5: sticky-note store (mirrors the DataNode pattern). id is stable within a session;
+    // annos never shift index on remove would break nothing here since callers address by id.
+    struct Annotation { int id; float x, y, w, h; std::string text; };
+    std::vector<Annotation> annos_;
+    int next_anno_id_ = 0;
+    int anno_index_of_(int id) const;   // id -> index into annos_, -1 if none
+    // ADR-0033 P5: the active in-canvas text edit, primed each frame by the shell (set_text_edit).
+    int edit_anno_ = -1;                 // annotation id being typed into, or -1
+    int edit_node_ = -1;                 // op node index being renamed, or -1
+    const std::string* edit_buf_ = nullptr;   // the shell's live edit buffer (Window::text_edit_buf)
     std::unordered_map<std::string, int> handle_by_id_;   // dedup: source id -> pubs_ index (idempotent)
     uint32_t data_gen_ = 0;                                // bumped on any data_ add/clear
     std::vector<std::pair<std::string, std::string>> bridge_catalog_;   // (label, source id) — Tab chooser sources
@@ -237,9 +273,11 @@ private:
     std::vector<std::pair<float, float>> op_pos_;
     bool op_pos_init_ = false;
 
-    // 0 none, 1 data-node drag, 2 op-node drag, 3 data->param wire, 4 op->op wire, 5 pan, 6 marquee
+    // 0 none, 1 data-node drag, 2 op-node drag, 3 data->param wire, 4 op->op wire, 5 pan,
+    // 6 marquee (ADR-0033 P1), 7 annotation drag (ADR-0033 P5)
     int    drag_mode_ = 0;
     int    drag_idx_ = -1;     // dragged node (data for mode 1, op for mode 2)
+    int    anno_drag_ = -1;    // ADR-0033 P5: annotation id being dragged (mode 7), -1 = none
     int    wire_from_ = -1;    // data node (mode 3) or op node (mode 4) the wire starts at
     int    pmreq_node_ = -1;   // Gesture B: pending param-reveal-menu request (target op node index)
     int    pmreq_src_  = -1;   // Gesture B: the data node the dropped wire started from

@@ -216,6 +216,11 @@ inline Rect graph_relayout_rect(int win_w, int win_h, float split_x, float dock_
     const Rect g = visuals_panel(win_w, win_h, split_x, dock_h);
     return { g.x + g.w - 78.f, g.y + 4.f, 74.f, kPanelHdH - 6.f };
 }
+// ADR-0033 P5: the "+ Note" chrome button, immediately left of Re-layout.
+inline Rect graph_add_note_rect(int win_w, int win_h, float split_x, float dock_h) {
+    const Rect rl = graph_relayout_rect(win_w, win_h, split_x, dock_h);
+    return { rl.x - 66.f, rl.y, 60.f, rl.h };
+}
 // The DAW|visuals splitter: a full-height grab strip running from the transport bar down to the
 // dock (no gap at the top — a divider that stops short reads as an artifact, not a handle).
 inline Rect splitter_rect(int win_h, float dock_h, float split_x) { return { split_x - 3.f, kTopBarH, 6.f, dock_top(win_h, dock_h) - kTopBarH }; }

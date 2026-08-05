@@ -144,6 +144,17 @@ inline void node_marquee(Renderer2D& r, const Rect& m) {
     r.draw_rect_outline(m.x, m.y, m.w, m.h, 1.f, s.sel[0], s.sel[1], s.sel[2], 0.85f); // 1px border
 }
 
+// ADR-0033 P5: a sticky-note card — a warm, paper-like panel with a gold top strip, deliberately
+// unlike the steel op cards so a note reads as an annotation, not a graph node. The text (with
+// wrapping + edit caret) is drawn by the editor over this chrome.
+inline void node_sticky(Renderer2D& r, const Rect& c, bool selected) {
+    const Style& s = style();
+    r.draw_rect(c.x, c.y, c.w, c.h, 0.17f, 0.155f, 0.105f, 0.96f);            // warm dark-paper fill
+    r.draw_rect(c.x, c.y, c.w, 3.f, s.gold[0], s.gold[1], s.gold[2], 0.90f);  // gold "note" top strip
+    const float* b = selected ? s.sel : s.border;
+    r.draw_rect_outline(c.x, c.y, c.w, c.h, 1.f, b[0], b[1], b[2], selected ? 0.95f : 0.70f);
+}
+
 // A recessed preview panel (a node thumbnail well): a 1px frame + a near-black inset. Each editor
 // fills it with its own content — the visuals graph blits a GPU texture, the audio graph draws a
 // live waveform (node_waveform), an op can draw itself.

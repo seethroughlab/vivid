@@ -791,6 +791,9 @@ void run_frame_loop(App& app, Window& win) {
               // the grid doesn't paint over the divider — the graph draws after the splitter.
               const float m = ui::kPaneMargin;
               graph.set_frame(g.x - m + 3.f, g.y - m, g.x + g.w + m, g.y + g.h + m);
+              // ADR-0033 P5: show the live text-edit buffer + caret on the note/node being typed.
+              graph.set_text_edit(win.text_edit_kind == 2 ? win.text_edit_target : -1,
+                                  win.text_edit_kind == 1 ? win.text_edit_target : -1, &win.text_edit_buf);
               graph.draw(ui); }   // includes live node thumbnails via draw_texture
             // UI-1: recompute the detail region's explicit focus — the single source of truth
             // for what the bottom region shows + its domain — replacing the old implicit race

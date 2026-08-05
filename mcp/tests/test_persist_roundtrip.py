@@ -77,6 +77,9 @@ def build_project() -> None:
     ok("connect_nodes", {"node_id": 0, "input_id": bl, "port": 0})    # Blur -> Output
     # An audio->visual mapping (a first-class session object; exercises the mapping restore path).
     ok("connect_mapping", {"src": "master.level", "dst": f"node:{bl}:0", "amount": 0.8, "curve": 0.2})
+    # ADR-0033 P5: a per-node label + a sticky note (both persist in the "graph" block; schema v4).
+    ok("set_node_name", {"node_id": bl, "name": "Soft Blur"})
+    ok("add_annotation", {"x": 720.0, "y": 300.0, "text": "master.level drives the blur"})
 
 
 def snapshot() -> dict:
@@ -129,6 +132,8 @@ def main() -> int:
             "visual op chain (>=2)": len(g.get("chain", [])) >= 2,
             "wired edges": any(n.get("in", -1) >= 0 for n in g.get("chain", [])),
             "a mapping": len(g.get("mappings", [])) >= 1,
+            "a node label": any(n.get("name") for n in g.get("chain", [])),   # ADR-0033 P5
+            "an annotation": len(g.get("annotations", [])) >= 1,             # ADR-0033 P5
         }
         missing = [k for k, v in checks.items() if not v]
         if missing:
