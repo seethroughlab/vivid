@@ -147,6 +147,10 @@ struct Window {
     // because AudioNodeGraph::prime() re-syncs from the window every frame and would clobber an
     // editor-owned set. sel_audio_node stays the primary/inspector target. View-state (never persisted).
     vivid::ui::GraphSelection audio_sel;
+    // ADR-0033 P2b: the audio copy/paste clipboard — a serialized JSON subgraph (capture_audio_nodes)
+    // held as a string so window.h needn't pull in nlohmann/json. Empty = nothing copied. Session UI
+    // state (not persisted). ⌘V pastes it into the currently-selected track (same-track or cross-track).
+    std::string audio_clip;
     // Keyboard editing (UX Ph4 F3 follow-on, input_kbd_edit.cpp): a pending wire started with `W` from a
     // node's output, awaiting a `W`-on-target commit. dom disambiguates `from` (which graph + id space).
     int     kbd_wire_dom  = 0;    // 0 none · 1 visual (from = op INDEX) · 2 audio (from = node ID)

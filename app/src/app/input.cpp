@@ -19,6 +19,8 @@
 #include "app/node_presets.h"       // ADR-0021/P4: capture/save/list/load/remove
 #include "platform/platform.h"      // open_in_editor
 #include "audio/vst3_host.h"
+#include "persist.h"                     // ADR-0033 P2b: capture_audio_nodes / paste_audio_subgraph
+#include <nlohmann/json.hpp>            // the audio clipboard is a serialized subgraph
 #include "app/frame.h"   // open_popout / close_popout
 #include "app/bridge_source.h"   // the audio→visual source-id grammar (shared with frame.cpp's publisher)
 #include "transport.h"   // Transport play/stop (toggle_playing)
@@ -140,6 +142,44 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
         if (key == GLFW_KEY_C) { app->graph->copy_selection(); return; }
         if (key == GLFW_KEY_V) { app->graph->paste_clipboard(24.f, 24.f); return; }
         if (key == GLFW_KEY_D) { app->graph->duplicate_selection(24.f, 24.f); return; }
+    }
+    // ADR-0033 P2b: audio-graph copy / paste / duplicate (⌘C/⌘V/⌘D) when the AUDIO graph has focus
+    // (no visual node selected — mirrors active_graph). Operates on the selected track + audio_sel;
+    // copies get fresh ids at a small offset and become the new selection.
+    if ((mods & GLFW_MOD_SUPER) && app->session && (key == GLFW_KEY_C || key == GLFW_KEY_V || key == GLFW_KEY_D)
+        && !(app->graph && app->graph->selected_op() >= 0)) {
+        const int nt = vivid::session::session_track_count(app->session);
+        if (nt <= 0) return;
+        const int tr = std::min(std::max(win->sel_track, 0), nt - 1);
+        auto reselect = [&](const std::vector<int>& nids) {
+            win->audio_sel.clear();
+            for (int id : nids) win->audio_sel.add(id);
+            if (!nids.empty()) win->sel_audio_node = win->audio_sel.primary();
+        };
+        if (key == GLFW_KEY_C) {
+            const std::vector<int> ids(win->audio_sel.ids().begin(), win->audio_sel.ids().end());
+            if (!ids.empty()) win->audio_clip = vivid::capture_audio_nodes(app->session, tr, ids).dump();
+            return;
+        }
+        if (key == GLFW_KEY_V) {
+            if (!win->audio_clip.empty()) {
+                const auto clip = nlohmann::json::parse(win->audio_clip, nullptr, /*allow_exceptions*/ false);
+                const std::vector<int> nids = vivid::paste_audio_subgraph(app->session, tr, clip, 24.f, 24.f);
+                reselect(nids);
+                if (!nids.empty() && app->edit_gateway) app->edit_gateway->note_edit("Paste Audio Nodes", "");
+            }
+            return;
+        }
+        if (key == GLFW_KEY_D) {   // duplicate = capture the selection + paste it into the same track
+            const std::vector<int> ids(win->audio_sel.ids().begin(), win->audio_sel.ids().end());
+            if (!ids.empty()) {
+                const std::vector<int> nids = vivid::paste_audio_subgraph(
+                    app->session, tr, vivid::capture_audio_nodes(app->session, tr, ids), 24.f, 24.f);
+                reselect(nids);
+                if (!nids.empty() && app->edit_gateway) app->edit_gateway->note_edit("Duplicate Audio Nodes", "");
+            }
+            return;
+        }
     }
     // Esc cancels a pending keyboard wire (Ph4 F3) before it falls through to the overlay closers.
     if (key == GLFW_KEY_ESCAPE && win->kbd_wire_dom) { win->kbd_wire_dom = 0; win->kbd_wire_from = -1; return; }

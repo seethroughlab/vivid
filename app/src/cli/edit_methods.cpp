@@ -55,6 +55,7 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "audio_graph_add_midi_in",{ "Add Audio Node",     false } },
         { "audio_graph_add_plugin", { "Add Audio Node",     false } },
         { "audio_graph_remove_node",{ "Remove Audio Node",  false } },
+        { "duplicate_audio_nodes",  { "Duplicate Audio Nodes", false } },   // ADR-0033 P2b
         { "audio_graph_connect",    { "Connect Audio",      false } },
         { "graph_connect",          { "Connect",            false } },   // ADR-0022 P4: by gnid (intra/cross)
         { "graph_disconnect",       { "Disconnect",         false } },

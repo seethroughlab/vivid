@@ -73,6 +73,10 @@ jobs:
       - name: Duplicate nodes (copy/paste contract)
         run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_duplicate_nodes.py
 
+      # ADR-0033 P2b: audio duplicate_audio_nodes preserves params/edges (internal kept, external dropped).
+      - name: Duplicate audio nodes (copy/paste contract)
+        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_duplicate_audio_nodes.py
+
       # Import the Developer ID cert into a dedicated temporary keychain so codesign can reach the
       # private key non-interactively (a locked/service-context login keychain gives
       # errSecInternalComponent on a self-hosted runner). Cleaned up below regardless of outcome.
