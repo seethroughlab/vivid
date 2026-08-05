@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-05T20:28:29.049120+00:00",
+  "generated_at": "2026-08-05T20:46:39.547113+00:00",
   "app_version": "0.1.1",
   "build_type": "debug",
   "operator_abi": 17,
@@ -976,7 +976,8 @@
           "stream": "texture"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "emitter.png"
     },
     {
       "name": "Euclid",
@@ -1477,7 +1478,8 @@
           "stream": "texture"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "instancer.png"
     },
     {
       "name": "Instancer3D",
@@ -2398,7 +2400,8 @@
           "stream": "custom_ref"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "meshdisplace.png"
     },
     {
       "name": "MeshLoad",
@@ -2430,7 +2433,8 @@
           "stream": "custom_ref"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "meshload.png"
     },
     {
       "name": "MeshRender",
@@ -2530,7 +2534,8 @@
           "stream": "texture"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "meshrender.png"
     },
     {
       "name": "Model",
@@ -2648,7 +2653,8 @@
           "stream": "texture"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "model.png"
     },
     {
       "name": "MovieAudio",
@@ -4685,7 +4691,8 @@
           "stream": "texture"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "solids.png"
     },
     {
       "name": "SpikeSolid",
@@ -5568,7 +5575,8 @@
           "stream": "texture"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "type.png"
     },
     {
       "name": "VectorText",
@@ -5726,7 +5734,8 @@
           "stream": "texture"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "video.png"
     },
     {
       "name": "Webcam",
