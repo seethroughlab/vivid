@@ -207,6 +207,21 @@ void register_visuals_handlers(Handlers& handlers_) {
         return ok();
     };
 
+    // ADR-0033 P2: duplicate a set of visual nodes. Each copy gets a fresh id at a small offset,
+    // edges strictly between the copied nodes are recreated, edges to outside nodes are dropped, and
+    // incoming audio→param mappings are replicated. Returns the new node ids.
+    handlers_["duplicate_nodes"] = [](const ControlCtx& c, const json& b) {
+        if (!c.graph) return err(code::kNoGraph, "no graph");
+        std::set<int> ids;
+        if (b.contains("ids") && b["ids"].is_array())
+            for (const auto& j : b["ids"]) if (j.is_number_integer()) ids.insert(j.get<int>());
+        if (ids.empty()) return err(code::kBadArg, "ids: expected a non-empty array of node ids");
+        const float dx = b.value("dx", 24.f), dy = b.value("dy", 24.f);
+        const std::vector<int> new_ids = c.graph->spawn_clip(c.graph->capture_ids(ids), dx, dy, "Duplicate Nodes");
+        if (new_ids.empty()) return err(code::kNotFound, "no duplicable nodes among those ids");
+        json r = ok(); r["ids"] = new_ids; return r;
+    };
+
 }
 
 }  // namespace vivid

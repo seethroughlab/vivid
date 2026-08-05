@@ -467,6 +467,16 @@ def remove_annotation(id: int) -> dict:
     return _post("remove_annotation", {"id": id})
 
 
+@mcp.tool
+def duplicate_nodes(ids: list[int], dx: float = 24.0, dy: float = 24.0) -> dict:
+    """Duplicate visual graph nodes (by id) at a small offset. Each copy gets a FRESH id with the
+    original's params, file params, curated pins, and asset. Edges strictly between the copied nodes
+    are recreated; edges to nodes outside the set are dropped. Incoming audio->param mappings are
+    replicated onto the copies (a duplicated reactive node keeps reacting). Returns {ids:[new ids]}.
+    Undoable. (Visual graph only for now; audio-node duplication is a follow-up.)"""
+    return _post("duplicate_nodes", {"ids": ids, "dx": dx, "dy": dy})
+
+
 # ---------------- mapping (the bridge) ----------------
 @mcp.tool
 def connect_mapping(src: str, dst: str, amount: float = 1.0, curve: float = 0.0,

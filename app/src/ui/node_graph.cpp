@@ -619,6 +619,117 @@ bool NodeGraph::delete_op_by_id(int id) {
     sync_op_pos();
     return true;
 }
+
+// ADR-0033 P2 — copy/paste/duplicate. capture_ids snapshots a set of nodes + the edges strictly
+// between them + their incoming audio→param mappings, all id-free (positions/params/asset), so it can
+// be spawned later with fresh ids.
+GraphClip NodeGraph::capture_ids(const std::set<int>& ids) const {
+    GraphClip clip;
+    if (!vg_) return clip;
+    // Ordered list of (graph index, stable id) for capturable nodes; Output + missing ops are skipped.
+    std::vector<std::pair<int, int>> picked;              // (index, old id)
+    std::unordered_map<int, int> cap_of;                  // old id -> capture index
+    for (int id : ids) {
+        const int i = op_index_of_id(id);
+        if (i < 0 || vg_->nodes()[i].is_output() || op_missing_at(i)) continue;
+        cap_of[id] = static_cast<int>(picked.size());
+        picked.push_back({ i, id });
+    }
+    for (const auto& [i, oid] : picked) {
+        NodeCapture c;
+        c.op_type = op_type_at(i);
+        int in = -1, id = 0; get_op(i, in, id, c.x, c.y);
+        const int pc = op_param_count_at(i);
+        for (int l = 0; l < pc; ++l) {
+            c.base.push_back(op_param_base_at(i, l));
+            const char* fv = op_file_param_at(i, l);
+            c.file_params.push_back(fv ? fv : "");
+            if (is_param_pinned(i, l)) c.pinned.push_back(l);
+        }
+        c.asset = op_asset_at(i);
+        // Incoming audio→param mappings for this node. The dest is "node:<oid><sep><suffix>" where sep
+        // is '.' (UI drop path, param NAME) or ':' (connect_mapping, param INDEX) — match both, and
+        // require the char after the id to be a separator so "node:2" doesn't swallow "node:20".
+        const std::string tag = "node:" + std::to_string(oid);
+        for (const auto& m : reg_.mappings()) {
+            if (m.dest.rfind(tag, 0) != 0 || m.dest.size() <= tag.size()) continue;
+            const char sep = m.dest[tag.size()];
+            if (sep == '.' || sep == ':') c.maps.push_back(m);
+        }
+        clip.nodes.push_back(std::move(c));
+    }
+    // Internal edges only: for each captured node, keep input edges whose source is ALSO captured.
+    for (const auto& [ti, to_oid] : picked) {
+        const std::vector<int> ins = op_inputs_at(ti);
+        const std::vector<int> sps = op_in_src_ports_at(ti);
+        for (int p = 0; p < static_cast<int>(ins.size()); ++p) {
+            const int src_idx = ins[p];
+            if (src_idx < 0 || src_idx >= int(vg_->nodes().size())) continue;
+            const int src_id = vg_->nodes()[src_idx].id;
+            auto it = cap_of.find(src_id);
+            if (it == cap_of.end()) continue;               // edge to a non-copied node → dropped
+            const int src_port = (p < int(sps.size())) ? sps[p] : 0;
+            clip.edges.push_back({ it->second, cap_of[to_oid], p, src_port });
+        }
+    }
+    return clip;
+}
+
+std::vector<int> NodeGraph::spawn_clip(const GraphClip& clip, float dx, float dy, const char* label) {
+    std::vector<int> new_ids;
+    if (!vg_ || clip.nodes.empty()) return new_ids;
+    std::vector<int> new_idx(clip.nodes.size(), -1);
+    // Pass 1: create each node with a fresh id + offset position, copy its authored state.
+    for (int k = 0; k < static_cast<int>(clip.nodes.size()); ++k) {
+        const NodeCapture& c = clip.nodes[k];
+        const int ni = vg_->add_node(c.op_type);            // mints a fresh stable id
+        sync_op_pos();
+        if (ni >= 0 && ni < int(op_pos_.size())) op_pos_[ni] = { c.x + dx, c.y + dy };
+        const int pc = op_param_count_at(ni);               // same op_type ⇒ same param layout
+        for (int l = 0; l < pc && l < int(c.base.size()); ++l) set_op_param_base_at(ni, l, c.base[l]);
+        for (int l = 0; l < pc && l < int(c.file_params.size()); ++l)
+            if (!c.file_params[l].empty()) set_op_file_param_at(ni, l, c.file_params[l]);
+        for (int l : c.pinned) if (l >= 0 && l < pc) pin_param(ni, l);
+        if (!c.asset.empty()) set_op_asset_at(ni, c.asset);
+        new_idx[k] = ni;
+        new_ids.push_back(vg_->nodes()[ni].id);
+    }
+    // Pass 2: re-wire the internal edges onto the copies.
+    for (const auto& e : clip.edges) {
+        const int from_k = e[0], to_k = e[1], dst_port = e[2], src_port = e[3];
+        if (from_k < 0 || to_k < 0 || from_k >= int(new_idx.size()) || to_k >= int(new_idx.size())) continue;
+        set_op_input_at(new_idx[to_k], dst_port, new_idx[from_k], src_port);
+    }
+    // Pass 3: replicate each node's audio→param mappings onto its copy's fresh id, so a duplicated
+    // reactive node keeps reacting. Rewrite only the dest node id; the param suffix + shaping carry over.
+    for (int k = 0; k < static_cast<int>(clip.nodes.size()); ++k)
+        for (const auto& m : clip.nodes[k].maps) {
+            // dest = "node:<oldid><sep><suffix>" (sep '.'|':'); swap the id, keep sep+suffix verbatim.
+            size_t sep = 5;                                 // 5 = strlen("node:")
+            while (sep < m.dest.size() && m.dest[sep] != '.' && m.dest[sep] != ':') ++sep;
+            if (sep >= m.dest.size()) continue;
+            const std::string dst = "node:" + std::to_string(new_ids[k]) + m.dest.substr(sep);
+            add_mapping(m.source, dst, m.amount, m.curve, m.invert, m.out_lo, m.out_hi, m.attack, m.release);
+        }
+    if (label && *label) note_edit_(label);
+    return new_ids;
+}
+
+int NodeGraph::duplicate_selection(float dx, float dy) {
+    if (sel_.empty()) return 0;
+    const std::vector<int> ids = spawn_clip(capture_ids(sel_.ids()), dx, dy, "Duplicate Nodes");
+    if (ids.empty()) return 0;
+    sel_.clear();
+    for (int id : ids) sel_.add(id);   // re-select the copies so they're ready to group-drag
+    resync_sel_op_();
+    return static_cast<int>(ids.size());
+}
+void NodeGraph::copy_selection() { if (!sel_.empty()) clipboard_ = capture_ids(sel_.ids()); }
+std::vector<int> NodeGraph::paste_clipboard(float dx, float dy) {
+    const std::vector<int> ids = spawn_clip(clipboard_, dx, dy, "Paste Nodes");
+    if (!ids.empty()) { sel_.clear(); for (int id : ids) sel_.add(id); resync_sel_op_(); }
+    return ids;
+}
 int NodeGraph::op_input_port_count(int i) const { return vg_ ? op_in_count(vg_, i) : 0; }
 void NodeGraph::get_op(int i, int& input, int& id, float& x, float& y) const {
     if (!vg_ || i < 0 || i >= int(vg_->nodes().size())) return;
