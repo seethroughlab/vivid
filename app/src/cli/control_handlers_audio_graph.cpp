@@ -232,7 +232,7 @@ void register_audio_graph_handlers(Handlers& handlers_) {
         json e; if (!need_track(c.session, track, e)) return e;
         const std::string op = b.value("op", std::string());
         const int nid = P::session_audio_graph_add_note_op(c.session, track, op.c_str());
-        if (nid < 0) return err(code::kBadArg, "could not add note op '" + op + "'");
+        if (nid < 0) return err(code::kBadArg, "could not add note op: '" + op + "' (unknown or not a note effect)");
         json r = ok(); r["node"] = nid; return r;
     };
     // A native MODULATOR (ADR-0022), e.g. "LFO": no audio, emits a 0..1 control signal. Wire its
