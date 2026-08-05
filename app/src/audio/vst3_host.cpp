@@ -3551,6 +3551,10 @@ int session_graph_node_key_range_get(Session* s, int gnid, int* lo, int* hi) {
 int session_audio_graph_add_note_op(Session* s, int t, const char* op_type) {
     Track* tr = graph_track(s, t);
     if (!tr || !s->op_reg) return -1;
+    // ADR-0047: only a registered NOTE EFFECT (Arp; a dylib with NOTE_EFFECT role). Mirrors add_mod_op —
+    // without this any op could be added here and marked note-in/note-out, minting a node whose declared
+    // ports lie about what it does. Gate before creating the op so a wrong type never allocates.
+    if (!op_type || !vivid::audio_op_is_note_op(*s->op_reg, op_type)) return -1;
     vivid::AudioOp* op = vivid::audio_op_create(*s->op_reg, op_type);
     if (!op) return -1;
     std::lock_guard<std::mutex> lk(tr->gmtx);
