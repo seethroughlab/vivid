@@ -29,6 +29,7 @@ struct AdapterNode {
     bool        selected = false;   // the inspector selection (drives the blue ring in card())
     bool        broken   = false;   // ADR-0019 error state (drives the red border + "!" badge in card())
     bool        bypassed = false;   // ADR-0033 P3 — routed around; card dims + a "BYP" badge is drawn
+    bool        soloed   = false;   // ADR-0033 P4 — auditioned; card gets a green border + "SOLO" tag
     std::string title;              // header label
     std::string error;              // first error line (empty = healthy); the editor draws it over the preview
 };

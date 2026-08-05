@@ -247,6 +247,11 @@ public:
     int  output_id() const { return output_id_; }
     void set_output_id(int id) { output_id_ = id; }
     int  node_index(int id) const;               // -1 if absent
+    // ADR-0033 P4 (node solo/audition): the node ids on `id`'s signal path — `id` itself plus every
+    // ANCESTOR (nodes feeding it) and DESCENDANT (nodes it feeds), following Audio+Note edges both
+    // directions (Control edges carry modulation, not audible signal, so they're excluded). Deduped,
+    // order unspecified. Empty (not even `id`) if `id` is absent. Pure; used to build the solo mask.
+    void collect_signal_path(int id, std::vector<int>& out) const;
     // Editor node position (UI thread; persisted). set marks the node positioned; get returns
     // false when the node is absent or has never been placed (→ the editor auto-lays it out).
     void set_node_pos(int id, float x, float y);

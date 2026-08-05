@@ -41,6 +41,7 @@ namespace vivid::session {
 
 
 static void recompute_mix_scales(Session* s);   // ADR-0022 P1b.4 (defined below)
+static void recompute_node_audible(Track* t);   // ADR-0033 P4 node solo (defined below)
 static void republish_xctl(Session* s);         // ADR-0022 P2a.2 (defined below)
 static void republish_xaudio(Session* s);        // ADR-0022 P2b.4 (defined below)
 static void republish_xnote(Session* s);         // ADR-0022 P2b.5 (defined below)
@@ -315,6 +316,7 @@ static bool republish_track_graph(Track* t) {
     assign_node_gnids(t);                                 // ADR-0022 P2b.3c: session-global ids
     t->gbinds_edit = t->agnodes;                          // parallel to nodes(): index == out_buf
     t->gok_edit    = true;
+    recompute_node_audible(t);                            // ADR-0033 P4: node indices moved → rebuild the solo mask
     publish_track_plan(t);
     // ADR-0022 P2a.2/P2b.4: this track's node indices / buffers may have moved — re-resolve any
     // cross-track edges that reference it. (t->session is null only during initial track construction,
@@ -1350,6 +1352,28 @@ static void recompute_mix_scales(Session* s) {
         const bool audible = !muted && (!any_solo || soloed);
         tp->mix_scale.store(audible ? 1.f : 0.f, std::memory_order_relaxed);
     }
+}
+// ADR-0033 P4: rebuild a track's node-solo audible mask from its soloed_node_ids (UI thread; caller
+// holds t->gmtx). Prunes ids no longer in the graph first, so if the solo set empties out (or every
+// soloed node was deleted) the mask falls back to ~0 = ALL audible — never all-muted. Otherwise the
+// mask is the union of each soloed node's signal path (ancestors + itself + descendants), by node index
+// (== out_buf). Read lock-free by the audio-thread executor.
+static void recompute_node_audible(Track* t) {
+    if (!t) return;
+    auto& ids = t->soloed_node_ids;
+    ids.erase(std::remove_if(ids.begin(), ids.end(),
+                             [&](int id) { return t->agraph.node_index(id) < 0; }), ids.end());
+    if (ids.empty()) { t->node_audible_mask.store(~0ull, std::memory_order_relaxed); return; }
+    uint64_t mask = 0;
+    std::vector<int> path;
+    for (int id : ids) {
+        t->agraph.collect_signal_path(id, path);
+        for (int nid : path) {
+            const int idx = t->agraph.node_index(nid);
+            if (idx >= 0 && idx < 64) mask |= (1ull << idx);
+        }
+    }
+    t->node_audible_mask.store(mask, std::memory_order_relaxed);
 }
 // ADR-0022 P2a.2: resolve every cross-track control edge into its audio-thread apply form and publish
 // (UI thread). For each edge: locate the src+dst tracks by stable id (their POSITION = region base),
@@ -2526,6 +2550,14 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             float* pool = t.blk.node_pool + t.blk.node_base;   // its region of the session node pool
             const VividAudioContext gctx = block_gctx(t.blk);
             process_step(*fs.node, t, pool, frames /*stride*/, t.gcg.buf_count /*scratch*/, t.blk, gctx, frames);
+            // ADR-0033 P4: node solo — zero a muted node's output AFTER it ran (its voice/plugin state is
+            // untouched, so clearing solo restores it with no dropped note-on). ~0 mask = no-op (common).
+            const int ob = fs.node->out_buf;
+            if (ob >= 0 && ob < 64 && !((t.node_audible_mask.load(std::memory_order_relaxed) >> ob) & 1ull)) {
+                float* oL = pool + static_cast<size_t>(ob) * 2 * frames;
+                std::memset(oL, 0, frames * sizeof(float));
+                std::memset(oL + frames, 0, frames * sizeof(float));
+            }
             break;
         }
         case FlatStep::Finalize:
@@ -3378,6 +3410,29 @@ int session_audio_graph_node_bypassed(Session* s, int t, int node_id) {
     std::lock_guard<std::mutex> lk(tr->gmtx);
     return tr->agraph.node_bypassed(node_id) ? 1 : 0;
 }
+// ADR-0033 P4: solo / un-solo a node (audition its signal path — ancestors + itself + descendants —
+// muting sibling branches). Performance state: it recomputes the audible mask but does NOT touch the
+// compiled plan (no recompile) and is never persisted or undone. Idempotent; returns 1 for a valid
+// node, 0 for a bad track/node.
+int session_audio_graph_set_node_solo(Session* s, int t, int node_id, int on) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (tr->agraph.node_index(node_id) < 0) return 0;
+    auto& ids = tr->soloed_node_ids;
+    const auto it = std::find(ids.begin(), ids.end(), node_id);
+    if (on) { if (it == ids.end()) ids.push_back(node_id); }
+    else    { if (it != ids.end()) ids.erase(it); }
+    recompute_node_audible(tr);
+    return 1;
+}
+int session_audio_graph_node_soloed(Session* s, int t, int node_id) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const auto& ids = tr->soloed_node_ids;
+    return std::find(ids.begin(), ids.end(), node_id) != ids.end() ? 1 : 0;
+}
 
 // Add an edge from_id -> to_id. Rejected (returns 0) on a bad/duplicate/self edge, or if the
 // edge would create a cycle (the graph is reverted and the last good plan keeps playing).
@@ -3433,6 +3488,8 @@ void        session_graph_node_param_set(Session* s, int gnid, int i, float v) {
 int         session_graph_remove_node(Session* s, int gnid) { int t,p; return resolve_gnid(s, gnid, &t, &p) ? session_audio_graph_remove_node(s, t, gnid_node_id(s,t,p)) : 0; }
 int         session_graph_node_set_bypass(Session* s, int gnid, int on) { int t,p; return resolve_gnid(s, gnid, &t, &p) ? session_audio_graph_set_node_bypass(s, t, gnid_node_id(s,t,p), on) : 0; }
 int         session_graph_node_bypassed(Session* s, int gnid) { int t,p; return resolve_gnid(s, gnid, &t, &p) ? session_audio_graph_node_bypassed(s, t, gnid_node_id(s,t,p)) : 0; }
+int         session_graph_node_set_solo(Session* s, int gnid, int on) { int t,p; return resolve_gnid(s, gnid, &t, &p) ? session_audio_graph_set_node_solo(s, t, gnid_node_id(s,t,p), on) : 0; }
+int         session_graph_node_soloed(Session* s, int gnid) { int t,p; return resolve_gnid(s, gnid, &t, &p) ? session_audio_graph_node_soloed(s, t, gnid_node_id(s,t,p)) : 0; }
 
 // Unified connect/disconnect: intra-track OR cross-track, chosen by whether the endpoints share a
 // track — the payoff of session-global addressing (one call spans the whole session). kind: 0 audio,
