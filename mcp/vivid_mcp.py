@@ -1029,6 +1029,15 @@ def duplicate_audio_nodes(track: int, ids: list[int], dx: float = 24.0, dy: floa
 
 
 @mcp.tool
+def set_node_bypass(track: int, ids: list[int], bypass: bool = True) -> dict:
+    """Bypass audio nodes (ids from get_audio_graph), routing signal AROUND each while keeping the graph
+    shape intact. An effect passes its input through untouched; a source/instrument/generator gates to
+    silence (no audio, no notes); a modulator emits no control (driven params fall back to their base).
+    Pass bypass=False to restore. Persisted + undoable. Returns {count:<nodes changed>}."""
+    return _post("set_node_bypass", {"track": track, "ids": ids, "bypass": bypass})
+
+
+@mcp.tool
 def audio_graph_connect(track: int, from_node: int, to_node: int, kind: str = "audio") -> dict:
     """Add an edge between two audio-graph nodes (ids from get_audio_graph). `kind` is the SIGNAL
     the wire carries: "audio" (multiple edges into a node sum, stereo) or "note" (ADR-0015: notes

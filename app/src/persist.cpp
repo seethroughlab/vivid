@@ -120,6 +120,7 @@ static json audio_graph_node_to_json(vivid::session::Session* s, int t, int i, b
         jn["pinned"] = pins;
     }
     if (json sm = sampler_save_block(s, t, id); !sm.is_null()) jn["sampler"] = sm;
+    if (S::session_audio_graph_node_bypassed(s, t, id)) jn["bypassed"] = true;   // ADR-0033 P3 (omit when live)
     return jn;
 }
 static json audio_graph_edge_to_json(vivid::session::Session* s, int t, int e) {
@@ -178,6 +179,7 @@ static void load_audio_subgraph(vivid::session::Session* s, int t, const json& g
                             break;
                         }
             if (jn.contains("sampler")) sampler_restore(s, t, nid, jn["sampler"], base_dir);
+            if (jn.value("bypassed", false)) S::session_audio_graph_set_node_bypass(s, t, nid, 1);   // ADR-0033 P3
         }
     if (g.contains("edges"))
         for (const auto& je : g["edges"]) {

@@ -8,6 +8,7 @@
 //   [ / ]  cycle selection    arrows  spatial select (nearest node in that direction)
 //   \      switch visual<->audio pane          Delete / Backspace  delete the selected node
 //   W      start a wire from the selection's output, then W again on a target to commit
+//   B      toggle bypass on the audio selection (route signal around the node) — ADR-0033 P3
 //   , / .  cycle the target input port (visual multi-input)     Shift+Backspace  disconnect an input
 #include "app/input_internal.h"
 
@@ -223,6 +224,28 @@ bool disconnect(Window& win, App& app, Graph g) {
     return true;
 }
 
+// B — toggle bypass on the audio selection (route signal around each node). ADR-0033 P3. Audio graph
+// only this phase (returns false for the visual pane, leaving B free there). Mixed selection resolves to
+// a group toggle: if ANY selected node is live, bypass all; if ALL are already bypassed, restore all.
+// One note_edit folds the batch into a single undo entry.
+bool bypass(Window& win, App& app, Graph g) {
+    if (g != Graph::Audio || !app.session) return false;
+    const int tr = audio_track(win, app);
+    if (tr < 0) return true;
+    std::vector<int> ids(win.audio_sel.ids().begin(), win.audio_sel.ids().end());
+    if (ids.empty()) {
+        if (win.sel_audio_node == Window::kNoAudioNode) return true;
+        ids.push_back(win.sel_audio_node);
+    }
+    bool any_live = false;
+    for (int id : ids) if (!S::session_audio_graph_node_bypassed(app.session, tr, id)) { any_live = true; break; }
+    const int on = any_live ? 1 : 0;
+    int changed = 0;
+    for (int id : ids) changed += S::session_audio_graph_set_node_bypass(app.session, tr, id, on);
+    if (changed && app.edit_gateway) app.edit_gateway->note_edit("Bypass", "");
+    return true;
+}
+
 }  // namespace
 
 bool kbd_edit_key(Window& win, App& app, int key, int mods) {
@@ -237,6 +260,7 @@ bool kbd_edit_key(Window& win, App& app, int key, int mods) {
         case GLFW_KEY_UP:    return spatial(win, app, g, 0.f, -1.f);
         case GLFW_KEY_BACKSLASH: return switch_pane(win, app);
         case GLFW_KEY_W:     return wire(win, app, g);
+        case GLFW_KEY_B:     return bypass(win, app, g);
         case GLFW_KEY_COMMA:  if (win.kbd_wire_dom) { win.kbd_wire_port = std::max(0, win.kbd_wire_port - 1); return true; } return false;
         case GLFW_KEY_PERIOD: if (win.kbd_wire_dom) { win.kbd_wire_port = std::min(3, win.kbd_wire_port + 1); return true; } return false;
         case GLFW_KEY_DELETE: return del(win, app, g);

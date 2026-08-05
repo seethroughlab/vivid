@@ -644,7 +644,19 @@ static void run_track_modulators(Track& t, const GraphBlockCtx& b, float* scL, f
     for (const vivid::audio::CompiledStep& s : cg.steps) {
         if (s.out_buf < 0 || s.out_buf >= static_cast<int>(t.gbinds.size())) continue;
         const GNodeBind& nb = t.gbinds[s.out_buf];
-        if (nb.kind == GNKind::NativeMod && nb.op) run_modulator_step(s, nb, t, b, scL, scR, frames);
+        if (nb.kind != GNKind::NativeMod || !nb.op) continue;
+        // ADR-0033 Phase 3: a bypassed modulator is disabled — zero its control-out buffer so any
+        // param it drove falls back to its base (the pool is not cleared per block, so we must clear
+        // it explicitly rather than just skip, else the param would freeze at the last value).
+        if (s.bypassed) {
+            if (s.control_out_buf >= 0 && s.control_out_buf < kGraphMaxNodes)
+                std::memset(&b.ctl_pool[b.ctl_base + static_cast<size_t>(s.control_out_buf) * kGraphMaxBlock],
+                            0, frames * sizeof(float));
+            if (s.out_buf >= 0 && s.out_buf < kGraphMaxNodes)
+                t.ctl_pub[s.out_buf].store(0.f, std::memory_order_relaxed);   // live dot goes dark
+            continue;
+        }
+        run_modulator_step(s, nb, t, b, scL, scR, frames);
     }
 }
 
@@ -698,6 +710,14 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
     const uint32_t vmod_n = nb.handle ? resolve_vst3_control(s, nb, b, t.id, vmod) : 0;
 
     if (s.n_in == 0) {   // source node
+        // ADR-0033 Phase 3: a bypassed source/generator gates to silence — no audio, and no notes
+        // on its note-out (so a bypassed MidiClip/generator/note-fx stops driving downstream too).
+        if (s.bypassed) {
+            std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
+            if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size()))
+                t.npool[static_cast<size_t>(s.note_out_buf)].clear();
+            return;
+        }
         const bool full_range = (nb.key_lo == 0 && nb.key_hi == 127);
         // ADR-0015: the notes THIS node consumes — its note edge if it has one, else the
         // track-wide stream (the pre-note-edge behavior, which is what keeps parity).
@@ -871,12 +891,14 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
     }
     std::memcpy(oL, iL, frames * sizeof(float));   // start from the summed input
     std::memcpy(oR, iR, frames * sizeof(float));
-    if (nb.kind == GNKind::NativeFx && nb.op)       // effect: transform in place
+    // ADR-0033 Phase 3: a bypassed effect passes its input straight through — oL/oR already hold the
+    // summed input, so we simply skip the transform (the plugin/op is not run).
+    if (nb.kind == GNKind::NativeFx && nb.op && !s.bypassed)   // effect: transform in place
         vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nullptr, 0,
                                 nullptr, 0, nullptr, ovr, novr);
-    else if (nb.kind == GNKind::Vst3Fx && nb.handle && nb.handle->processing)  // non-processing = passthrough (matches inline skip)
+    else if (nb.kind == GNKind::Vst3Fx && nb.handle && nb.handle->processing && !s.bypassed)  // non-processing = passthrough (matches inline skip)
         render_vst3_effect(t, nb.handle, gctx, frames, oL, oR, vmod, vmod_n);
-    else if (nb.kind == GNKind::ClapFx && nb.clap && nb.clap->processing)
+    else if (nb.kind == GNKind::ClapFx && nb.clap && nb.clap->processing && !s.bypassed)
         render_clap_effect(t, nb.clap, frames, oL, oR, cmod, cmod_n);
     else if (nb.kind == GNKind::Output) {
         // ADR-0022 P1a — the Track-Out node applies the track GAIN, so its buffer IS the track's
@@ -3332,6 +3354,31 @@ int session_audio_graph_remove_node(Session* s, int t, int node_id) {
     return 1;
 }
 
+// ADR-0033 Phase 3: bypass a node (route signal around it) or restore it. Mutates the authoritative
+// graph and republishes, so the recompiled plan carries the new CompiledStep::bypassed to the audio
+// thread (same gen-counter + try_lock handoff every topology edit uses). Idempotent; returns 1 for a
+// valid node (state set), 0 for a bad track/node.
+int session_audio_graph_set_node_bypass(Session* s, int t, int node_id, int on) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (tr->agraph.node_index(node_id) < 0) return 0;
+    if (tr->agraph.node_bypassed(node_id) == (on != 0)) return 1;   // no change, still a valid node
+    // Bypass changes the compiled plan, so — like every other graph-node edit (add_op / remove_node /
+    // connect) — the graph becomes the authoritative source of truth. This also makes the flag durable:
+    // a later derived-chain rebuild can't silently drop it. Then republish so the recompile carries it.
+    tr->agraph.set_node_bypass(node_id, on != 0);
+    tr->graph_authoritative = true;
+    republish_track_graph(tr);
+    return 1;
+}
+int session_audio_graph_node_bypassed(Session* s, int t, int node_id) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return tr->agraph.node_bypassed(node_id) ? 1 : 0;
+}
+
 // Add an edge from_id -> to_id. Rejected (returns 0) on a bad/duplicate/self edge, or if the
 // edge would create a cycle (the graph is reverted and the last good plan keeps playing).
 int session_audio_graph_connect_kind(Session* s, int t, int from_id, int to_id, int kind) {
@@ -3384,6 +3431,8 @@ const char* session_graph_node_param_name(Session* s, int gnid, int i) { int t,p
 float       session_graph_node_param_get(Session* s, int gnid, int i) { int t,p; return resolve_gnid(s, gnid, &t, &p) ? session_audio_graph_node_param_get(s, t, gnid_node_id(s,t,p), i) : 0.f; }
 void        session_graph_node_param_set(Session* s, int gnid, int i, float v) { int t,p; if (resolve_gnid(s, gnid, &t, &p)) session_audio_graph_node_param_set(s, t, gnid_node_id(s,t,p), i, v); }
 int         session_graph_remove_node(Session* s, int gnid) { int t,p; return resolve_gnid(s, gnid, &t, &p) ? session_audio_graph_remove_node(s, t, gnid_node_id(s,t,p)) : 0; }
+int         session_graph_node_set_bypass(Session* s, int gnid, int on) { int t,p; return resolve_gnid(s, gnid, &t, &p) ? session_audio_graph_set_node_bypass(s, t, gnid_node_id(s,t,p), on) : 0; }
+int         session_graph_node_bypassed(Session* s, int gnid) { int t,p; return resolve_gnid(s, gnid, &t, &p) ? session_audio_graph_node_bypassed(s, t, gnid_node_id(s,t,p)) : 0; }
 
 // Unified connect/disconnect: intra-track OR cross-track, chosen by whether the endpoints share a
 // track — the payoff of session-global addressing (one call spans the whole session). kind: 0 audio,
