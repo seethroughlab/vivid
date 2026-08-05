@@ -53,12 +53,44 @@ from PIL import Image                   # noqa: E402  (uv run --with pillow)
 # it via an Image node; source/3D ops are unaffected. Absolute path (Image needs one).
 TEST_IMAGE = os.path.join(HERE, "assets", "effect-testcard.png")
 
+# Bundled example assets used to SEED the file/signal-driven ops that otherwise render blank. Absolute
+# paths (the ops resolve files absolutely). A missing asset degrades gracefully — the op just stays blank.
+_MEDIA = os.path.abspath(os.path.join(HERE, "..", "..", "examples", "demos", "media"))
+GLTF  = os.path.join(_MEDIA, "frank", "scene.gltf")   # a mesh for MeshLoad / Model / MeshRender / MeshDisplace
+VIDEO = os.path.join(_MEDIA, "loop.mp4")              # a clip for the Video op
+
+# The op-under-test's own `file` param, seeded so a file-based SOURCE renders its content instead of a
+# placeholder. (Texture/mesh INPUTS to other ops are seeded by PreviewSources below.)
+FILE_SEED = {"Image": TEST_IMAGE, "MeshLoad": GLTF, "Model": GLTF, "Video": VIDEO}
+
+def needs_signal(op) -> bool:
+    """True for ops that only render once a live signal is flowing: any signal-consumer, the Notes source
+    itself, and AudioSpectrum (which reads the master spectrum bus)."""
+    if op["name"] in ("AudioSpectrum", "Notes"):
+        return True
+    return any(scaffolds.input_kind(p) == "signal" for p in scaffolds.in_ports(op))
+
 
 class PreviewSources(scaffolds.Sources):
-    """Audit scaffold sources, but texture inputs come from the prism test image (an Image node) rather
-    than the scaffold's default `Gradient` — a bundled SHADER that isn't registered in a fresh instance.
-    Falls back to `NoiseField` (a procedural source that's always present) when the test image is absent,
-    so the tool still runs before the asset is added. Patched only here, never in shared scaffolds.py."""
+    """Audit scaffold sources, seeded so preview inputs carry real content:
+      - `texture` comes from the prism test image (an Image node) rather than the scaffold's default
+        `Gradient` shader (absent from a fresh instance); falls back to `NoiseField` if the asset is gone.
+      - `mesh` (MeshLoad) is pointed at a bundled glTF, so mesh consumers (MeshRender/MeshDisplace) render.
+      - `signal` (Notes) is bound to a freshly-armed track, so signal consumers can be driven with note_on.
+    Patched only here, never in shared scaffolds.py."""
+
+    def __init__(self, v):
+        super().__init__(v)
+        self.track_idx = None   # the armed instrument track backing the `signal` source (per project)
+
+    def ensure_track(self):
+        """A fresh, armed instrument track whose STABLE id the `Notes` source reads. Returns (idx, id)."""
+        if self.track_idx is None:
+            # TestTone is a bundled native synth — enough to give the Notes source live events (and to feed
+            # the master spectrum for AudioSpectrum) without depending on any third-party plugin.
+            self.track_idx = self.v.call("add_track", kind="instrument", instrument="TestTone")["track"]
+            self.v.call("arm_track", track=self.track_idx)
+        return self.track_idx, self.v.track_id(self.track_idx)
 
     def get(self, kind):
         if kind == "texture":
@@ -66,7 +98,19 @@ class PreviewSources(scaffolds.Sources):
                 self.cache["texture"] = (self.v.image(TEST_IMAGE) if os.path.exists(TEST_IMAGE)
                                          else self.v.add_node("NoiseField"))
             return self.cache["texture"]
-        return super().get(kind)
+        if kind == "signal":
+            if "signal" not in self.cache:
+                _, tid = self.ensure_track()
+                n = self.v.add_node("Notes")
+                self.v.set_node_param(n, "track", float(tid))
+                self.cache["signal"] = n
+            return self.cache["signal"]
+        node = super().get(kind)
+        if kind == "mesh" and node is not None and "mesh_seeded" not in self.cache:
+            self.cache["mesh_seeded"] = True
+            if os.path.exists(GLTF):
+                self.v.call("set_node_file_param", node_id=node, name="file", value=GLTF)
+        return node
 
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 OUT_DIR = os.path.join(REPO, "site", "assets", "reference")
@@ -96,14 +140,40 @@ def rendered(a: dict) -> bool:
             or a.get("color_spread", 0.0) > 0.02)
 
 
-def square_thumb(src_png: str, dst_png: str):
-    """Center-crop to square, downscale to THUMB, write dst (RGBA preserved)."""
+def _bg_color(im: "Image.Image"):
+    """The frame's background, sampled as the median of its four corners — so contain-fit padding blends
+    into a full-bleed render (invisible on the usual dark 3D background) instead of adding hard bars."""
+    w, h = im.size
+    pts = [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]
+    px = [im.getpixel(p) for p in pts]
+    return tuple(sorted(c[i] for c in px)[len(px) // 2] for i in range(4))
+
+
+def fit_thumb(src_png: str, dst_png: str):
+    """Contain-fit the WHOLE frame into a square (padded with the sampled background), then downscale to
+    THUMB. Unlike a center-crop this never clips content — a wide effect on the test card keeps its edges,
+    and a centered 3D subject still reads centred with seamless padding. RGBA preserved."""
     im = Image.open(src_png).convert("RGBA")
     w, h = im.size
-    s = min(w, h)
-    im = im.crop(((w - s) // 2, (h - s) // 2, (w - s) // 2 + s, (h - s) // 2 + s))
-    im = im.resize((THUMB, THUMB), Image.LANCZOS)
-    im.save(dst_png)
+    s = max(w, h)
+    canvas = Image.new("RGBA", (s, s), _bg_color(im))
+    canvas.paste(im, ((s - w) // 2, (s - h) // 2))
+    canvas = canvas.resize((THUMB, THUMB), Image.LANCZOS)
+    canvas.save(dst_png)
+
+
+def drive_signal(v, src: "PreviewSources"):
+    """Strike a sustained chord on the source's armed track and start the transport, so signal consumers
+    (Emitter/Instancer/Solids/Type) have an active element set — and an Emitter gets its note-on FIRE — at
+    capture time. Best-effort: an op with no live audio instrument (AudioSpectrum) may still read blank."""
+    if src.track_idx is None:
+        return
+    try:
+        v.call("set_playing", playing=True)
+        for pitch in (48, 52, 55, 60):        # a C-minor-ish spread, so a layout/palette fans out
+            v.call("note_on", pitch=pitch, vel=0.85)
+    except Exception:
+        pass
 
 
 def capture_op(v, op, tmpdir) -> str:
@@ -112,15 +182,35 @@ def capture_op(v, op, tmpdir) -> str:
     slug = slugify(name)
     v.call("new_project")
     out = find_output(v)
+    sources = PreviewSources(v)
     try:
-        op_node, _terminal = scaffolds.build_scaffold(v, op, PreviewSources(v))
+        op_node, terminal = scaffolds.build_scaffold(v, op, sources)
     except Exception as e:
         return f"scaffold-error: {str(e)[:80]}"
-    # Feed the op's OWN output into Output (the audit's thumbnail step) so the preview is JUST this op.
+    if terminal is None:
+        return "skip-blank"          # audio / unknown — nothing GPU-renderable
+    # Seed a file-based source op with real content so it renders instead of a placeholder.
+    if name in FILE_SEED and os.path.exists(FILE_SEED[name]):
+        try:
+            v.call("set_node_file_param", node_id=op_node, name="file", value=FILE_SEED[name])
+        except Exception:
+            pass
+    # Feed the scaffold's TERMINAL (a texture output — op_node itself for an effect, or its render chain
+    # for a scene/mesh/signal op) into Output. Wiring op_node directly only works for texture-output ops
+    # and now trips typed-connection validation for the rest (custom_ref -> texture).
     try:
-        v.connect(out, op_node, 0, 0)
+        v.connect(out, terminal, 0, 0)
     except Exception as e:
         return f"wire-error: {str(e)[:80]}"
+    if needs_signal(op):
+        # A signal-consumer already created the source track (via Sources.get("signal")); Notes IS the
+        # source, so bind it; AudioSpectrum has no signal port, so make a track just to feed the master bus.
+        if name == "Notes":
+            _, tid = sources.ensure_track()
+            v.set_node_param(op_node, "track", float(tid))
+        elif sources.track_idx is None:
+            sources.ensure_track()
+        drive_signal(v, sources)
     time.sleep(SETTLE)
     a = v.call("analyze_frame").get("analysis", {})
     for _ in range(2):                       # a blank frame usually means Vivid lost foreground
@@ -135,7 +225,7 @@ def capture_op(v, op, tmpdir) -> str:
     if not r.get("captured") or not os.path.exists(raw):
         return f"capture-failed: {r.get('reason', '')[:60]}"
     os.makedirs(OUT_DIR, exist_ok=True)
-    square_thumb(raw, os.path.join(OUT_DIR, f"{slug}.png"))
+    fit_thumb(raw, os.path.join(OUT_DIR, f"{slug}.png"))
     return "ok"
 
 
