@@ -11,7 +11,9 @@ struct App;
 //
 // Honesty over coverage: we only carry signals we can read truthfully + cheaply from
 // App today (gpu errors, operator/graph counts, control liveness). Audio xrun metering
-// and per-node timing are intentionally absent until there's a real source for them.
+// is still absent; per-PLUGIN process timing now exists on the RT thread (ADR-0045 Tier 2a
+// watchdog) but drives an over-budget disable + a toast rather than a rolled-up health field,
+// so it is not mirrored here yet.
 struct HealthSnapshot {
     // audio
     bool        audio_session_active = false;   // a real multi-track session (vs test tone)

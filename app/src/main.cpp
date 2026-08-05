@@ -42,6 +42,7 @@
 #include "audio/builtin_audio_ops.h"   // AO-1: native audio operators
 #include "audio/plugin_scan.h"         // background plugin classifier (instrument vs effect)
 #include "audio/plugin_watchdog.h"     // ADR-0045 Tier 2a: warm the RT plugin-watchdog config
+#include "audio/plugin_hang_monitor.h" // ADR-0045 Tier 2a: the permanent-hang monitor thread
 #include "audio/plugin_probe.h"        // --probe-plugin subprocess entry point
 #include "audio/audio_callback.h"
 #include "ui/mapping_overview.h"
@@ -309,6 +310,7 @@ int main(int argc, char** argv) {
     cfg.performanceProfile = ma_performance_profile_conservative;
 
     ma_device device;
+    vivid::audio::PluginHangMonitor hang_monitor;   // ADR-0045 Tier 2a: watches for a plugin stuck in process()
     bool audio_ok = (ma_device_init(nullptr, &cfg, &device) == MA_SUCCESS);
     if (audio_ok) {
         transport.configure_capture(device.sampleRate, 30.0);
@@ -331,6 +333,7 @@ int main(int argc, char** argv) {
         // RT audio thread starts — so the RT thread never triggers the getenv-backed lazy init.
         (void)vivid::audio::watchdog_config();
         if (ma_device_start(&device) != MA_SUCCESS) audio_ok = false;
+        else hang_monitor.start();   // ADR-0045 Tier 2a: begin watching the RT thread's in-flight beacon
     }
     glfwSetWindowUserPointer(window, &win);
     vivid::install_input_callbacks(window);  // key/char/scroll/mouse (app/input.cpp)
@@ -501,6 +504,7 @@ int main(int argc, char** argv) {
 
     app.midi_in.stop();   // stop hardware MIDI before tearing down state
     control.stop();   // stop the MCP control server thread before tearing down state
+    hang_monitor.stop();                      // ADR-0045 Tier 2a: join the monitor before the device tears down
     if (audio_ok) ma_device_uninit(&device);  // stops the callback first
     for (int t = 0; t < 8; ++t) if (win.track_win[t]) vst3_plugin_window_close(win.track_win[t]);
     for (int k = 0; k < 8; ++k) if (win.fx_win[k]) vst3_plugin_window_close(win.fx_win[k]);

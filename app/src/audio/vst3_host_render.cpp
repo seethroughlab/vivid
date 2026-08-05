@@ -8,6 +8,7 @@
 #include "audio/vst3_host_internal.h"                 // Track, NoteEvent/ExprEvent, Vst3/ClapHandle, kGraphMaxNotes, Steinberg using-directives
 #include "audio/plugin_crash_name.h"                  // plugin_crash_name (ADR-0045 P0-01)
 #include "audio/plugin_watchdog.h"                    // ADR-0045 Tier 2a: over-budget watchdog (RT-safe)
+#include "audio/plugin_hang_monitor.h"                // ADR-0045 Tier 2a: in-flight beacon for the hang monitor
 #include "app/crash_guard.h"                          // ADR-0018: attribute a plugin crash (RT-safe pointer store)
 #include "pluginterfaces/vst/ivstnoteexpression.h"    // kTuningTypeID / kBrightnessTypeID (note-expression axes)
 
@@ -115,8 +116,10 @@ void render_vst3_instrument(Track& t, Vst3Handle* h, Vst3EventList& events,
     if (h->has_note_out) { h->out_events.clear(); data.outputEvents = &h->out_events; }
     const char* wd_name = plugin_crash_name(h->plugin_name, h->vendor, "VST3 plugin");
     const auto  wd_t0   = std::chrono::steady_clock::now();                 // ADR-0045 Tier 2a
+    vivid::audio::watchdog_mark_inflight(&h->watchdog, wd_name, t.id);      // beacon on (hang monitor)
     { vivid::CrashGuard cg(wd_name);  // ADR-0045 P0-01
       h->processor->process(data); }
+    vivid::audio::watchdog_clear_inflight();                               // returned in time → beacon off
     vivid::audio::watchdog_note_process(h->watchdog, wd_name, t.id,
         static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - wd_t0).count()), frames, ctx.sample_rate);
@@ -164,8 +167,10 @@ void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx,
     fd.inputEvents = nullptr; fd.inputParameterChanges = &fpc; fd.processContext = &fpctx;
     const char* wd_name = plugin_crash_name(fx->plugin_name, fx->vendor, "VST3 plugin");
     const auto  wd_t0   = std::chrono::steady_clock::now();                 // ADR-0045 Tier 2a
+    vivid::audio::watchdog_mark_inflight(&fx->watchdog, wd_name, t.id);     // beacon on (hang monitor)
     { vivid::CrashGuard cg(wd_name);  // ADR-0045 P0-01
       fx->processor->process(fd); }
+    vivid::audio::watchdog_clear_inflight();                               // returned in time → beacon off
     vivid::audio::watchdog_note_process(fx->watchdog, wd_name, t.id,
         static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - wd_t0).count()), frames, ctx.sample_rate);
@@ -191,8 +196,10 @@ void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent
     float* in[2]  = { h->silence.data(), h->silence.data() + h->max_block };
     const char* wd_name = plugin_crash_name(h->name, h->bundle_path, "CLAP plugin");
     const auto  wd_t0   = std::chrono::steady_clock::now();                 // ADR-0045 Tier 2a
+    vivid::audio::watchdog_mark_inflight(&h->watchdog, wd_name, t.id);      // beacon on (hang monitor)
     { vivid::CrashGuard cg(wd_name);  // ADR-0045 P0-01
       clap_run(h, static_cast<int64_t>(t.steady), frames, h->audio_in > 0 ? in : nullptr, 2, out, 2); }
+    vivid::audio::watchdog_clear_inflight();                               // returned in time → beacon off
     vivid::audio::watchdog_note_process(h->watchdog, wd_name, t.id,
         static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - wd_t0).count()), frames, h->sample_rate);
@@ -210,8 +217,10 @@ void render_clap_effect(Track& t, ClapHandle* h, uint32_t frames, float* L, floa
     float* out[2] = { t.fxl.data(), t.fxr.data() };
     const char* wd_name = plugin_crash_name(h->name, h->bundle_path, "CLAP plugin");
     const auto  wd_t0   = std::chrono::steady_clock::now();                 // ADR-0045 Tier 2a
+    vivid::audio::watchdog_mark_inflight(&h->watchdog, wd_name, t.id);      // beacon on (hang monitor)
     { vivid::CrashGuard cg(wd_name);  // ADR-0045 P0-01
       clap_run(h, static_cast<int64_t>(t.steady), frames, in, 2, out, 2); }
+    vivid::audio::watchdog_clear_inflight();                               // returned in time → beacon off
     vivid::audio::watchdog_note_process(h->watchdog, wd_name, t.id,
         static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - wd_t0).count()), frames, h->sample_rate);
