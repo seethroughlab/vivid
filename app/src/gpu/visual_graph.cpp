@@ -5,6 +5,7 @@
 
 #include "operator_api/gpu_operator.h"
 #include "operator_api/value_view.h"   // VividValueView / VividValueOutput (FLOAT-MANY lane transport)
+#include "operator_api/port_compat.h"   // ADR-0047: ports_compatible (typed connection validation)
 #include "gpu/asset_shader.h"   // AssetShader (CustomShader .glsl push)
 #include "gpu/graph_topo.h"     // topo_order (shared, headless-testable DFS)
 #include "gpu/output_feed.h"    // output_is_fed (structural "Output has a feed" predicate, P2-03)
@@ -271,6 +272,33 @@ void VisualGraph::set_input(int node, int port, int src, int src_port) {
     if (node < 0 || node >= static_cast<int>(nodes_.size()) || port < 0) return;
     if (src == node) return;                          // no self-loops
     nodes_[node].set_in(port, (src >= 0 && src < static_cast<int>(nodes_.size())) ? src : -1, std::max(0, src_port));
+}
+// ADR-0047: the p-th port descriptor of a given direction (the direction-filtered walk over inst.ports).
+static const VividPortDescriptor* nth_port_desc(const VisualNode& n, int p, VividPortDirection dir) {
+    if (p < 0) return nullptr;
+    int seen = 0;
+    for (const auto& pd : n.inst.ports) {
+        if (pd.direction != dir) continue;
+        if (seen == p) return &pd;
+        ++seen;
+    }
+    return nullptr;
+}
+const VividPortDescriptor* VisualGraph::input_port_desc(int node, int p) const {
+    if (node < 0 || node >= static_cast<int>(nodes_.size())) return nullptr;
+    return nth_port_desc(nodes_[node], p, VIVID_PORT_INPUT);
+}
+const VividPortDescriptor* VisualGraph::output_port_desc(int node, int p) const {
+    if (node < 0 || node >= static_cast<int>(nodes_.size())) return nullptr;
+    return nth_port_desc(nodes_[node], p, VIVID_PORT_OUTPUT);
+}
+// ADR-0047: mirror the audio graph's typed-edge check. Reject a wire whose source-output stream can't
+// feed the dest-input stream; permissive when either port has no descriptor (older ops keep working).
+bool VisualGraph::can_connect(int node, int port, int src, int src_port) const {
+    const VividPortDescriptor* in  = input_port_desc(node, port);
+    const VividPortDescriptor* out = output_port_desc(src, src_port);
+    if (!in || !out) return true;   // missing metadata -> don't block
+    return vivid::ports_compatible(*out, *in);
 }
 int VisualGraph::output_index() const {
     int first = -1;

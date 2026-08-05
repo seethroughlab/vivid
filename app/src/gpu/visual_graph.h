@@ -117,6 +117,14 @@ public:
     void set_input(int node, int port, int src, int src_port = 0);   // wire src's OUTPUT port -> node's input `port`
     void set_input(int node, int src)   { set_input(node, 0, src); }   // back-compat: primary input (port A)
     void set_input_b(int node, int src) { set_input(node, 1, src); }   // back-compat: second input (port B)
+    // ADR-0047: typed connection validation. The p-th INPUT / OUTPUT port descriptor of a node
+    // (nullptr if the index is out of range) — the direction-filtered walk over inst.ports.
+    const VividPortDescriptor* input_port_desc(int node, int p) const;
+    const VividPortDescriptor* output_port_desc(int node, int p) const;
+    // Would wiring src's OUTPUT `src_port` into `node`'s INPUT `port` carry a compatible stream? Permissive
+    // when either descriptor is unavailable (older ops with no port metadata). Used by the interactive +
+    // CLI wire paths; set_input itself stays UNVALIDATED so persistence/load replay never rejects an old edge.
+    bool can_connect(int node, int port, int src, int src_port) const;
     int  output_index() const;                 // index of the ACTIVE Output node, or -1
     // Is the active Output node fed by a real producer? False = an intentionally-empty canvas
     // ("empty by design", benign); true = something feeds Output (its result may still be blank,
