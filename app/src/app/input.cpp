@@ -527,13 +527,14 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     }
     // UI-3 audio node graph deep view: the editor owns its dock press (ADR-0023 6d) — select / param /
     // rewire / edge-disconnect / pan + the header "Editor" button. The left-press is guaranteed here.
-    if (auto* ag = app->audio_graph; ag && ag->on_down(*app, *win, mx, my)) return;
+    if (auto* ag = app->audio_graph; ag && ag->on_down(*app, *win, mx, my, mods)) return;
     if (vivid::input::dock_inspector(*win, *app, mx, my)) return;   // visual-node param inspector (consumes dock)
     // mixer: ARM buttons (record-arm) then gain sliders.
     if (vivid::input::clipgrid_mixer(*win, *app, mx, my, tracks, scenes)) return;
     // A visuals node's header chevron opens its show/hide-params menu (before on_down would start a drag).
     if (vivid::input::graph_param_curate_click(*win, *app, button, action, mx, my)) return;
-    if (app->graph && app->graph->on_down(mx, my)) return;  // node graph consumed it (it owns the visuals column)
+    if (app->graph && app->graph->on_down(mx, my, (mods & GLFW_MOD_SHIFT) != 0, (mods & GLFW_MOD_SUPER) != 0))
+        return;  // node graph consumed it (it owns the visuals column) — ADR-0033 P1 mods for multi-select
     // clip cells (single-click arms/launches, double-click opens editor) + scene-launch buttons.
     if (vivid::input::clipgrid_cells(*win, *app, mx, my, tracks, scenes)) return;
 }

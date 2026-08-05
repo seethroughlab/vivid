@@ -1041,9 +1041,23 @@ void AudioNodeGraph::on_move(App& app, Window& win, double mx, double my) {
         const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
         prime(app, win);   // node-canvas bounds (below-session pane) + param bounds + selection
         double wxd, wyd; canvas_.view().to_world(mx, my, wxd, wyd);   // screen -> world via the absolute camera
-        S::session_audio_graph_node_set_pos(app.session, tr, node_drag,
-                                            static_cast<float>(wxd) - node_dx, static_cast<float>(wyd) - node_dy);
+        // ADR-0033 P1 group-drag: the grabbed node follows the cursor; every other selected node shifts
+        // by the same world delta (measured from the grabbed node's grab-time position).
+        const float tgt_x = static_cast<float>(wxd) - node_dx, tgt_y = static_cast<float>(wyd) - node_dy;
+        float start_x = tgt_x, start_y = tgt_y;
+        for (const auto& e : grp_start_) if (e.first == node_drag) { start_x = e.second.first; start_y = e.second.second; break; }
+        const float ddx = tgt_x - start_x, ddy = tgt_y - start_y;
+        if (grp_start_.empty()) {
+            S::session_audio_graph_node_set_pos(app.session, tr, node_drag, tgt_x, tgt_y);
+        } else {
+            for (const auto& e : grp_start_)
+                S::session_audio_graph_node_set_pos(app.session, tr, e.first, e.second.first + ddx, e.second.second + ddy);
+        }
         if (app.edit_gateway) app.edit_gateway->note_edit("Move Node", "ag-node-drag");   // ADR-0017/G3
+    }
+    if (marquee_ && app.session) {   // ADR-0033 P1: extend the marquee's far corner (world coords)
+        double wxd, wyd; canvas_.view().to_world(mx, my, wxd, wyd);
+        marq_x1_ = wxd; marq_y1_ = wyd;
     }
     // Drag a source node's key-range handle (vertical): ~0.25 semitone/px, lo/hi kept ordered.
     if (key_drag >= 0 && app.session && win.sel_audio_node >= 0) {

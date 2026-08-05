@@ -77,8 +77,10 @@ int sel_index(const Window& win, App& app, Graph g, const std::vector<KNode>& no
 }
 
 void select(Window& win, App& app, Graph g, const KNode& n) {
+    // ADR-0033 P1: keyboard nav collapses to a single node. select_op already replaces the visual set;
+    // mirror that for audio so the multi-selection follows the keyboard.
     if (g == Graph::Visual) { if (app.graph) app.graph->select_op(n.idx); }
-    else win.sel_audio_node = n.id;
+    else { win.sel_audio_node = n.id; win.audio_sel.replace(n.id); }
 }
 
 // [ / ] — cycle the selection (wrapping). With no selection, land on the first (]) or last ([).
@@ -109,9 +111,11 @@ bool spatial(Window& win, App& app, Graph g, float dx, float dy) {
 // switching is just moving the selection into the other graph (and priming a node there).
 bool switch_pane(Window& win, App& app) {
     if (active_graph(app) == Graph::Visual) {
-        if (app.graph) app.graph->select_op(-1);              // -> audio focus
+        if (app.graph) app.graph->select_op(-1);              // -> audio focus (clears the visual set)
         const auto a = enum_nodes(win, app, Graph::Audio);
-        if (!a.empty() && sel_index(win, app, Graph::Audio, a) < 0) win.sel_audio_node = a.front().id;
+        if (!a.empty() && sel_index(win, app, Graph::Audio, a) < 0) {
+            win.sel_audio_node = a.front().id; win.audio_sel.replace(a.front().id);
+        }
     } else {
         const auto v = enum_nodes(win, app, Graph::Visual);   // -> visual focus
         if (!v.empty()) app.graph->select_op(v.front().idx);
@@ -119,16 +123,32 @@ bool switch_pane(Window& win, App& app) {
     return true;
 }
 
-// Delete / Backspace — remove the selected node (guards live in the model APIs).
+// Delete / Backspace — remove the whole selection (guards live in the model APIs). ADR-0033 P1: the
+// removals mutate the model only; ONE note_edit after the batch folds them into a single undo entry.
 bool del(Window& win, App& app, Graph g) {
     if (g == Graph::Visual) {
         if (!app.graph) return true;
-        app.graph->delete_op(app.graph->selected_op());       // no-op on Output / out-of-range
+        const auto& s = app.graph->selection();
+        if (s.empty()) { app.graph->delete_op(app.graph->selected_op()); return true; }  // notes its own edit
+        std::vector<int> ids(s.ids().begin(), s.ids().end());   // copy: deletion invalidates the set
+        int removed = 0;
+        for (int id : ids) if (app.graph->delete_op_by_id(id)) ++removed;   // Output is never removable
+        app.graph->select_op(-1);   // clear the now-invalid selection
+        if (removed && app.edit_gateway) app.edit_gateway->note_edit("Delete Nodes", "");
         return true;
     }
     const int tr = audio_track(win, app);
-    if (tr < 0 || win.sel_audio_node == Window::kNoAudioNode) return true;
-    if (S::session_audio_graph_remove_node(app.session, tr, win.sel_audio_node)) {   // effects-only (API-guarded)
+    if (tr < 0) return true;
+    std::vector<int> ids(win.audio_sel.ids().begin(), win.audio_sel.ids().end());
+    if (ids.empty()) {
+        if (win.sel_audio_node == Window::kNoAudioNode) return true;
+        ids.push_back(win.sel_audio_node);
+    }
+    int removed = 0;
+    for (int id : ids)
+        if (S::session_audio_graph_remove_node(app.session, tr, id)) ++removed;   // effects-only (API-guarded)
+    if (removed) {
+        win.audio_sel.clear();
         win.sel_audio_node = Window::kNoAudioNode;
         if (app.edit_gateway) app.edit_gateway->note_edit("Remove Audio Node", "");
     }

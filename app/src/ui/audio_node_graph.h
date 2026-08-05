@@ -14,6 +14,7 @@
 #include "ui/node_canvas.h"   // CardPorts — the shared card port-row layout (ADR-0023)
 #include "ui/graph_canvas.h"  // GraphCanvas — the shared graph-area draw skeleton (ADR-0023 Layer 2)
 #include "ui/graph_adapter.h" // GraphModelAdapter — the shared node-enumeration contract (ADR-0023 Layer 1)
+#include "ui/graph_selection.h" // GraphSelection — shared multi-select set + marquee (ADR-0033 P1)
 
 #include <unordered_map>
 #include <utility>
@@ -164,9 +165,11 @@ public:
     // NodeGraph's on_down/on_move/on_up). Because it does not own the session, the methods take the
     // shell context and route domain edits through the session C-API + the EditGateway, exactly as
     // the free functions they replace did. on_down returns true when it consumed the press.
-    bool on_down(App& app, Window& win, double mx, double my);
+    // ADR-0033 P1: `mods` carries the GLFW modifier mask at press so ⇧/⌘ drive multi-select (⇧-drag =
+    // marquee, ⇧/⌘-click = toggle a card, ⌘ makes the marquee additive).
+    bool on_down(App& app, Window& win, double mx, double my, int mods);
     void on_move(App& app, Window& win, double mx, double my);
-    bool on_up(App& app, Window& win, double mx, double my);   // true = a rewire was completed
+    bool on_up(App& app, Window& win, double mx, double my);   // true = a rewire (or marquee) completed
     void on_scroll(App& app, Window& win, double yoff, double mx, double my);
 
     // Render: the graph + (if a node is selected) its highlight + inline param strip. When a rewire
@@ -216,6 +219,15 @@ private:
     bool   panning     = false; double pan_last_mx = 0, pan_last_my = 0;   // pan gesture (incremental delta, ADR-0023 #3d)
     double last_click_t = -1;                           // double-click-to-reset-view timer
     int    last_node   = -1; double last_node_t = -1;   // double-click a node -> open its plugin editor
+
+    // ADR-0033 P1 multi-select. The set itself lives on the Window (see window.h — prime() would clobber
+    // an editor-owned copy); prime() points sel_multi_ at it so the const draw path can ring every
+    // selected card. Marquee (⇧-drag) corners are WORLD coords; grp_start_ snapshots each selected
+    // node's world position at grab time so group-drag shifts them all by one delta.
+    const GraphSelection* sel_multi_ = nullptr;         // -> &win.audio_sel (set in prime); not owned
+    bool   marquee_    = false; bool marq_add_ = false;
+    double marq_x0_ = 0, marq_y0_ = 0, marq_x1_ = 0, marq_y1_ = 0;
+    std::vector<std::pair<int, std::pair<float, float>>> grp_start_;   // (node id, world pos) at grab
 };
 
 }  // namespace vivid::ui

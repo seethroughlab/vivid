@@ -691,11 +691,14 @@ void AudioNodeGraph::prime(App& app, const Window& win) {
     const Rect dp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
     set_param_bounds(dp.x, dp.y, dp.x + dp.w, dp.y + dp.h);
     set_selection(win.sel_audio_node);
+    sel_multi_ = &win.audio_sel;   // ADR-0033 P1: point the const draw path at the window-owned set
 }
 
-bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
+bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my, int mods) {
     if (!(app.session && ag_pane_hit(win, app, mx, my)))
         return false;
+    const bool m_shift = (mods & GLFW_MOD_SHIFT) != 0;
+    const bool m_super = (mods & GLFW_MOD_SUPER) != 0;
     const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
     prime(app, win);
     const Rect ag_pane = audio_graph_pane(win.split_x, win.win_h, win.dock_h, S::session_scene_count(app.session));
@@ -870,7 +873,19 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
             return true;
         }
         if (wmx >= b.x && wmx < b.x + b.w && wmy >= b.y && wmy < b.y + b.h) {
+            // ADR-0033 P1: ⇧/⌘-click toggles this card's membership (no drag). The Output sink (kind 2)
+            // has no params and never joins the selection.
+            if ((m_shift || m_super) && b.kind != 2) {
+                win.audio_sel.toggle(b.node_id);
+                win.sel_audio_node = win.audio_sel.empty() ? vivid::Window::kNoAudioNode : win.audio_sel.primary();
+                return true;
+            }
             win.sel_audio_node = (b.kind == 2) ? vivid::Window::kNoAudioNode : b.node_id;   // output has no params
+            // Plain click on an unselected card replaces the set; clicking one already selected keeps the
+            // set (whole group drags together) but re-anchors the primary. Output clears the selection.
+            if (b.kind == 2) win.audio_sel.clear();
+            else if (!win.audio_sel.contains(b.node_id)) win.audio_sel.replace(b.node_id);
+            else win.audio_sel.set_primary(b.node_id);
             // Double-click a plugin node → open its native editor (VST3 or CLAP).
             const double now = glfwGetTime();
             if (last_node == b.node_id && now - last_node_t < 0.35) {
@@ -880,6 +895,10 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
             node_drag = b.node_id;                                   // start a reposition drag (any node)
             node_dx = wmx - b.x;                                     // grab offset in world units (cursor already world)
             node_dy = wmy - b.y;
+            // Snapshot every selected node's world position so on_move shifts them by one shared delta.
+            grp_start_.clear();
+            for (const auto& gb : boxes)
+                if (win.audio_sel.contains(gb.node_id)) grp_start_.push_back({ gb.node_id, { gb.x, gb.y } });
             return true;
         }
     }
@@ -902,6 +921,12 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
             return true;
         }
     }
+    // ADR-0033 P1: ⇧-drag on empty space rubber-bands a marquee (⌘ makes it additive) instead of panning.
+    if (m_shift) {
+        marquee_ = true; marq_add_ = m_super;
+        marq_x0_ = marq_x1_ = wmx; marq_y0_ = marq_y1_ = wmy;   // world corners
+        return true;
+    }
     // Empty space: double-click resets the view (2i); otherwise start a pan drag.
     const double now = glfwGetTime();
     if (now - last_click_t < 0.30) {   // double-click resets the camera to the fitted view (panel origin)
@@ -917,6 +942,19 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
 // under the cursor. Returns true when a rewire was completed (the caller closes the undo group).
 bool AudioNodeGraph::on_up(App& app, Window& win, double mx, double my) {
     param_drag = -1; param_horiz = false; node_drag = -1; key_drag = -1; panning = false;
+    grp_start_.clear();
+    if (marquee_) {   // ADR-0033 P1: resolve the marquee against every laid-out card
+        marquee_ = false;
+        if (app.session) {
+            std::vector<SelItem> items;
+            for (const auto& b : layout()) items.push_back({ b.node_id, { b.x, b.y, b.w, b.h } });
+            win.audio_sel.resolve_marquee(items,
+                { float(marq_x0_), float(marq_y0_), float(marq_x1_ - marq_x0_), float(marq_y1_ - marq_y0_) },
+                marq_add_);
+            win.sel_audio_node = win.audio_sel.empty() ? vivid::Window::kNoAudioNode : win.audio_sel.primary();
+        }
+        return true;   // consume; the global undo group closes cleanly (no edit was noted)
+    }
     if (wire_from < 0 || !app.session) return false;
     const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
     prime(app, win);   // node-canvas bounds (below-session pane) so the rewire ports resolve there

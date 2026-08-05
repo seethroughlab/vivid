@@ -4,6 +4,7 @@
 #include <string>
 #include <unordered_map>
 #include "ui/chooser.h"       // the shared Tab palette (the audio graph's lives here)
+#include "ui/graph_selection.h" // ADR-0033 P1: the audio graph's multi-selection lives on the Window
 #include "ui/layout.h"        // vivid::ui::Rect / DockGeom + window-relative geometry
 #include "ui/popup_menu.h"    // ADR-0027: the shared PopupMenu component (menu + map_menu)
 #include "app/output_preview.h" // the floating output-preview panel (ADR-0025 pressure-point #2)
@@ -132,6 +133,10 @@ struct Window {
     // node of a rewired/non-linear graph.) Plus the param knob index being dragged.
     static constexpr int kNoAudioNode = -100;
     int     sel_audio_node = kNoAudioNode;
+    // ADR-0033 P1: the audio-graph multi-selection (stable node ids). Lives here — NOT on the editor —
+    // because AudioNodeGraph::prime() re-syncs from the window every frame and would clobber an
+    // editor-owned set. sel_audio_node stays the primary/inspector target. View-state (never persisted).
+    vivid::ui::GraphSelection audio_sel;
     // Keyboard editing (UX Ph4 F3 follow-on, input_kbd_edit.cpp): a pending wire started with `W` from a
     // node's output, awaiting a `W`-on-target commit. dom disambiguates `from` (which graph + id space).
     int     kbd_wire_dom  = 0;    // 0 none · 1 visual (from = op INDEX) · 2 audio (from = node ID)
