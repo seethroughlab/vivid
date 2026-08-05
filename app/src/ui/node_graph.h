@@ -16,10 +16,31 @@
 #include <unordered_map>
 #include <set>
 #include <utility>
+#include <array>
 
 namespace vivid { class EditGateway; }
 
 namespace vivid::ui {
+
+// ADR-0033 P2: a portable snapshot of a visual op node's full authored state — everything a clone
+// must carry (op_type + position + base params + FILE/TEXT params + curated pins + asset + its
+// incoming audio→param mappings). Deliberately id-free: a clone/paste mints a FRESH stable id.
+struct NodeCapture {
+    std::string op_type;
+    float x = 0.f, y = 0.f;
+    std::vector<float> base;               // base param values (index order; same op_type ⇒ same layout)
+    std::vector<std::string> file_params;  // FILE/TEXT param strings (parallel to base; empty slots ok)
+    std::vector<int> pinned;               // curated body-param indices
+    std::string asset;                     // CustomShader .glsl (project-relative), "" if none
+    std::vector<vivid::Mapping> maps;      // incoming audio→param mappings (full shaping); dest is the
+                                           // SOURCE node's "node:<old_id>.<param>" — rewritten on spawn.
+};
+// A copied sub-selection: the captured nodes + the edges BETWEEN them (indices into `nodes`). Edges to
+// nodes outside the selection are deliberately omitted (ADR-0033). edge = {from_idx, to_idx, dst_port, src_port}.
+struct GraphClip {
+    std::vector<NodeCapture> nodes;
+    std::vector<std::array<int, 4>> edges;
+};
 
 
 // A minimal node editor on Renderer2D. Left: audio data-source nodes (each a live
@@ -156,6 +177,20 @@ public:
     // Keyboard multi-delete: remove the op with stable id `id` (Output is never removable). Structural
     // only — does NOT touch the selection or note undo; the caller re-syncs the set and notes one edit.
     bool delete_op_by_id(int id);
+
+    // ADR-0033 P2: copy / paste / duplicate on the multi-selection. capture_ids snapshots the given
+    // stable ids (Output skipped) + their internal edges + audio→param mappings into a GraphClip.
+    // spawn_clip clones a clip at world offset (dx,dy): each node gets a FRESH id, internal edges are
+    // remapped to the copies, external edges dropped, mappings replicated onto the new ids; returns the
+    // new ids and notes one undo entry (`label`). duplicate_selection / paste_clipboard drive the set:
+    // both re-select the copies so they're ready to group-drag (Phase 1). copy_selection fills the
+    // in-session clipboard. All no-ops on an empty selection/clipboard.
+    GraphClip capture_ids(const std::set<int>& ids) const;
+    std::vector<int> spawn_clip(const GraphClip& clip, float dx, float dy, const char* label);
+    int  duplicate_selection(float dx, float dy);         // clone sel_ in place; returns count
+    void copy_selection();                                // capture sel_ into the clipboard
+    std::vector<int> paste_clipboard(float dx, float dy); // spawn the clipboard; returns new ids
+    bool clipboard_empty() const { return clipboard_.nodes.empty(); }
     // Keyboard editing (UX Ph4 F3): guarded delete of op `i` (Output is never removable) + how many
     // input ports op `i` accepts (for keyboard wiring's target-port cycling). delete_op folds the edit
     // into undo and moves the selection to a neighbour (staying in the visual graph). Returns false if
@@ -285,6 +320,7 @@ private:
     double dx_ = 0, dy_ = 0, cx_ = 0, cy_ = 0;
     int    sel_op_ = -1;     // selected visual node (inspector target = sel_'s primary), -1 = none
     GraphSelection sel_;     // ADR-0033 P1: the multi-selection (stable op-node ids); view-state, never persisted
+    GraphClip clipboard_;    // ADR-0033 P2: the in-session copy buffer (⌘C fills it, ⌘V spawns it)
     // Marquee gesture (drag_mode_ 6): the rubber-band corners in WORLD coords + whether it's additive (⌘).
     double marq_x0_ = 0, marq_y0_ = 0, marq_x1_ = 0, marq_y1_ = 0;
     bool   marq_add_ = false;

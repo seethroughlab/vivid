@@ -133,6 +133,14 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
         if (app->edit_gateway) app->edit_gateway->redo();
         return;
     }
+    // ADR-0033 P2: copy / paste / duplicate the visual-graph selection (⌘C/⌘V/⌘D). Gated to the visual
+    // graph having focus (selected_op()>=0, mirroring active_graph); the clip editor already got first
+    // crack at ⌘C/⌘V via editor_key above. Copies land at a small offset and become the new selection.
+    if ((mods & GLFW_MOD_SUPER) && app->graph && app->graph->selected_op() >= 0) {
+        if (key == GLFW_KEY_C) { app->graph->copy_selection(); return; }
+        if (key == GLFW_KEY_V) { app->graph->paste_clipboard(24.f, 24.f); return; }
+        if (key == GLFW_KEY_D) { app->graph->duplicate_selection(24.f, 24.f); return; }
+    }
     // Esc cancels a pending keyboard wire (Ph4 F3) before it falls through to the overlay closers.
     if (key == GLFW_KEY_ESCAPE && win->kbd_wire_dom) { win->kbd_wire_dom = 0; win->kbd_wire_from = -1; return; }
     if (key == GLFW_KEY_ESCAPE && win->show_mappings) { win->show_mappings = false; return; }

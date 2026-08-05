@@ -24,6 +24,7 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "set_annotation_text", { "Edit Note",          false } },
         { "move_annotation",     { "Move Note",          true  } },
         { "remove_annotation",   { "Delete Note",        false } },
+        { "duplicate_nodes",     { "Duplicate Nodes",    false } },   // ADR-0033 P2
         // ---- the bridge (G2) ----
         { "connect_mapping",     { "Connect Mapping",    false } },
         { "map_audio_to_visual_param", { "Connect Mapping", false } },
