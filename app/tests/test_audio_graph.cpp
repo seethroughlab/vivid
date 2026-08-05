@@ -5,6 +5,7 @@
 #include "audio/audio_graph.h"
 #include "test_helpers.h"
 
+#include <algorithm>   // std::find (signal-path membership checks)
 #include <atomic>
 #include <cmath>
 #include <cstdlib>
