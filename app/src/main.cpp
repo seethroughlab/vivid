@@ -41,6 +41,7 @@
 #include "platform/menu_bar.h"     // install_menu_bar
 #include "audio/builtin_audio_ops.h"   // AO-1: native audio operators
 #include "audio/plugin_scan.h"         // background plugin classifier (instrument vs effect)
+#include "audio/plugin_watchdog.h"     // ADR-0045 Tier 2a: warm the RT plugin-watchdog config
 #include "audio/plugin_probe.h"        // --probe-plugin subprocess entry point
 #include "audio/audio_callback.h"
 #include "ui/mapping_overview.h"
@@ -326,6 +327,9 @@ int main(int argc, char** argv) {
         vivid::session::plugin_scan_start();
         std::fprintf(stderr, "[vivid] session: %d tracks (empty — clean start)\n",
                      app.session ? vivid::session::session_track_count(app.session) : 0);
+        // ADR-0045 Tier 2a: warm the plugin-watchdog config (reads env once) on THIS thread, before the
+        // RT audio thread starts — so the RT thread never triggers the getenv-backed lazy init.
+        (void)vivid::audio::watchdog_config();
         if (ma_device_start(&device) != MA_SUCCESS) audio_ok = false;
     }
     glfwSetWindowUserPointer(window, &win);

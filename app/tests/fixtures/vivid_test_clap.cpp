@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <chrono>
 
 namespace {
 
@@ -109,6 +110,16 @@ void plug_reset(const clap_plugin_t*) {}
 
 clap_process_status plug_process(const clap_plugin_t* p, const clap_process_t* proc) {
     auto* self = static_cast<TestClap*>(p->plugin_data);
+    // ADR-0045 Tier 2a test hook: simulate an over-budget / hung plugin by busy-waiting VIVID_TEST_CLAP_SLOW_MS
+    // (read once) inside process(). Off by default, so every other consumer of this fixture is unaffected.
+    static const int slow_ms = [] {
+        const char* e = std::getenv("VIVID_TEST_CLAP_SLOW_MS");
+        return e ? std::atoi(e) : 0;
+    }();
+    if (slow_ms > 0) {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(slow_ms);
+        while (std::chrono::steady_clock::now() < deadline) { /* burn CPU like a real over-budget plugin */ }
+    }
     // Apply param events (sample-accurate enough for a fixture: honor them at block start).
     if (proc->in_events) params_flush(p, proc->in_events, proc->out_events);
     const float g = static_cast<float>(self->gain);

@@ -40,6 +40,7 @@
 #include "audio/clap_plugin_window.h"
 #include "app/plugin_editor_pool.h"   // Ph4 P1-01: close-all-and-null the editor pools
 #include "audio/plugin_scan.h"   // plugin_scan_poll — drain background classifications
+#include "audio/plugin_fault_ring.h"  // ADR-0045 Tier 2a: drain watchdog-disabled plugins → toast + diagnostics
 #include "gpu/visual_graph.h"
 #include "cli/control_server.h"
 #include "platform/frame_loop.h"
@@ -660,6 +661,22 @@ void run_frame_loop(App& app, Window& win) {
             }
         }
         vivid::session::plugin_scan_poll();   // apply finished plugin classifications (browser badges)
+        // ADR-0045 Tier 2a: surface any plugin the watchdog disabled this frame — a warning toast plus a
+        // durable log entry (the plugin stays disabled until reloaded). A diagnostics-panel row follows in
+        // the close-out slice.
+        {
+            vivid::audio::PluginFaultRecord faults[16];
+            const int nf = vivid::audio::plugin_fault_ring().drain(faults, 16);
+            for (int i = 0; i < nf; ++i) {
+                const char* nm = faults[i].name ? faults[i].name : "A plugin";
+                const bool hang = faults[i].reason == vivid::audio::PluginFaultReason::Hang;
+                std::string msg = std::string("Plugin \xE2\x80\x9C") + nm + (hang
+                    ? "\xE2\x80\x9D stopped responding \xE2\x80\x94 disabled to keep audio running."
+                    : "\xE2\x80\x9D exceeded its processing budget \xE2\x80\x94 disabled to keep audio running.");
+                VLOG_WARN(app, "%s", msg.c_str());
+                vivid::ui::push_toast(win.toasts, vivid::LogLevel::Warning, msg, glfwGetTime(), 12.0);
+            }
+        }
         app.hot_reload.tick();           // apply any ready operator hot-swaps (main thread)
         apply_shader_reloads(app);       // ADR-0016: pick up edits to shader FILES (main thread)
         app.log.drain_rt();              // ADR-0019 (E4): move audio-thread log events onto the UI thread

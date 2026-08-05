@@ -21,6 +21,7 @@
 
 #include "audio/base64.h"
 #include "audio/authored_base.h"   // Ph5 P2-05: authored base survives a param re-cache (by id)
+#include "audio/plugin_watchdog.h" // ADR-0045 Tier 2a: PluginFaultState
 
 #include <atomic>
 #include <cctype>
@@ -129,6 +130,7 @@ struct ClapHandle {
     const clap_plugin_gui_t*         ext_gui = nullptr;   // clap.gui — the native plugin editor (main-thread)
 
     bool   activated = false, processing = false, has_note_in = false, has_note_out = false;
+    vivid::audio::PluginFaultState watchdog;   // ADR-0045 Tier 2a: over-budget strikes + faulted latch
     bool   inited = false;   // init()+activate() deferred to the MAIN thread (clap_init_plugin) — JUCE binds there
     uint32_t audio_in = 0, audio_out = 2, max_block = 0;
     double sample_rate = 48000.0;

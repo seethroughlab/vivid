@@ -37,6 +37,15 @@
 using namespace Steinberg;
 using namespace Steinberg::Vst;
 
+// ADR-0045 Tier 2a: the process-global plugin-fault ring (RT/monitor push → frame drain). One audio
+// engine per process, like the other RT singletons.
+namespace vivid::audio {
+PluginFaultRing<64>& plugin_fault_ring() {
+    static PluginFaultRing<64> ring;
+    return ring;
+}
+}  // namespace vivid::audio
+
 namespace vivid::session {
 
 
@@ -838,6 +847,13 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
         }
         else if (nb.kind == GNKind::Vst3Inst && nb.handle) {
             std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent input, matches inline
+            // ADR-0045 Tier 2a: a watchdog-disabled instrument stays silent and emits no notes (its
+            // output is already zeroed) — the auto-bypass of a bad plugin, like a bypassed source.
+            if (nb.handle->watchdog.faulted.load(std::memory_order_relaxed)) {
+                if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size()))
+                    t.npool[static_cast<size_t>(s.note_out_buf)].clear();
+                return;
+            }
             if (full_range) {   // t.vev is primed with scene-switch releases (identical to today)
                 emit_vst3(t.vev, nsrc, t.eev);
                 render_vst3_instrument(t, nb.handle, t.vev, gctx, frames, oL, oR, vmod, vmod_n);
@@ -855,6 +871,11 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
         }
         else if (nb.kind == GNKind::ClapInst && nb.clap) {
             std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
+            if (nb.clap->watchdog.faulted.load(std::memory_order_relaxed)) {   // ADR-0045 Tier 2a: disabled → silent, no notes
+                if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size()))
+                    t.npool[static_cast<size_t>(s.note_out_buf)].clear();
+                return;
+            }
             if (full_range) render_clap_instrument(t, nb.clap, nsrc, frames, oL, oR, cmod, cmod_n);
             else { filter_notes_by_range(nsrc, nb.key_lo, nb.key_hi, t.src_nev);   // key-split
                    render_clap_instrument(t, nb.clap, t.src_nev, frames, oL, oR, cmod, cmod_n); }
@@ -898,9 +919,13 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
     if (nb.kind == GNKind::NativeFx && nb.op && !s.bypassed)   // effect: transform in place
         vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nullptr, 0,
                                 nullptr, 0, nullptr, ovr, novr);
-    else if (nb.kind == GNKind::Vst3Fx && nb.handle && nb.handle->processing && !s.bypassed)  // non-processing = passthrough (matches inline skip)
+    // ADR-0045 Tier 2a: a watchdog-disabled effect passes its input through DRY (oL/oR already hold the
+    // summed input) — the transform is skipped, exactly like a bypassed effect, so the track keeps playing.
+    else if (nb.kind == GNKind::Vst3Fx && nb.handle && nb.handle->processing && !s.bypassed
+             && !nb.handle->watchdog.faulted.load(std::memory_order_relaxed))  // non-processing = passthrough (matches inline skip)
         render_vst3_effect(t, nb.handle, gctx, frames, oL, oR, vmod, vmod_n);
-    else if (nb.kind == GNKind::ClapFx && nb.clap && nb.clap->processing && !s.bypassed)
+    else if (nb.kind == GNKind::ClapFx && nb.clap && nb.clap->processing && !s.bypassed
+             && !nb.clap->watchdog.faulted.load(std::memory_order_relaxed))
         render_clap_effect(t, nb.clap, frames, oL, oR, cmod, cmod_n);
     else if (nb.kind == GNKind::Output) {
         // ADR-0022 P1a — the Track-Out node applies the track GAIN, so its buffer IS the track's
