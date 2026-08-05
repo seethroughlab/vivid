@@ -15,6 +15,7 @@
 #include <fstream>
 #include <unordered_map>
 #include <vector>
+#include <set>
 #include <cstdio>
 
 using json = nlohmann::json;
@@ -76,6 +77,168 @@ static void sampler_restore(vivid::session::Session* s, int t, int nid, const js
             ++i;
         }
     }
+}
+
+// ADR-0033 P2b: the per-node / per-edge audio-graph SERIALIZERS, factored out of session_to_json's
+// authoritative-graph loop so copy/paste (capture_audio_nodes) emits byte-identical JSON. `i` is the
+// node's index in the track's graph; identity/kind/type/scene/plugin_kind/pos are read by index, while
+// path/uid/state/key/params/pinned/sampler are read by the derived stable id (same as the save loop).
+static json audio_graph_node_to_json(vivid::session::Session* s, int t, int i, bool include_plugin_state) {
+    namespace S = vivid::session;
+    const int id = S::session_track_audio_graph_node_id(s, t, i);
+    json jn; jn["id"] = id;
+    if (const int gn = S::session_track_audio_graph_node_gnid(s, t, i); gn >= 0) jn["gnid"] = gn;
+    const int kind = S::session_track_audio_graph_node_kind(s, t, i);   // 0 inst / 1 fx / 2 out
+    jn["kind"] = kind;
+    jn["op"] = S::session_track_audio_graph_node_type(s, t, i);
+    if (kind == 6 || kind == 8)   // a per-scene note node records which scene it gates
+        if (const int sc = S::session_track_audio_graph_node_cell_scene(s, t, i); sc >= 0) jn["scene"] = sc;
+    if (const int pk = S::session_track_audio_graph_node_plugin_kind(s, t, i)) jn["src"] = pk;   // 1 vst3 / 2 clap / 3 sampler
+    if (const char* pp = S::session_audio_graph_node_plugin_path(s, t, id); pp && *pp) {
+        jn["path"] = pp;
+        if (const char* pu = S::session_audio_graph_node_plugin_uid(s, t, id); pu && *pu) jn["uid"] = pu;
+        if (include_plugin_state) {
+            const std::string pst = S::session_audio_graph_node_get_state(s, t, id);
+            if (!pst.empty()) jn["state"] = pst;   // the plugin's patch, per NODE
+        }
+    }
+    float nx = 0.f, ny = 0.f;
+    if (S::session_track_audio_graph_node_pos(s, t, i, &nx, &ny)) { jn["x"] = nx; jn["y"] = ny; }
+    if (kind == 0) {   // source: persist its key range (a key-split has disjoint ranges)
+        int lo = 0, hi = 127;
+        if (S::session_audio_graph_node_key_range_get(s, t, id, &lo, &hi) && (lo > 0 || hi < 127)) {
+            jn["key_lo"] = lo; jn["key_hi"] = hi;
+        }
+    }
+    json ps = json::object();
+    for (int p = 0; p < S::session_audio_graph_node_param_count(s, t, id); ++p)
+        ps[S::session_audio_graph_node_param_name(s, t, id, p)] = S::session_audio_graph_node_param_get(s, t, id, p);
+    jn["params"] = ps;
+    if (const int npc = S::session_audio_graph_node_param_pinned_count(s, t, id); npc > 0) {
+        json pins = json::array();
+        for (int k = 0; k < npc; ++k) pins.push_back(S::session_audio_graph_node_param_pinned_at(s, t, id, k));
+        jn["pinned"] = pins;
+    }
+    if (json sm = sampler_save_block(s, t, id); !sm.is_null()) jn["sampler"] = sm;
+    return jn;
+}
+static json audio_graph_edge_to_json(vivid::session::Session* s, int t, int e) {
+    namespace S = vivid::session;
+    json je = { {"from", S::session_track_audio_graph_edge_from(s, t, e)},
+                {"to",   S::session_track_audio_graph_edge_to(s, t, e)} };
+    const int ek = S::session_track_audio_graph_edge_kind(s, t, e);   // no kind = audio (old projects)
+    if (ek == 1) je["kind"] = "note";
+    else if (ek == 2) {   // a control edge carries its target param + shaper
+        je["kind"]  = "control";
+        je["param"] = S::session_track_audio_graph_edge_dest_param(s, t, e);
+        float amount = 1.f, curve = 0.f; int invert = 0, bipolar = 0;
+        S::session_track_audio_graph_edge_control_shape(s, t, e, &amount, &curve, &invert, &bipolar);
+        je["amount"] = amount; je["curve"] = curve;
+        je["invert"] = invert != 0; je["bipolar"] = bipolar != 0;
+    }
+    return je;
+}
+// ADR-0033 P2b: the audio-graph RECONSTRUCT loop, factored out of session_from_json_scoped so both
+// whole-session load and copy/paste (paste_audio_subgraph) share it. It APPENDS onto the live graph —
+// it deliberately does NOT clear the graph or set the output (those stay at the whole-session call
+// site). `restore_gnids` = true restores saved gnids (reload); false leaves them -1 so a fresh gnid is
+// minted (paste). `dx,dy` offset restored positions (so pasted copies don't cover the originals).
+static void load_audio_subgraph(vivid::session::Session* s, int t, const json& g,
+                                std::unordered_map<int, int>& id_map, const std::string& base_dir,
+                                bool restore_gnids, float dx, float dy) {
+    namespace S = vivid::session;
+    if (g.contains("nodes"))
+        for (const auto& jn : g["nodes"]) {
+            const int saved = jn.value("id", -1);
+            const int kind = jn.value("kind", 1);
+            const int src  = jn.value("src", 0);   // 0 native / 1 vst3 / 2 clap / 3 sampler
+            const std::string ppath = jn.value("path", std::string());
+            const int nid = !ppath.empty()
+                ? S::session_audio_graph_load_plugin_node(
+                      s, t, saved, ppath.c_str(), (src == 2) ? S::kFmtCLAP : S::kFmtVST3,
+                      /*is_source*/ (kind == 0) ? 1 : 0,
+                      jn.value("uid", std::string()).c_str(), jn.value("state", std::string()).c_str())
+                : S::session_audio_graph_load_node(
+                      s, t, kind, src, jn.value("op", std::string()).c_str(), jn.value("scene", -1));
+            if (nid < 0) continue;
+            id_map[saved] = nid;
+            if (restore_gnids && jn.contains("gnid"))   // reload restores the gnid; paste mints a fresh one
+                S::session_set_node_gnid(s, t, nid, jn["gnid"].get<int>());
+            if (jn.contains("x") && jn.contains("y"))
+                S::session_audio_graph_node_set_pos(s, t, nid, jn["x"].get<float>() + dx, jn["y"].get<float>() + dy);
+            if (jn.contains("pinned"))
+                for (const auto& pp : jn["pinned"]) S::session_audio_graph_node_param_pin(s, t, nid, pp.get<int>());
+            if (jn.value("kind", 1) == 0 && (jn.contains("key_lo") || jn.contains("key_hi")))
+                S::session_audio_graph_node_key_range_set(s, t, nid, jn.value("key_lo", 0), jn.value("key_hi", 127));
+            if (jn.contains("params"))   // set params by name on the new node id
+                for (auto it = jn["params"].begin(); it != jn["params"].end(); ++it)
+                    for (int p = 0; p < S::session_audio_graph_node_param_count(s, t, nid); ++p)
+                        if (it.key() == S::session_audio_graph_node_param_name(s, t, nid, p)) {
+                            S::session_audio_graph_node_param_set(s, t, nid, p, it.value().get<float>());
+                            break;
+                        }
+            if (jn.contains("sampler")) sampler_restore(s, t, nid, jn["sampler"], base_dir);
+        }
+    if (g.contains("edges"))
+        for (const auto& je : g["edges"]) {
+            auto f = id_map.find(je.value("from", -1)), o = id_map.find(je.value("to", -1));
+            if (f == id_map.end() || o == id_map.end()) continue;   // external edge → dropped
+            const std::string ek = je.value("kind", std::string("audio"));
+            if (ek == "control")
+                S::session_audio_graph_load_edge_control(
+                    s, t, f->second, o->second, je.value("param", -1),
+                    je.value("amount", 1.f), je.value("curve", 0.f),
+                    je.value("invert", false) ? 1 : 0, je.value("bipolar", false) ? 1 : 0);
+            else
+                S::session_audio_graph_load_edge_kind(s, t, f->second, o->second, ek == "note" ? 1 : 0);
+        }
+}
+
+// ADR-0033 P2b: serialize a SUBSET of a track's audio nodes (by stable id) + the edges strictly
+// between them, into the same JSON shape session_to_json produces — the copy half of copy/paste.
+// Engine-managed / scene-derived kinds are skipped (Output/MidiIn/Selector/MidiClip/NativeGen); their
+// edges are re-derived by reconcile_note_subgraph on republish, so dropping them is correct.
+json capture_audio_nodes(vivid::session::Session* s, int track, const std::vector<int>& node_ids) {
+    namespace S = vivid::session;
+    json g, nodes = json::array(), edges = json::array();
+    if (!s) return g;
+    const std::set<int> want(node_ids.begin(), node_ids.end());
+    std::set<int> captured;   // stable ids actually captured (duplicable kinds only)
+    const int nn = S::session_track_audio_graph_node_count(s, track);
+    for (int i = 0; i < nn; ++i) {
+        const int id = S::session_track_audio_graph_node_id(s, track, i);
+        if (!want.count(id)) continue;
+        const int kind = S::session_track_audio_graph_node_kind(s, track, i);
+        if (kind != 0 && kind != 1 && kind != 4 && kind != 5) continue;   // 0 src/inst,1 fx,4 note-fx,5 mod
+        nodes.push_back(audio_graph_node_to_json(s, track, i, /*include_plugin_state*/ true));
+        captured.insert(id);
+    }
+    const int ne = S::session_track_audio_graph_edge_count(s, track);
+    for (int e = 0; e < ne; ++e)   // internal edges only (both endpoints captured)
+        if (captured.count(S::session_track_audio_graph_edge_from(s, track, e)) &&
+            captured.count(S::session_track_audio_graph_edge_to(s, track, e)))
+            edges.push_back(audio_graph_edge_to_json(s, track, e));
+    g["nodes"] = nodes; g["edges"] = edges;   // no "output" — paste never repoints the track sink
+    return g;
+}
+
+// ADR-0033 P2b: append a captured subgraph onto a LIVE track with fresh gnids at an offset — the paste
+// half. Reuses the shared reconstruct loop (VST3 loads sync; CLAP state lands async for free), then
+// finalizes with finish_load(EXISTING output) so the graph republishes without repointing the sink.
+// Returns the new local node ids in capture order.
+std::vector<int> paste_audio_subgraph(vivid::session::Session* s, int track, const json& clip,
+                                      float dx, float dy) {
+    namespace S = vivid::session;
+    std::vector<int> new_ids;
+    if (!s || !clip.is_object() || !clip.contains("nodes")) return new_ids;
+    std::unordered_map<int, int> id_map;
+    load_audio_subgraph(s, track, clip, id_map, /*base_dir*/ "", /*restore_gnids*/ false, dx, dy);
+    S::session_audio_graph_finish_load(s, track, S::session_track_audio_graph_output_id(s, track));
+    for (const auto& jn : clip["nodes"]) {
+        auto it = id_map.find(jn.value("id", -1));
+        if (it != id_map.end()) new_ids.push_back(it->second);
+    }
+    return new_ids;
 }
 
 json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
@@ -218,81 +381,11 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
         if (vivid::session::session_track_audio_graph_authoritative(s, t)) {
             json g, nodes = json::array(), edges = json::array();
             const int nn = vivid::session::session_track_audio_graph_node_count(s, t);
-            for (int i = 0; i < nn; ++i) {
-                const int id = vivid::session::session_track_audio_graph_node_id(s, t, i);
-                json jn; jn["id"] = id;
-                // ADR-0022 P4.4: the node's session-global id, restored on load so gnids survive save/
-                // reload (persistence half of the session-global model). Absent in older files => the
-                // node draws a fresh gnid on rebuild, exactly as before.
-                if (const int gn = vivid::session::session_track_audio_graph_node_gnid(s, t, i); gn >= 0) jn["gnid"] = gn;
-                const int kind = vivid::session::session_track_audio_graph_node_kind(s, t, i);   // 0 inst / 1 fx / 2 out
-                jn["kind"] = kind;
-                jn["op"] = vivid::session::session_track_audio_graph_node_type(s, t, i);
-                // ADR-0022: a per-scene note node (MidiClip=6 / NativeGen=8) records which scene it gates,
-                // so the loader can recreate the note sub-graph faithfully.
-                if (kind == 6 || kind == 8)
-                    if (const int sc = vivid::session::session_track_audio_graph_node_cell_scene(s, t, i); sc >= 0) jn["scene"] = sc;
-                // Binding family so the loader can rebuild a VST3/CLAP source or effect node (whose "op"
-                // is a plugin display name, not a native operator) as a placeholder instead of dropping
-                // it. 0 native (omitted) / 1 vst3 / 2 clap / 3 sampler; the handle rebinds on plugin load.
-                if (const int pk = vivid::session::session_track_audio_graph_node_plugin_kind(s, t, i)) jn["src"] = pk;
-                // A2: a node the USER spawned from a plugin carries its own bundle — the linear
-                // chain doesn't own it, so nothing else in this file records it. (Chain-derived
-                // plugin nodes have no `path` and keep restoring via the track-level fx /
-                // clap_effects arrays + order-matching, so old projects are untouched and nothing
-                // is instantiated twice.)
-                if (const char* pp = vivid::session::session_audio_graph_node_plugin_path(s, t, id); pp && *pp) {
-                    jn["path"] = pp;
-                    if (const char* pu = vivid::session::session_audio_graph_node_plugin_uid(s, t, id); pu && *pu)
-                        jn["uid"] = pu;
-                    if (include_plugin_state) {   // skipped for the undo/dirty projection (see above)
-                        const std::string pst = vivid::session::session_audio_graph_node_get_state(s, t, id);
-                        if (!pst.empty()) jn["state"] = pst;   // the plugin's patch, per NODE
-                    }
-                }
-                float nx = 0.f, ny = 0.f;   // editor position (only when the user has placed it)
-                if (vivid::session::session_track_audio_graph_node_pos(s, t, i, &nx, &ny)) { jn["x"] = nx; jn["y"] = ny; }
-                if (kind == 0) {   // source: persist its key range (a key-split has disjoint ranges)
-                    int lo = 0, hi = 127;
-                    if (vivid::session::session_audio_graph_node_key_range_get(s, t, id, &lo, &hi) && (lo > 0 || hi < 127)) {
-                        jn["key_lo"] = lo; jn["key_hi"] = hi;
-                    }
-                }
-                json ps = json::object();
-                for (int p = 0; p < vivid::session::session_audio_graph_node_param_count(s, t, id); ++p)
-                    ps[vivid::session::session_audio_graph_node_param_name(s, t, id, p)] =
-                        vivid::session::session_audio_graph_node_param_get(s, t, id, p);
-                jn["params"] = ps;
-                // Curated inspector: the pinned param subset, by index, in add order.
-                if (const int npc = vivid::session::session_audio_graph_node_param_pinned_count(s, t, id); npc > 0) {
-                    json pins = json::array();
-                    for (int k = 0; k < npc; ++k) pins.push_back(vivid::session::session_audio_graph_node_param_pinned_at(s, t, id, k));
-                    jn["pinned"] = pins;
-                }
-                // ADR-0049 slice 7: persist a Sampler node's loaded sample + edit boundaries (authoritative
-                // graph representation; the linear audio_instrument is covered below).
-                if (json sm = sampler_save_block(s, t, id); !sm.is_null()) jn["sampler"] = sm;
-                nodes.push_back(jn);
-            }
+            for (int i = 0; i < nn; ++i)   // ADR-0033 P2b: per-node serializer (shared with copy/paste)
+                nodes.push_back(audio_graph_node_to_json(s, t, i, include_plugin_state));
             const int ne = vivid::session::session_track_audio_graph_edge_count(s, t);
-            for (int e = 0; e < ne; ++e)
-            {
-                json je = { {"from", vivid::session::session_track_audio_graph_edge_from(s, t, e)},
-                            {"to",   vivid::session::session_track_audio_graph_edge_to(s, t, e)} };
-                // ADR-0015: only a NOTE edge is written. An edge with no `kind` is audio, so every
-                // project saved before note edges existed loads with its meaning unchanged.
-                const int ek = vivid::session::session_track_audio_graph_edge_kind(s, t, e);
-                if (ek == 1) je["kind"] = "note";
-                else if (ek == 2) {   // ADR-0022: a control edge carries its target param + shaper
-                    je["kind"]  = "control";
-                    je["param"] = vivid::session::session_track_audio_graph_edge_dest_param(s, t, e);
-                    float amount = 1.f, curve = 0.f; int invert = 0, bipolar = 0;
-                    vivid::session::session_track_audio_graph_edge_control_shape(s, t, e, &amount, &curve, &invert, &bipolar);
-                    je["amount"] = amount; je["curve"] = curve;
-                    je["invert"] = invert != 0; je["bipolar"] = bipolar != 0;
-                }
-                edges.push_back(std::move(je));
-            }
+            for (int e = 0; e < ne; ++e)   // ADR-0015 note / ADR-0022 control edges — shared serializer
+                edges.push_back(audio_graph_edge_to_json(s, t, e));
             g["nodes"] = nodes; g["edges"] = edges;
             g["output"] = vivid::session::session_track_audio_graph_output_id(s, t);
             jt["audio_graph"] = g;
@@ -748,63 +841,12 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                 // AG-1 step 2: rebuild an authoritative graph. The host assigns fresh node ids, so
                 // remap each saved id -> new id and replay edges (+ the output) by the new ids.
                 const auto& g = jt["audio_graph"];
-                vivid::session::session_audio_graph_clear(s, t);
+                vivid::session::session_audio_graph_clear(s, t);   // whole-session reload wipes first
                 std::unordered_map<int, int> id_map;
-                if (g.contains("nodes"))
-                    for (const auto& jn : g["nodes"]) {
-                        const int saved = jn.value("id", -1);
-                        const int kind = jn.value("kind", 1);
-                        const int src  = jn.value("src", 0);   // 0 native / 1 vst3 / 2 clap / 3 sampler
-                        const std::string ppath = jn.value("path", std::string());
-                        // A2: a node with its own bundle path is a user-spawned plugin node — restore
-                        // it (and its patch) from that. A plugin node WITHOUT a path is an old
-                        // (chain-derived) project: it still restores as a placeholder that rebinds by
-                        // kind + order, exactly as before.
-                        const int nid = !ppath.empty()
-                            ? vivid::session::session_audio_graph_load_plugin_node(
-                                  s, t, saved, ppath.c_str(),
-                                  (src == 2) ? vivid::session::kFmtCLAP : vivid::session::kFmtVST3,
-                                  /*is_source*/ (kind == 0) ? 1 : 0,
-                                  jn.value("uid", std::string()).c_str(),
-                                  jn.value("state", std::string()).c_str())
-                            : vivid::session::session_audio_graph_load_node(
-                                  s, t, kind, src, jn.value("op", std::string()).c_str(), jn.value("scene", -1));
-                        if (nid < 0) continue;
-                        id_map[saved] = nid;
-                        if (jn.contains("gnid"))   // ADR-0022 P4.4: restore the session-global id (before finish_load)
-                            vivid::session::session_set_node_gnid(s, t, nid, jn["gnid"].get<int>());
-                        if (jn.contains("x") && jn.contains("y"))   // restore the editor position
-                            vivid::session::session_audio_graph_node_set_pos(s, t, nid, jn["x"].get<float>(), jn["y"].get<float>());
-                        if (jn.contains("pinned"))   // restore the curated inspector param subset
-                            for (const auto& pp : jn["pinned"])
-                                vivid::session::session_audio_graph_node_param_pin(s, t, nid, pp.get<int>());
-                        if (jn.value("kind", 1) == 0 && (jn.contains("key_lo") || jn.contains("key_hi")))
-                            vivid::session::session_audio_graph_node_key_range_set(
-                                s, t, nid, jn.value("key_lo", 0), jn.value("key_hi", 127));
-                        if (jn.contains("params"))   // set params by name on the new node id
-                            for (auto it = jn["params"].begin(); it != jn["params"].end(); ++it)
-                                for (int p = 0; p < vivid::session::session_audio_graph_node_param_count(s, t, nid); ++p)
-                                    if (it.key() == vivid::session::session_audio_graph_node_param_name(s, t, nid, p)) {
-                                        vivid::session::session_audio_graph_node_param_set(s, t, nid, p, it.value().get<float>());
-                                        break;
-                                    }
-                        // ADR-0049 slice 7: restore the Sampler node's sample + edits (authoritative graph).
-                        if (jn.contains("sampler")) sampler_restore(s, t, nid, jn["sampler"], base_dir);
-                    }
-                if (g.contains("edges"))
-                    for (const auto& je : g["edges"]) {
-                        auto f = id_map.find(je.value("from", -1)), o = id_map.find(je.value("to", -1));
-                        if (f == id_map.end() || o == id_map.end()) continue;
-                        const std::string ek = je.value("kind", std::string("audio"));
-                        if (ek == "control")   // ADR-0022: carry the target param + shaper across
-                            vivid::session::session_audio_graph_load_edge_control(
-                                s, t, f->second, o->second, je.value("param", -1),
-                                je.value("amount", 1.f), je.value("curve", 0.f),
-                                je.value("invert", false) ? 1 : 0, je.value("bipolar", false) ? 1 : 0);
-                        else
-                            vivid::session::session_audio_graph_load_edge_kind(
-                                s, t, f->second, o->second, ek == "note" ? 1 : 0);
-                    }
+                // ADR-0033 P2b: the reconstruct loop is now shared with copy/paste. Full reload restores
+                // saved gnids (restore_gnids=true) with no position offset; the clear + finish_load
+                // (below) stay here — the shared helper never touches them.
+                load_audio_subgraph(s, t, g, id_map, base_dir, /*restore_gnids*/ true, 0.f, 0.f);
                 auto out = id_map.find(g.value("output", -1));
                 vivid::session::session_audio_graph_finish_load(s, t, out != id_map.end() ? out->second : -1);
             }

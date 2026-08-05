@@ -1019,6 +1019,16 @@ def audio_graph_remove_node(track: int, node: int) -> dict:
 
 
 @mcp.tool
+def duplicate_audio_nodes(track: int, ids: list[int], dx: float = 24.0, dy: float = 24.0) -> dict:
+    """Duplicate audio nodes within a track's graph (ids from get_audio_graph) at a small offset. Each
+    copy gets a FRESH id with the original's params, pinned params, key range, plugin patch (VST3 sync,
+    CLAP restored via the async loader), and sampler sample/slices. Edges strictly between the copied
+    nodes are recreated; edges to outside or engine-managed nodes (Output/MIDI In/Selector/clip/gen)
+    are dropped. Returns {ids:[new node ids]}. Undoable. (Audio graph; visual graph = duplicate_nodes.)"""
+    return _post("duplicate_audio_nodes", {"track": track, "ids": ids, "dx": dx, "dy": dy})
+
+
+@mcp.tool
 def audio_graph_connect(track: int, from_node: int, to_node: int, kind: str = "audio") -> dict:
     """Add an edge between two audio-graph nodes (ids from get_audio_graph). `kind` is the SIGNAL
     the wire carries: "audio" (multiple edges into a node sum, stereo) or "note" (ADR-0015: notes

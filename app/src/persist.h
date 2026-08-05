@@ -3,7 +3,7 @@
 #include <cmath>
 #include <cstring>
 #include <string>
-#include <string>
+#include <vector>
 #include <nlohmann/json.hpp>
 
 namespace vivid::session { struct Session; }
@@ -107,5 +107,13 @@ bool save_session(const std::string& path, vivid::session::Session* s, vivid::ui
 bool load_session(const std::string& path, vivid::session::Session* s, vivid::ui::NodeGraph& g,
                   int& win_w, int& win_h, float& split_x, float& dock_h,
                   float& ag_ox, float& ag_oy, float& ag_scale);
+
+// ADR-0033 P2b — audio copy/paste. capture_audio_nodes serializes the given track nodes (by stable id)
+// + their internal edges to the persist JSON shape (skipping engine-managed kinds); paste_audio_subgraph
+// appends such a clip onto a live track with FRESH gnids at (dx,dy) and returns the new local node ids.
+// Together they implement duplicate (capture+paste same track) and clipboard copy/paste (incl. cross-track).
+nlohmann::json capture_audio_nodes(vivid::session::Session* s, int track, const std::vector<int>& node_ids);
+std::vector<int> paste_audio_subgraph(vivid::session::Session* s, int track, const nlohmann::json& clip,
+                                      float dx, float dy);
 
 }  // namespace vivid

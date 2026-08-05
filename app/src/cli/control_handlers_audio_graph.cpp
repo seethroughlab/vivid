@@ -4,8 +4,10 @@
 
 #include "audio/plugin_catalog.h"
 #include "audio/vst3_host.h"
+#include "persist.h"   // ADR-0033 P2b: capture_audio_nodes / paste_audio_subgraph
 
 #include <string>
+#include <vector>
 
 namespace vivid {
 
@@ -82,6 +84,23 @@ void register_audio_graph_handlers(Handlers& handlers_) {
         if (!P::session_audio_graph_remove_node(c.session, track, node))
             return err(code::kBadArg, "node not removable (unknown, or an instrument/output)");
         return ok();
+    };
+    // ADR-0033 P2b: duplicate a set of audio nodes within a track. Copies params/pins/key-range/plugin
+    // patch/sampler + the edges strictly between them; each copy gets fresh ids at a small offset,
+    // external + engine-managed edges dropped. VST3 clones sync; CLAP patch lands via the async loader.
+    handlers_["duplicate_audio_nodes"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        std::vector<int> ids;
+        if (b.contains("ids") && b["ids"].is_array())
+            for (const auto& j : b["ids"]) if (j.is_number_integer()) ids.push_back(j.get<int>());
+        if (ids.empty()) return err(code::kBadArg, "ids: expected a non-empty array of node ids");
+        const float dx = b.value("dx", 24.f), dy = b.value("dy", 24.f);
+        const std::vector<int> new_ids =
+            paste_audio_subgraph(c.session, track, capture_audio_nodes(c.session, track, ids), dx, dy);
+        if (new_ids.empty()) return err(code::kNotFound, "no duplicable nodes among those ids");
+        json r = ok(); r["ids"] = new_ids; return r;
     };
     // ADR-0015: `kind` picks the signal the edge carries — "audio" (default; sums at the
     // destination) or "note" (merges). A note edge is how an instrument gets its notes once the
