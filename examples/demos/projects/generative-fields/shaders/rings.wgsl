@@ -2,6 +2,7 @@
   "version": 1,
   "name": "Rings",
   "summary": "Concentric pulsing rings — a source you can drive from the beat.",
+  "role": "source",
   "keywords": ["generator", "rings", "pulse", "circles"],
   "inputs": [],
   "params": [

@@ -2,6 +2,7 @@
   "version": 1,
   "name": "Gradient",
   "summary": "A clean 2-colour linear/radial gradient (a flat source, not a field).",
+  "role": "source",
   "keywords": ["generator", "gradient", "color"],
   "inputs": [],
   "params": [

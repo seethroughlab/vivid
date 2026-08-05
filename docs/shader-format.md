@@ -24,6 +24,7 @@ A JSON object in a **leading block comment**, then the fragment body:
   "vivid": 1,
   "name": "Plasma",
   "summary": "Sine-field plasma generator.",
+  "role": "source",
   "keywords": ["generator", "plasma"],
   "inputs": [],
   "params": [
@@ -43,6 +44,14 @@ fn fs_main(in: FullscreenOutput) -> @location(0) vec4f {
 The header is the **single source of truth**. You declare what you want; Vivid generates the uniform
 struct, the bindings, the sampler and the vertex stage to match, and prepends them to your body. You
 never hand-pack a uniform buffer, and your declarations can never drift out of sync with your struct.
+
+### `role` classifies your operator (ADR-0046)
+
+Optional. Labels the op as a composable primitive or a bundled recipe so the chooser can rank building
+blocks ahead of shortcuts, and the reference site can badge it. One of `source`, `transform`, `adapter`,
+`renderer`, `sink`, `recipe`. Omit it and the op is unclassified (treated as a primitive). A generator
+(no `inputs`) is usually a `source`; a texture→texture effect is a `transform`. A typo is a hard error,
+so the shader shows up as malformed rather than silently unclassified.
 
 ### `inputs` decides what kind of operator you are
 

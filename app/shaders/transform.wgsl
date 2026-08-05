@@ -2,6 +2,7 @@
   "version": 1,
   "name": "Transform",
   "summary": "Zoom / rotate / translate / tile the input (near-identity at defaults).",
+  "role": "transform",
   "keywords": ["effect", "transform", "tile"],
   "inputs": ["input"],
   "params": [

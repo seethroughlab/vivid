@@ -2,6 +2,7 @@
   "version": 1,
   "name": "NoiseTexture",
   "summary": "3D FBm noise generator (Perlin/Simplex/Worley/Value) animated over time.",
+  "role": "source",
   "keywords": ["generator", "noise", "fbm"],
   "inputs": [],
   "params": [

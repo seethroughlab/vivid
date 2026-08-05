@@ -2,6 +2,7 @@
   "version": 1,
   "name": "Plasma",
   "summary": "Animated plasma colour-field generator. No input; drives a chain.",
+  "role": "source",
   "keywords": ["generator", "plasma", "color"],
   "inputs": [],
   "params": [

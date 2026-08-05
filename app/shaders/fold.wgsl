@@ -2,6 +2,7 @@
   "version": 1,
   "name": "Fold",
   "summary": "Crisp axis-aligned mirror reflection of the input — architectural symmetry, not a busy radial kaleidoscope.",
+  "role": "transform",
   "keywords": ["effect", "mirror", "fold", "symmetry", "reflect"],
   "inputs": ["input"],
   "params": [

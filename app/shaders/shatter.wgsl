@@ -2,6 +2,7 @@
   "version": 1,
   "name": "Shatter",
   "summary": "RGB channel-split + blocky glitch displacement — a hard digital shatter, not a haze.",
+  "role": "transform",
   "keywords": ["effect", "glitch", "rgb", "shatter", "datamosh"],
   "inputs": ["input"],
   "params": [

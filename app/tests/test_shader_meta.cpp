@@ -53,6 +53,34 @@ static void test_valid_header() {
     CHECK(contains(m.body, "@fragment fn fs_main"));
 }
 
+// ADR-0046: the optional "role" header field classifies a shader op like a compiled one.
+static void test_role() {
+    // Absent => DEFAULT (unclassified, treated as a primitive).
+    CHECK(parse_shader(kValid, ShaderDialect::Wgsl).role == VIVID_OP_ROLE_DEFAULT);
+
+    ShaderMeta t = parse_shader(
+        "/*{ \"name\": \"Blur\", \"role\": \"transform\" }*/\nbody", ShaderDialect::Wgsl);
+    CHECK(t.error.empty());
+    CHECK(t.role == VIVID_OP_ROLE_TRANSFORM);
+
+    ShaderMeta s = parse_shader(
+        "/*{ \"name\": \"Rings\", \"role\": \"source\" }*/\nbody", ShaderDialect::Wgsl);
+    CHECK(s.error.empty());
+    CHECK(s.role == VIVID_OP_ROLE_SOURCE);
+
+    // A typo is a hard error, not a silently-unclassified op.
+    ShaderMeta bad = parse_shader(
+        "/*{ \"name\": \"Oops\", \"role\": \"transorm\" }*/\nbody", ShaderDialect::Wgsl);
+    CHECK(!bad.error.empty());
+    CHECK(contains(bad.error, "role"));
+
+    // Wrong JSON type is also rejected.
+    ShaderMeta ty = parse_shader(
+        "/*{ \"name\": \"Oops\", \"role\": 2 }*/\nbody", ShaderDialect::Wgsl);
+    CHECK(!ty.error.empty());
+    CHECK(contains(ty.error, "role"));
+}
+
 static void test_no_header() {
     ShaderMeta m = parse_shader("@fragment fn fs_main() -> @location(0) vec4f { return vec4f(1.0); }",
                                 ShaderDialect::Wgsl);
@@ -303,6 +331,7 @@ body)", ShaderDialect::Wgsl);
 
 int main() {
     test_valid_header();
+    test_role();
     test_no_header();
     test_malformed_json();
     test_missing_name();

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-03T20:21:32.800421+00:00",
+  "generated_at": "2026-08-05T20:24:02.123250+00:00",
   "app_version": "0.1.1",
   "build_type": "debug",
   "operator_abi": 17,
@@ -368,7 +368,7 @@
       "slug": "blur",
       "domain": "visual",
       "kind": "gpu_visual",
-      "role": "",
+      "role": "transform",
       "summary": "Box blur of the input texture; radius is wire-drivable.",
       "keywords": [
         "effect",
@@ -567,7 +567,7 @@
       "slug": "composite",
       "domain": "visual",
       "kind": "gpu_visual",
-      "role": "",
+      "role": "transform",
       "summary": "Blend two inputs (A base, B over): normal/add/multiply/screen/overlay.",
       "keywords": [
         "effect",
@@ -629,7 +629,7 @@
       "slug": "crt",
       "domain": "visual",
       "kind": "gpu_visual",
-      "role": "",
+      "role": "transform",
       "summary": "Broadcast/CRT treatment: barrel curve, scanlines, RGB shadow-mask, aberration, vignette, roll.",
       "keywords": [
         "effect",
@@ -854,7 +854,7 @@
       "slug": "displace",
       "domain": "visual",
       "kind": "gpu_visual",
-      "role": "",
+      "role": "transform",
       "summary": "Warp a source texture's sampling by a displacement texture (RG-vector or luminance).",
       "keywords": [
         "effect",
@@ -1104,7 +1104,7 @@
       "slug": "fold",
       "domain": "visual",
       "kind": "gpu_visual",
-      "role": "",
+      "role": "transform",
       "summary": "Crisp axis-aligned mirror reflection of the input \u2014 architectural symmetry, not a busy radial kaleidoscope.",
       "keywords": [
         "effect",
@@ -1727,7 +1727,7 @@
       "slug": "kaleidoscope",
       "domain": "visual",
       "kind": "gpu_visual",
-      "role": "",
+      "role": "transform",
       "summary": "Radial mirror-symmetry (kaleidoscope) fold of the input.",
       "keywords": [
         "effect",
@@ -2695,7 +2695,7 @@
       "slug": "noisefield",
       "domain": "visual",
       "kind": "gpu_visual",
-      "role": "",
+      "role": "source",
       "summary": "Animated 3D FBm noise (Perlin/Simplex/Worley/Value) \u2014 a reusable displacement / modulation MAP.",
       "keywords": [
         "generator",
@@ -4131,7 +4131,7 @@
       "slug": "shape",
       "domain": "visual",
       "kind": "gpu_visual",
-      "role": "",
+      "role": "source",
       "summary": "A crisp SDF shape (circle/polygon) drawn over its input. Geometry, not a field.",
       "keywords": [
         "generator",
@@ -4554,7 +4554,7 @@
       "slug": "shatter",
       "domain": "visual",
       "kind": "gpu_visual",
-      "role": "",
+      "role": "transform",
       "summary": "RGB channel-split + blocky glitch displacement \u2014 a hard digital shatter, not a haze.",
       "keywords": [
         "effect",
@@ -5402,7 +5402,7 @@
       "slug": "transform",
       "domain": "visual",
       "kind": "gpu_visual",
-      "role": "",
+      "role": "transform",
       "summary": "Zoom / rotate / translate / tile the input (near-identity at defaults).",
       "keywords": [
         "effect",

@@ -2,6 +2,7 @@
   "version": 1,
   "name": "Displace",
   "summary": "Warp a source texture's sampling by a displacement texture (RG-vector or luminance).",
+  "role": "transform",
   "keywords": ["effect", "displace", "warp"],
   "inputs": ["source", "displace"],
   "params": [

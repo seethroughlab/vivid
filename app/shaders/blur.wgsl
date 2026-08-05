@@ -2,6 +2,7 @@
   "version": 1,
   "name": "Blur",
   "summary": "Box blur of the input texture; radius is wire-drivable.",
+  "role": "transform",
   "keywords": ["effect", "blur", "soften"],
   "inputs": ["input"],
   "params": [

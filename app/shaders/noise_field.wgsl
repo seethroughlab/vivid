@@ -2,6 +2,7 @@
   "version": 1,
   "name": "NoiseField",
   "summary": "Animated 3D FBm noise (Perlin/Simplex/Worley/Value) — a reusable displacement / modulation MAP.",
+  "role": "source",
   "keywords": ["generator", "noise", "fbm", "displacement", "map"],
   "inputs": [],
   "params": [
