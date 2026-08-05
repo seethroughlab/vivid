@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-08-05T20:46:39.547113+00:00",
+  "generated_at": "2026-08-05T22:10:44.002653+00:00",
   "app_version": "0.1.1",
   "build_type": "debug",
   "operator_abi": 17,
-  "count": 68,
+  "count": 67,
   "domains": [
     "visual",
     "audio",
@@ -4693,38 +4693,6 @@
       ],
       "source": null,
       "preview": "solids.png"
-    },
-    {
-      "name": "SpikeSolid",
-      "display_name": "Spike Solid",
-      "slug": "spikesolid",
-      "domain": "visual",
-      "kind": "gpu_visual",
-      "role": "source",
-      "summary": "Example loadable .dylib operator: a solid hue-coloured fill.",
-      "keywords": [
-        "generator",
-        "solid",
-        "example"
-      ],
-      "params": [
-        {
-          "default": 0.5,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "hue",
-          "type": "float"
-        }
-      ],
-      "ports": [
-        {
-          "dir": "out",
-          "name": "texture",
-          "stream": "texture"
-        }
-      ],
-      "source": null,
-      "preview": "spikesolid.png"
     },
     {
       "name": "StepBars",

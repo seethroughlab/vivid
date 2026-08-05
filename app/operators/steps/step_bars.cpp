@@ -5,7 +5,7 @@
 // the instance directly). process_gpu renders the 8 values as a bar chart so edits are visible in
 // the node's output too.
 //
-// Self-contained against operator_api/ only (like spike_solid). VIVID_REGISTER emits the standard
+// Self-contained against operator_api/ only (like the example-visuals package). VIVID_REGISTER emits the standard
 // create/destroy/descriptor/process surface; the two editor entry points are exported by hand.
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"

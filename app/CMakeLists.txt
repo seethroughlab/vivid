@@ -493,7 +493,7 @@ target_copy_webgpu_binaries(vivid)
 # Loadable operator dylibs (P2). Declared after vivid so the operator targets
 # can reference the bundle (for the PlugIns/ copy) + force them to build with the app.
 add_subdirectory(operators)
-add_dependencies(vivid vivid_spike_solid)
+add_dependencies(vivid vivid_step_bars)   # force a representative operator dylib to build with the app
 
 # ADR-0025: headless SESSION-EXECUTOR test. Links the audio engine (session_process + native ops +
 # graph) WITHOUT the GPU/window stack, so the executor can be driven directly and its rendered output
