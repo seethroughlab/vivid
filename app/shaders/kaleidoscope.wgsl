@@ -2,6 +2,7 @@
   "version": 1,
   "name": "Kaleidoscope",
   "summary": "Radial mirror-symmetry (kaleidoscope) fold of the input.",
+  "role": "transform",
   "keywords": ["effect", "kaleidoscope", "mirror"],
   "inputs": ["input"],
   "params": [

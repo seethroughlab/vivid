@@ -288,6 +288,21 @@ ShaderMeta parse_shader(const std::string& source, ShaderDialect dialect) {
     if (auto it = root.find("summary"); it != root.end() && it->is_string())
         m.summary = it->get<std::string>();
 
+    // ADR-0046: optional operator role. Absent => DEFAULT (unclassified). An unknown value is a hard
+    // error so a typo surfaces as a malformed-shader row rather than a silently-unclassified op.
+    if (auto it = root.find("role"); it != root.end()) {
+        if (!it->is_string()) { m.error = "\"role\" must be a string"; return m; }
+        const std::string r = it->get<std::string>();
+        if      (r == "source")    m.role = VIVID_OP_ROLE_SOURCE;
+        else if (r == "transform") m.role = VIVID_OP_ROLE_TRANSFORM;
+        else if (r == "adapter")   m.role = VIVID_OP_ROLE_ADAPTER;
+        else if (r == "renderer")  m.role = VIVID_OP_ROLE_RENDERER;
+        else if (r == "sink")      m.role = VIVID_OP_ROLE_SINK;
+        else if (r == "recipe")    m.role = VIVID_OP_ROLE_RECIPE;
+        else { m.error = "unknown \"role\" \"" + r +
+                         "\" (expected source/transform/adapter/renderer/sink/recipe)"; return m; }
+    }
+
     if (auto it = root.find("keywords"); it != root.end()) {
         if (!it->is_array()) { m.error = "\"keywords\" must be an array of strings"; return m; }
         for (const auto& k : *it)

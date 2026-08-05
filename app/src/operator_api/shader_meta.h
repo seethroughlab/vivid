@@ -69,6 +69,10 @@ struct ShaderMeta {
     int version = 1;
     std::string name;                   // operator type name, e.g. "Plasma"
     std::string summary;
+    // ADR-0046 role classification. A shader file declares its role in the header ("role": "transform");
+    // ShaderFileOp forwards it via declared_operator_role() so the catalog, chooser chip and reference
+    // data label it exactly like a compiled op. Absent => DEFAULT (unclassified, treated as a primitive).
+    VividOperatorRole role = VIVID_OP_ROLE_DEFAULT;
     std::vector<std::string> keywords;
     std::vector<std::string> inputs;    // 0..2 texture input port names
     std::vector<ShaderParam> params;

@@ -68,6 +68,11 @@ public:
     void collect_ports(std::vector<VividPortDescriptor>& out) override;
     void process_gpu(const VividGpuContext* c) override;
 
+    // ADR-0046: the role is declared in the shader header; forward it so a shader op is classified in the
+    // catalog/chooser exactly like a compiled op. def_ is bound at construction, so this is valid on the
+    // temporary instance the registry builds its cached descriptor from.
+    VividOperatorRole declared_operator_role() const override { return def_->meta.role; }
+
     // Non-empty when the shader failed to compile. The node keeps rendering — see the
     // fallback in process_gpu — but the UI surfaces this.
     const std::string& error() const { return error_; }

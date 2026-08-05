@@ -2,6 +2,7 @@
   "version": 1,
   "name": "Composite",
   "summary": "Blend two inputs (A base, B over): normal/add/multiply/screen/overlay.",
+  "role": "transform",
   "keywords": ["effect", "composite", "blend"],
   "inputs": ["A", "B"],
   "params": [

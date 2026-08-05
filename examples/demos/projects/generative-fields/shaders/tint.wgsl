@@ -2,6 +2,7 @@
   "version": 1,
   "name": "Tint",
   "summary": "WGSL example generator: a hue-shifted gradient (shows the WGSL authoring path).",
+  "role": "source",
   "keywords": ["generator", "tint", "wgsl"],
   "inputs": [],
   "params": [

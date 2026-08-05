@@ -2,6 +2,7 @@
   "version": 1,
   "name": "CRT",
   "summary": "Broadcast/CRT treatment: barrel curve, scanlines, RGB shadow-mask, aberration, vignette, roll.",
+  "role": "transform",
   "keywords": ["effect", "crt", "scanline", "broadcast", "signal", "vhs"],
   "inputs": ["input"],
   "params": [

@@ -2,6 +2,7 @@
   "version": 1,
   "name": "Shape",
   "summary": "A crisp SDF shape (circle/polygon) drawn over its input. Geometry, not a field.",
+  "role": "source",
   "keywords": ["generator", "shape", "geometry"],
   "inputs": ["input"],
   "params": [
