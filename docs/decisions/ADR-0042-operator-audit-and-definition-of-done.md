@@ -7,7 +7,8 @@ Date: 2026-07-30
 > **Baseline audit run (2026-07-30).** The harness this ADR proposes was built and run against the whole
 > catalog (72 registered ops). Result: **9 PASS · 29 WARN · 14 needs-input · 2 FAIL · 18 audio**. The two
 > genuine defects are **`Switch3D`** (blank node thumbnail — neither thumbnail path is implemented) and
-> **`SpikeSolid`** (a dev/spike op that renders blank). The 14 "needs-input" ops (signal consumers, mesh/
+> **`SpikeSolid`** (a dev/spike op that renders blank — later found to be a harness false-positive, a valid
+> solid fill; the op was since **removed from the catalog** as a redundant dev spike, 2026-08-05). The 14 "needs-input" ops (signal consumers, mesh/
 > asset/video ops, authored-text ops) can't be exercised by a synthetic scaffold and are expected, not
 > defects. The 29 WARNs are ops that render + thumbnail fine but have parameters that showed **no visible
 > change** in the single-frame test graph — many legitimate (rotating a symmetric sphere, materials on a
@@ -136,7 +137,8 @@ the catalog against it, run first as an **advisory report**.
   lit). The dual mechanism is documented in `docs/operator-authoring/README.md`. Two findings reshaped the
   rest:
   - **`SpikeSolid` was a harness false-positive, not an op bug** (a valid solid fill flagged blank);
-    fixed `rendered()` to accept solid colour. Two more accuracy fixes followed from spot-checking the
+    fixed `rendered()` to accept solid colour. (The op itself was later removed from the shipped catalog
+    as a redundant dev spike — its dlopen-boundary proof is covered by the real operator packages — 2026-08-05.) Two more accuracy fixes followed from spot-checking the
     param results: the sweep now **anchors on the default** and compares to both extremes (a pure
     min↔max sweep landed on two degenerate frames — e.g. Render3D `cam_z` ±50 are both blank), and the
     scene scaffold **doesn't add a second Shape3D** for geometry ops (it diluted their param signal).
@@ -146,7 +148,7 @@ the catalog against it, run first as an **advisory report**.
     reverted as dead code). Genuine audio thumbnail work is limited to note-effects (Arp) and is low
     priority. Documented in the authoring guide.
   - **No genuine dead params found.** The remaining `no-visible-change` params are inherent limits of
-    single-static-frame analysis: symmetric/periodic extremes (a cube at ±180°, `SpikeSolid` hue 0≡1),
+    single-static-frame analysis: symmetric/periodic extremes (a cube at ±180°, a hue param where 0≡1),
     conditional params (fog/shadow toggles + dependents, SDF `shape_b`/`operation`), and subtle material
     params (roughness/alpha/toon on a small object) — flagged for human review, not defects.
 - **Phase 3 — perf: DEFERRED (not needed now).** The baseline flagged **zero** ops over the frame-time
