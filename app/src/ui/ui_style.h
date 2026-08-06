@@ -274,6 +274,12 @@ inline void session_clip_cell(Renderer2D& r, Rect b, const float* accent,
                             hot || queued ? s.border[1] : s.border_soft[1],
                             hot || queued ? s.border[2] : s.border_soft[2],
                             hot || queued ? 0.85f : 0.72f);
+    if (blank && !active) {   // an empty slot is a clip-stop button: a small ■ glyph, brighter on hover
+        const float sz = 8.f;
+        const float sx = b.x + (b.w - sz) * 0.5f, sy = b.y + (b.h - sz) * 0.5f;
+        const float a = hot ? 0.62f : 0.26f;
+        r.draw_rect(sx, sy, sz, sz, s.dim[0], s.dim[1], s.dim[2], a);
+    }
 }
 
 // Modal/menu shell: flat panel fill, 1px frame, standard accent/header rule.

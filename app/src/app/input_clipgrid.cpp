@@ -102,7 +102,11 @@ bool clipgrid_release(Window& win, App& app, double mx, double my, int mods, int
             else if (onBar) stash_clip(app, st, ss);            // grid cell -> pool (stash a copy)
         }
     } else if (win.clip_drag_t >= 0) {
-        S::session_launch_clip(app.session, win.clip_drag_t, win.clip_drag_sc);  // plain click launches
+        const int ct = win.clip_drag_t, cs = win.clip_drag_sc;
+        if (S::session_cell_is_empty(app.session, ct, cs))
+            S::session_stop_track(app.session, ct);          // clicking an empty slot stops the track (Ableton idiom)
+        else
+            S::session_launch_clip(app.session, ct, cs);     // plain click launches
     }
     win.clip_drag_t = -1; win.clip_drag_from_pool = -1; win.clip_dragging = false;
     return true;
