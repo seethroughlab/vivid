@@ -1,6 +1,6 @@
 # ADR-0033: Composition Editing Ergonomics Are Core Audio Work
 
-Status: proposed
+Status: accepted (implemented — #261–#266)
 
 Date: 2026-07-26
 

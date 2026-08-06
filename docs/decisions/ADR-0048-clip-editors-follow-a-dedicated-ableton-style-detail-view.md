@@ -1,6 +1,6 @@
 # ADR-0048: Clip Editors Follow a Dedicated Ableton-Style Detail View
 
-Status: proposed
+Status: accepted (implemented — #246–#249, #256–#260)
 
 Date: 2026-08-02
 

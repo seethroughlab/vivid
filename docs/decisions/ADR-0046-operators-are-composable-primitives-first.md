@@ -1,6 +1,6 @@
 # ADR-0046: Operators Are Composable Primitives First
 
-Status: proposed
+Status: accepted (implemented — #237–#239, #269–#271)
 
 Date: 2026-08-02
 
