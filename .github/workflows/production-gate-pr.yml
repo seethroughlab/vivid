@@ -70,7 +70,7 @@ jobs:
           cmake --build app/build-audio -j --target \
             test_session_executor test_plugin_param_base test_bridge_undo_stability \
             test_clap_plugin_roundtrip test_clap_modulation test_missing_instrument_cue \
-            test_node_bypass test_node_solo test_plugin_watchdog
+            test_node_bypass test_node_solo test_plugin_watchdog test_plugin_hang_monitor
       - name: Run the audio-engine tests (native ops + real in-tree CLAP plugin)
         # --no-tests=error (Ph6 P2-01): a label that matches nothing is a FAILURE, not a silent pass.
         run: ctest --test-dir app/build-audio -L AUDIO_ENGINE -E test_session_concurrency --no-tests=error --output-on-failure

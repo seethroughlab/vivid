@@ -597,6 +597,17 @@ if(VIVID_BUILD_TESTS AND APPLE)
     add_test(NAME test_plugin_watchdog COMMAND test_plugin_watchdog)
     set_tests_properties(test_plugin_watchdog PROPERTIES LABELS "AUDIO_ENGINE")
 
+    # ADR-0045 Tier 2a: the permanent-hang monitor thread, tripped by the slow CLAP fixture spinning past
+    # the hang deadline.
+    add_executable(test_plugin_hang_monitor tests/test_plugin_hang_monitor.cpp ${_audio_engine_srcs})
+    target_include_directories(test_plugin_hang_monitor PRIVATE src src/audio src/gpu tests)
+    target_link_libraries(test_plugin_hang_monitor PRIVATE ${_audio_engine_libs})
+    add_dependencies(test_plugin_hang_monitor vivid_test_clap)
+    target_compile_definitions(test_plugin_hang_monitor PRIVATE
+        VIVID_TEST_CLAP_PATH="$<TARGET_BUNDLE_DIR:vivid_test_clap>")
+    add_test(NAME test_plugin_hang_monitor COMMAND test_plugin_hang_monitor)
+    set_tests_properties(test_plugin_hang_monitor PROPERTIES LABELS "AUDIO_ENGINE")
+
     # ADR-0034 Phase 1: control-edge modulation reaches a CLAP plugin param (uses the same fixture).
     add_executable(test_clap_modulation tests/test_clap_modulation.cpp ${_audio_engine_srcs})
     target_include_directories(test_clap_modulation PRIVATE src src/audio src/gpu tests)

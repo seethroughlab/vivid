@@ -1,13 +1,12 @@
 # ADR-0045: Realtime Plugin Fault Isolation
 
-Status: proposed
+Status: accepted (Tier 1 + Tier 2a implemented; Tier 2b deferred — see As Built)
 
 Date: 2026-07-31
 
 > **Origin.** Raised by the first-release Code Audit, Phase 2 (Realtime Audio & Thread
 > Safety), finding **P0-01** — a release blocker. See
 > `docs/audits/07-31-2026/code/phase-02-realtime-audio-and-thread-safety.md`.
-> This ADR captures the decision to make; it is not yet accepted.
 
 ## Context
 
@@ -56,6 +55,32 @@ Two tiers — the first is **release-gating**, the second is post-release policy
    **bounded-time / sandboxed** processing model for untrusted plugins (separate process or
    thread with a hard deadline) so a crash or hang degrades one track instead of the app.
    Each has real cost (latency, IPC, complexity) and is not first-release scope.
+
+## As Built
+
+- **Tier 1 (attribution) — shipped (#190).** The four plugin-process render sites
+  (`audio/vst3_host_render.cpp`) are wrapped in a `CrashGuard` named by the plugin, so a crash in
+  `process()` is attributed and the crash-recovery → quarantine pipeline disables it on relaunch.
+
+- **Tier 2a (the watchdog) — shipped (#273 over-budget, + the hang monitor).** Each render site times its
+  `process()` call (`audio/plugin_watchdog.h`). Over-budget strikes accumulate with decay; past a threshold
+  the plugin latches `faulted` and `process_step` skips it — an instrument fails to silence, an effect
+  passes through dry — bounding the *repeated* stall. A separate **hang monitor thread**
+  (`audio/plugin_hang_monitor.h`) watches an in-flight beacon the RT thread publishes before each call; a
+  call still running past the hang deadline (default 1 s) is named, latched `faulted`, and reported, so a
+  *permanent* hang becomes a named, logged, auto-disabled fault instead of a silent freeze. Both paths push
+  a lock-free ring the frame thread drains into a warning toast + a log entry. RT-safe (atomics + integer
+  math only); audio-thread-sanitizer clean. Tunables are env-overridable
+  (`VIVID_PLUGIN_BUDGET_MULT` / `_STRIKES` / `_HANG_MS`). Tests
+  `test_plugin_watchdog` / `test_plugin_hang_monitor` drive both paths through the real render path.
+
+- **Tier 2b (rescue a live hang) — deferred.** The watchdog can bound *repeated* stalls and *name* a
+  permanent hang, but it **cannot keep audio alive through the buffer a plugin is currently frozen inside** —
+  the RT thread is stuck in `process()` and cannot be safely interrupted. Only running `process()` on a
+  worker thread with a hard deadline (so the RT thread can abandon a hung call and output silence) truly
+  rescues it, at real latency/complexity cost (per-plugin thread, handoff, abandoned-worker lifetime). That
+  remains deferred; it is the only path to true containment and should be its own ADR/effort when the cost
+  is justified.
 
 ## Consequences
 

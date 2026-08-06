@@ -10,6 +10,7 @@
 #include "audio/audio_op_runtime.h"                   // AO-1: native audio operators (opaque; no operator_api leak)
 #include "audio/sampler_op.h"                          // ADR-0049: SamplerInfo/SamplerSlice (read API)
 #include "audio/audio_graph.h"                        // AG-0: per-track audio signal graph (ADR-0012)
+#include "audio/plugin_hang_monitor.h"                 // ADR-0045 Tier 2a: the in-flight beacon (PluginInFlight)
 #include "audio/clap_host.h"                           // CLAP plugin hosting (ClapHandle, clap_run, clap_load_plugin)
 #include "audio/plugin_catalog.h"                     // A2: PluginFormat (kFmtVST3 / kFmtCLAP)
 #include "audio/vst3_presets.h"                         // VST3 preset discovery/load (.vstpreset + Serum/Pigments adapters)
@@ -37,12 +38,16 @@
 using namespace Steinberg;
 using namespace Steinberg::Vst;
 
-// ADR-0045 Tier 2a: the process-global plugin-fault ring (RT/monitor push → frame drain). One audio
-// engine per process, like the other RT singletons.
+// ADR-0045 Tier 2a: the process-global plugin-fault ring (RT/monitor push → frame drain) and the
+// in-flight beacon the hang monitor watches. One audio engine per process, like the other RT singletons.
 namespace vivid::audio {
 PluginFaultRing<64>& plugin_fault_ring() {
     static PluginFaultRing<64> ring;
     return ring;
+}
+PluginInFlight& plugin_inflight() {
+    static PluginInFlight beacon;
+    return beacon;
 }
 }  // namespace vivid::audio
 
