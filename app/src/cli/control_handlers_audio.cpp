@@ -54,6 +54,21 @@ void register_audio_handlers(Handlers& handlers_) {
         P::session_launch_scene(c.session, scene);
         return ok();
     };
+    // Stop a track's playing clip (the counterpart to launch_clip): the clip goes idle at the next
+    // launch-quantize bar and stays silent until a clip/scene is launched. Distinct from set_track_mute,
+    // which silences the mix while the clip keeps running.
+    handlers_["stop_track"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        P::session_stop_track(c.session, track);
+        return ok();
+    };
+    handlers_["stop_all"] = [](const ControlCtx& c, const json&) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        P::session_stop_all(c.session);
+        return ok();
+    };
     handlers_["set_track_gain"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0);

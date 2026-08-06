@@ -67,6 +67,7 @@ const char* session_available_generator_name(Session*, int idx);
 int         session_place_generator(Session*, int track, int scene, const char* type);
 int         session_remove_generator(Session*, int track, int scene);
 int         session_cell_is_generator(Session*, int track, int scene);
+int         session_cell_is_empty(Session*, int track, int scene);   // no generator + no clip/notes → a stop-slot
 const char* session_generator_type(Session*, int track, int scene);
 int         session_generator_param_count(Session*, int track, int scene);
 const char* session_generator_param_name(Session*, int track, int scene, int i);
@@ -126,6 +127,8 @@ int  session_queued_clip(Session*, int track);   // -1 if nothing pending
 // Launch (main thread, applied on the next bar).
 void session_launch_clip(Session*, int track, int scene);
 void session_launch_scene(Session*, int scene);   // launches scene on every track
+void session_stop_track(Session*, int track);     // stop the track's clip → idle at the next launch bar
+void session_stop_all(Session*);                  // stop every track's clip
 
 // Mixer.
 float session_track_gain(Session*, int track);

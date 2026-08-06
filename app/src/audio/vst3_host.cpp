@@ -1363,6 +1363,16 @@ void session_launch_scene(Session* s, int scene) {
     if (!s || scene < 0 || scene >= s->scenes) return;
     for (auto& tp : s->tracks) tp->queued.store(scene, std::memory_order_relaxed);
 }
+// Stop a track's playing clip: queue the -2 STOP sentinel (distinct from -1 = "nothing queued"). The RT
+// boundary applies it like a launch — the clip goes idle (active = -1) on the next launch-quantize bar,
+// releasing its held notes, and stays silent until a clip/scene is launched again.
+void session_stop_track(Session* s, int t) {
+    if (s && t >= 0 && t < static_cast<int>(s->tracks.size()))
+        s->tracks[t]->queued.store(-2, std::memory_order_relaxed);
+}
+void session_stop_all(Session* s) {
+    if (s) for (auto& tp : s->tracks) tp->queued.store(-2, std::memory_order_relaxed);
+}
 float session_track_gain(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->gain.load(std::memory_order_relaxed) : 0.f;
 }
@@ -2369,8 +2379,9 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             // Quantized scene switch (a transport action the AudioClip graph node reads each block).
             if (new_launch) {
                 const int q = t.queued.load(std::memory_order_relaxed);
-                if (q >= 0 && q != t.active.load(std::memory_order_relaxed)) t.active.store(q, std::memory_order_relaxed);
-                if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
+                if (q == -2) t.active.store(-1, std::memory_order_relaxed);   // STOP → idle
+                else if (q >= 0 && q != t.active.load(std::memory_order_relaxed)) t.active.store(q, std::memory_order_relaxed);
+                if (q != -1) t.queued.store(-1, std::memory_order_relaxed);   // clear the queue (launch OR stop)
             }
         } else {
             t.vev.clear();   // this block's VST3 event list (on the Track so the graph node can read it)
@@ -2378,7 +2389,9 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             if (new_launch) {
                 const int q = t.queued.load(std::memory_order_relaxed);
                 const int old_scene = t.active.load(std::memory_order_relaxed);
-                if (q >= 0 && q != old_scene && q < static_cast<int>(t.clips.size())) {
+                const bool do_stop   = (q == -2);   // STOP sentinel → the track goes idle
+                const bool do_launch = (q >= 0 && q != old_scene && q < static_cast<int>(t.clips.size()));
+                if (do_launch || do_stop) {
                     t.nev.clear(); t.eev.clear(); t.sched.flush(t.nev);   // outgoing CLIP's held notes
                     // ADR-0022 P3.3: if the outgoing scene's cell is a GENERATOR, release its held
                     // voices into the same scene_rel path. Found via the audio-thread PLAN (t.gbinds),
@@ -2393,10 +2406,14 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                         }
                     emit_vst3(t.vev, t.nev, t.eev);
                     t.scene_rel.assign(t.nev.begin(), t.nev.end());   // keep the releases for CLAP (t.nev is cleared below)
-                    t.sched.reset(&t.clips[q], beats);   // anchor the launched clip to THIS bar so it starts at its beat 0
-                    t.active.store(q, std::memory_order_relaxed);
+                    if (do_launch) {
+                        t.sched.reset(&t.clips[q], beats);   // anchor the launched clip to THIS bar so it starts at its beat 0
+                        t.active.store(q, std::memory_order_relaxed);
+                    } else {
+                        t.active.store(-1, std::memory_order_relaxed);   // STOP → idle (held notes released above)
+                    }
                 }
-                if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
+                if (q != -1) t.queued.store(-1, std::memory_order_relaxed);   // clear the queue (launch OR stop)
             }
             // ADR-0022 P3.1b: split note production into two source streams that P3.1a's single
             // MidiIn used to carry together. nev_clip = the clip scheduler + play-stop release
@@ -4250,6 +4267,14 @@ const char* session_generator_type(Session* s, int track, int scene) {
     Track* tr = graph_track(s, track);
     return (tr && scene >= 0 && scene < static_cast<int>(tr->gen_cells.size()) && tr->gen_cells[scene].op)
                ? tr->gen_cells[scene].type.c_str() : "";
+}
+// A cell holds nothing playable: not a generator, and (audio) no imported clip / (MIDI) no notes. The
+// session view draws these as recessed slots; a click on one STOPS the track (Ableton clip-stop idiom).
+// Mirrors the classification in session_view.cpp so the click target and the drawn look stay in agreement.
+int session_cell_is_empty(Session* s, int track, int scene) {
+    if (session_cell_is_generator(s, track, scene)) return 0;
+    if (session_track_is_audio(s, track)) return session_audio_clip_bpm(s, track, scene) <= 0 ? 1 : 0;
+    ClipNote nb; return session_get_clip(s, track, scene, &nb, 1) == 0 ? 1 : 0;
 }
 // ADR-0022 P3.3: a scene cell's generator op params (empty if the cell is a clip). Params are
 // lock-free atomics on the op, so set takes effect without a rebuild.

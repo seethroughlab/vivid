@@ -588,6 +588,20 @@ def launch_scene(scene: int) -> dict:
 
 
 @mcp.tool
+def stop_track(track: int) -> dict:
+    """Stop a track's playing clip: it goes idle (silent) at the next bar and stays stopped until a
+    clip/scene is launched. The counterpart to launch_clip. Different from set_track_mute, which
+    silences the mix while the clip keeps running."""
+    return _post("stop_track", {"track": track})
+
+
+@mcp.tool
+def stop_all() -> dict:
+    """Stop every track's playing clip at the next bar (all tracks go idle)."""
+    return _post("stop_all", {})
+
+
+@mcp.tool
 def set_track_gain(track: int, gain: float) -> dict:
     """Set a track's mixer gain (0..1)."""
     return _post("set_track_gain", {"track": track, "gain": gain})
