@@ -1,6 +1,6 @@
 # ADR-0047: Note, Control, and Value Streams Need First-Class Ports
 
-Status: proposed
+Status: accepted (implemented — #233–#236, #267–#268)
 
 Date: 2026-08-02
 

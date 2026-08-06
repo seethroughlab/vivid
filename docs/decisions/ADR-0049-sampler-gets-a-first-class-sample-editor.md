@@ -1,6 +1,6 @@
 # ADR-0049: Sampler Gets a First-Class Sample Editor
 
-Status: proposed
+Status: accepted (implemented — #250–#255)
 
 Date: 2026-08-02
 

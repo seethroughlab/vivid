@@ -1,6 +1,6 @@
 # ADR-0026: Evaluation Asserts Quality Against Intent, Not Liveness
 
-Status: proposed (2026-07-20)
+Status: accepted (implemented — in-app music eval, #119/#120)
 
 ## Context
 
