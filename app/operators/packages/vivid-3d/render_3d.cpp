@@ -2,6 +2,7 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
 #include "operator_api/gpu_3d.h"
+#include <array>
 #include <algorithm>   // std::clamp / std::max — clang pulls these in transitively, gcc does not
 #include <cstring>
 #include <cmath>
@@ -1184,6 +1185,7 @@ static void collect_fragments(const vivid::gpu::VividSceneFragment* node,
                                std::vector<DrawCall>& draws,
                                std::vector<CollectedLight>& lights,
                                CollectedAmbient& ambient,
+                               uint32_t& lights_seen,
                                const vivid::gpu::VividSceneFragment* material = nullptr,
                                const vivid::gpu::VividSceneFragment** out_env = nullptr) {
     if (!node) return;
@@ -1204,6 +1206,7 @@ static void collect_fragments(const vivid::gpu::VividSceneFragment* node,
         for (int c = 0; c < 3; ++c)
             ambient.rgb[c] += node->light_color[c] * node->light_intensity;
     } else if (node->fragment_type == vivid::gpu::VividSceneFragment::LIGHT) {
+        ++lights_seen;   // ADR-0051 P4: count them ALL, so we can say how many were dropped
         if (lights.size() < kMaxLights) {
             CollectedLight cl{};
             cl.light_type = node->light_type;
@@ -1264,7 +1267,7 @@ static void collect_fragments(const vivid::gpu::VividSceneFragment* node,
     }
 
     for (uint32_t i = 0; i < node->child_count; ++i) {
-        collect_fragments(node->children[i], composed, draws, lights, ambient,
+        collect_fragments(node->children[i], composed, draws, lights, ambient, lights_seen,
                           active_material, out_env);
     }
 }
@@ -1289,6 +1292,8 @@ static void collect_fragments(const vivid::gpu::VividSceneFragment* node,
 struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Render3D";
     static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_RENDERER;   // ADR-0046
+    static constexpr const char* kSummary = "Renders a composed 3D scene to a texture: camera, lights, shadows, fog and IBL.";
+    static constexpr std::array<const char*, 3> kKeywords = {"3d", "render", "camera"};
     static constexpr bool kTimeDependent = false;
 
     // Camera params
@@ -1519,8 +1524,19 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
         const vivid::gpu::VividSceneFragment* env = nullptr;
         mat4x4 identity;
         mat4x4_identity(identity);
+        uint32_t lights_seen = 0;
         collect_fragments(vivid::gpu::scene_input(ctx, 0), identity, draws, collected_lights,
-                         collected_ambient, nullptr, &env);
+                         collected_ambient, lights_seen, nullptr, &env);
+
+        // ADR-0051 P4 / ADR-0019: lights past the ceiling used to vanish with no word to anyone —
+        // you added a fifth Light3D, the picture didn't change, and nothing said why. Say it on the
+        // node. `light_limit_msg_` owns the storage, as vivid_report_gpu_error requires.
+        if (lights_seen > kMaxLights) {
+            light_limit_msg_ = "scene has " + std::to_string(lights_seen) + " lights; only "
+                             + std::to_string(kMaxLights) + " are shaded ("
+                             + std::to_string(lights_seen - kMaxLights) + " ignored)";
+            vivid_report_gpu_error(ctx, light_limit_msg_.c_str());
+        }
 
         if (draws.empty()) {
             WGPURenderPassEncoder pass = vivid::gpu::begin_3d_pass(
@@ -2020,6 +2036,7 @@ private:
     WGPUBindGroupLayout shadow_camera_bgl_     = nullptr;
     WGPUBindGroup       shadow_camera_bg_      = nullptr;
     WGPUBuffer          shadow_camera_ubo_     = nullptr;   // dedicated buffer for shadow pass
+    std::string         light_limit_msg_;                  // ADR-0051 P4: owns the reported message
     WGPUTexture         dir_shadow_tex_        = nullptr;  // depth ARRAY, one layer per caster
     WGPUTextureView     dir_shadow_layer_views_[kMaxShadowCasters] = {};  // per-caster render targets
     WGPUTextureView     dir_shadow_sample_     = nullptr;  // 2d-array view, for sampling in fragment

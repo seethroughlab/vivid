@@ -3,6 +3,7 @@
 #include "operator_api/gpu_3d.h"
 #include "operator_api/thumbnail_3d.h"
 #include "linmath.h"
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -534,6 +535,8 @@ static constexpr float kTAU = 6.28318530717958647692f;
 struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "SDF3D";
     static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
+    static constexpr const char* kSummary = "Ray-marched signed-distance geometry: smooth blended primitives with no mesh.";
+    static constexpr std::array<const char*, 3> kKeywords = {"3d", "sdf", "raymarch"};
     static constexpr bool kTimeDependent = false;
 
     // Shape A

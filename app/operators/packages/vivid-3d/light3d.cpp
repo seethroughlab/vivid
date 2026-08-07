@@ -2,6 +2,7 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_3d.h"
 #include "operator_api/thumbnail_3d.h"
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -38,6 +39,8 @@
 struct Light3D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Light3D";
     static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
+    static constexpr const char* kSummary = "A light in the scene — directional, point, spot or ambient, with colour and intensity.";
+    static constexpr std::array<const char*, 3> kKeywords = {"3d", "light", "shadow"};
     static constexpr bool kTimeDependent = false;
 
     // `type` choice indices — the wire values Render3D switches on (see VividSceneFragment::light_type).

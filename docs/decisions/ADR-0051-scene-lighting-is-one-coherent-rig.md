@@ -320,4 +320,45 @@ by direct binary path (`app/build/vivid.app/Contents/MacOS/vivid` with `VIVID_NO
   ambient renders at brightness 0.0, proving no fallback light was conjured. Phases 1 and 2 both
   re-verified green.
 
-- **Phases 1b, 2c, 4, 5** — not started.
+- **Phase 4 (fail loud; document itself) — implemented.**
+
+  *The ceiling reports itself.* Render3D counts every light it walks and, past `kMaxLights`, reports
+  "scene has N lights; only 4 are shaded (M ignored)". This needed the same kind of wiring Phase 1b
+  did: `vivid_report_gpu_error` and the `operator_errored` / `operator_error_msg` ABI fields
+  existed, and operators could set them, but **nothing read them back** — a second piece of dead
+  ADR-0019 plumbing. `VisualGraph::render` now copies the message into `VisualNode::runtime_error`
+  after each `process_gpu`, and `VisualNode::error()` returns it, which is the extension point that
+  function's own comment invited ("when another op kind grows a runtime error, this is where it
+  goes"). Unlike the param-visibility case, this was contained enough to do here, and it is
+  general: any operator can now surface a per-frame runtime problem on its node and over MCP.
+  `kMaxLights` was left at 4 — raising it is a separate judgement now that exceeding it is visible
+  rather than silent.
+
+  *The ops document themselves.* All 14 vivid-3d operators gained `kSummary` + `kKeywords`. They
+  all had prose already, in doxygen `@brief` comments that nothing parses; the catalog reads an
+  optional `kSummary` none of them declared. `site/reference.json` now has **0 operators missing a
+  summary**, down from 14.
+
+  *The harness runs.* `audit.py`'s perf baseline named the removed `Gradient` op, so the harness
+  died before auditing anything. It now resolves an input-free GPU op from the live catalog and
+  degrades to a skipped baseline rather than taking the run down. A second instance of the same bug
+  was hiding one layer deeper — `scaffolds.Sources._CANON["texture"]` also named `Gradient`, which
+  broke every texture-input op (Blur, CRT, Composite…) even once the baseline was fixed. Both now
+  use `NoiseField`.
+
+  *The preview reads as a light.* `light3d.png` was a tan cube on black — a picture of the cube the
+  scaffold lit, not of the light. Preview-only dressing poses a warm spot pool with visible falloff
+  on a ground plane. The audit's own scaffold stays neutral, so its param sweep is not biased by a
+  pose chosen to look good.
+
+  Verified: 85/85 ctest, 0 GPU validation errors, 6 live checks — the diagnostic appears past the
+  ceiling, names the number dropped, and **clears** when the scene comes back under it. All four
+  phases re-verified together, green.
+
+  Known and expected: `audit.py Light3D` reports WARN with `no-visible-change` for `radius`,
+  `pos_*`, `spot_*` and `cast_shadow`. Those are exactly the params a DIRECTIONAL light correctly
+  ignores, and the scaffold uses the default type. The harness has no way to know that — the
+  `visible_when_*` predicates that would tell it are not exposed over `list_operators`. Exposing
+  them there is the cheapest real consumer of that metadata and belongs with Phase 1b.
+
+- **Phases 1b, 2c, 5** — not started.

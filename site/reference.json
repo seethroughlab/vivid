@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-08-05T22:10:44.002653+00:00",
+  "generated_at": "2026-08-07T17:58:39.928486+00:00",
   "app_version": "0.1.1",
   "build_type": "debug",
   "operator_abi": 17,
-  "count": 67,
+  "count": 70,
   "domains": [
     "visual",
     "audio",
@@ -142,8 +142,12 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "source",
-      "summary": "",
-      "keywords": [],
+      "summary": "Live FFT of the master bus as per-band lanes \u2014 the source for a 3D equaliser.",
+      "keywords": [
+        "audio",
+        "spectrum",
+        "fft"
+      ],
       "params": [
         {
           "default": 48.0,
@@ -363,6 +367,56 @@
       "source": null
     },
     {
+      "name": "Bloom",
+      "display_name": "Bloom",
+      "slug": "bloom",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "transform",
+      "summary": "Post-process glow: bright pixels bleed light. Put it after Render3D; drive intensity with audio.",
+      "keywords": [
+        "effect",
+        "bloom",
+        "glow"
+      ],
+      "params": [
+        {
+          "default": 0.6000000238418579,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "threshold",
+          "type": "float"
+        },
+        {
+          "default": 0.800000011920929,
+          "max": 3.0,
+          "min": 0.0,
+          "name": "intensity",
+          "type": "float"
+        },
+        {
+          "default": 1.5,
+          "max": 6.0,
+          "min": 0.0,
+          "name": "radius",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "in",
+          "name": "input",
+          "stream": "texture"
+        },
+        {
+          "dir": "out",
+          "name": "texture",
+          "stream": "texture"
+        }
+      ],
+      "source": null
+    },
+    {
       "name": "Blur",
       "display_name": "Blur",
       "slug": "blur",
@@ -399,7 +453,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/blur.wgsl",
+        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/blur.wgsl",
         "tier": "bundled"
       },
       "preview": "blur.png"
@@ -618,10 +672,137 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/composite.wgsl",
+        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/composite.wgsl",
         "tier": "bundled"
       },
       "preview": "composite.png"
+    },
+    {
+      "name": "CosinePalette",
+      "display_name": "Cosine Palette",
+      "slug": "cosinepalette",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "transform",
+      "summary": "Designed color grading (iq cosine palette). Maps luminance to a gradient; map audio to phase for color cycling.",
+      "keywords": [
+        "effect",
+        "color",
+        "palette"
+      ],
+      "params": [
+        {
+          "default": 0.0,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "phase",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "mix",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "a_r",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "a_g",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "a_b",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "b_r",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "b_g",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "b_b",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "max": 4.0,
+          "min": 0.0,
+          "name": "c_r",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "max": 4.0,
+          "min": 0.0,
+          "name": "c_g",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "max": 4.0,
+          "min": 0.0,
+          "name": "c_b",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "d_r",
+          "type": "float"
+        },
+        {
+          "default": 0.33000001311302185,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "d_g",
+          "type": "float"
+        },
+        {
+          "default": 0.6700000166893005,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "d_b",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "in",
+          "name": "input",
+          "stream": "texture"
+        },
+        {
+          "dir": "out",
+          "name": "texture",
+          "stream": "texture"
+        }
+      ],
+      "source": null
     },
     {
       "name": "CRT",
@@ -703,7 +884,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/crt.wgsl",
+        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/crt.wgsl",
         "tier": "bundled"
       },
       "preview": "crt.png"
@@ -774,8 +955,12 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "transform",
-      "summary": "",
-      "keywords": [],
+      "summary": "Displaces a mesh's vertices with noise or a wave, so geometry ripples and breathes.",
+      "keywords": [
+        "3d",
+        "deform",
+        "displace"
+      ],
       "params": [
         {
           "choices": [
@@ -902,7 +1087,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/displace.wgsl",
+        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/displace.wgsl",
         "tier": "bundled"
       },
       "preview": "displace.png"
@@ -1173,7 +1358,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/fold.wgsl",
+        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/fold.wgsl",
         "tier": "bundled"
       },
       "preview": "fold.png"
@@ -1283,8 +1468,12 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "source",
-      "summary": "",
-      "keywords": [],
+      "summary": "Lays out instances on a regular 3D grid \u2014 the lattice a shape is stamped across.",
+      "keywords": [
+        "3d",
+        "instances",
+        "grid"
+      ],
       "params": [
         {
           "default": 16.0,
@@ -1348,8 +1537,12 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "transform",
-      "summary": "",
-      "keywords": [],
+      "summary": "Perturbs instance transforms with noise, breaking a rigid layout into something organic.",
+      "keywords": [
+        "3d",
+        "instances",
+        "noise"
+      ],
       "params": [
         {
           "default": 0.0,
@@ -1488,8 +1681,12 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "transform",
-      "summary": "",
-      "keywords": [],
+      "summary": "Stamps one shape across a set of instance transforms in a single draw.",
+      "keywords": [
+        "3d",
+        "instances",
+        "draw"
+      ],
       "params": [],
       "ports": [
         {
@@ -1518,8 +1715,12 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "adapter",
-      "summary": "",
-      "keywords": [],
+      "summary": "Turns per-band lanes into instance transforms \u2014 bar heights driven by the audio.",
+      "keywords": [
+        "3d",
+        "instances",
+        "lanes"
+      ],
       "params": [],
       "ports": [
         {
@@ -1790,7 +1991,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/kaleidoscope.wgsl",
+        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/kaleidoscope.wgsl",
         "tier": "bundled"
       },
       "preview": "kaleidoscope.png"
@@ -1802,8 +2003,12 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "source",
-      "summary": "",
-      "keywords": [],
+      "summary": "Emits per-lane r/g/b colour, so a band's index picks its hue.",
+      "keywords": [
+        "lanes",
+        "colour",
+        "palette"
+      ],
       "params": [
         {
           "default": 48.0,
@@ -1872,8 +2077,12 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "source",
-      "summary": "",
-      "keywords": [],
+      "summary": "Emits a lane per step as a ramp \u2014 a positional gradient across a band set.",
+      "keywords": [
+        "lanes",
+        "ramp",
+        "gradient"
+      ],
       "params": [
         {
           "default": 48.0,
@@ -2005,18 +2214,23 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "source",
-      "summary": "",
-      "keywords": [],
+      "summary": "A light in the scene \u2014 directional, point, spot or ambient, with colour and intensity.",
+      "keywords": [
+        "3d",
+        "light",
+        "shadow"
+      ],
       "params": [
         {
           "choices": [
             "Directional",
             "Point",
-            "Spot"
+            "Spot",
+            "Ambient"
           ],
           "default": 0.0,
           "group": "Light",
-          "max": 2.0,
+          "max": 3.0,
           "min": 0.0,
           "name": "type",
           "type": "int"
@@ -2089,7 +2303,7 @@
           "type": "float"
         },
         {
-          "default": 0.0,
+          "default": -0.36369600892066956,
           "group": "Direction",
           "max": 1.0,
           "min": -1.0,
@@ -2097,7 +2311,7 @@
           "type": "float"
         },
         {
-          "default": -1.0,
+          "default": -0.7273929715156555,
           "group": "Direction",
           "max": 1.0,
           "min": -1.0,
@@ -2105,7 +2319,7 @@
           "type": "float"
         },
         {
-          "default": 0.0,
+          "default": -0.5819140076637268,
           "group": "Direction",
           "max": 1.0,
           "min": -1.0,
@@ -2127,6 +2341,18 @@
           "min": 0.0,
           "name": "spot_blend",
           "type": "float"
+        },
+        {
+          "choices": [
+            "Off",
+            "On"
+          ],
+          "default": 1.0,
+          "group": "Light",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "cast_shadow",
+          "type": "int"
         }
       ],
       "ports": [
@@ -2805,7 +3031,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/noise_field.wgsl",
+        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/noise_field.wgsl",
         "tier": "bundled"
       },
       "preview": "noisefield.png"
@@ -2946,8 +3172,12 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "transform",
-      "summary": "",
-      "keywords": [],
+      "summary": "A GPU particle field \u2014 curl-noise motion, emission and lifetime, drawn as billboards.",
+      "keywords": [
+        "3d",
+        "particles",
+        "gpu"
+      ],
       "params": [
         {
           "default": 1000.0,
@@ -3289,8 +3519,12 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "renderer",
-      "summary": "",
-      "keywords": [],
+      "summary": "Renders a composed 3D scene to a texture: camera, lights, shadows, fog and IBL.",
+      "keywords": [
+        "3d",
+        "render",
+        "camera"
+      ],
       "params": [
         {
           "default": 0.0,
@@ -3362,6 +3596,38 @@
           "max": 10000.0,
           "min": 1.0,
           "name": "far",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Camera",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "orbit",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Camera",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "orbit_phase",
+          "type": "float"
+        },
+        {
+          "default": 6.0,
+          "group": "Camera",
+          "max": 50.0,
+          "min": 0.5,
+          "name": "orbit_radius",
+          "type": "float"
+        },
+        {
+          "default": 2.0,
+          "group": "Camera",
+          "max": 50.0,
+          "min": -50.0,
+          "name": "orbit_height",
           "type": "float"
         },
         {
@@ -3713,8 +3979,12 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "transform",
-      "summary": "",
-      "keywords": [],
+      "summary": "Combines several scene branches into one, so geometry and lights render together.",
+      "keywords": [
+        "3d",
+        "scene",
+        "merge"
+      ],
       "params": [],
       "ports": [
         {
@@ -3849,8 +4119,12 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "source",
-      "summary": "",
-      "keywords": [],
+      "summary": "Ray-marched signed-distance geometry: smooth blended primitives with no mesh.",
+      "keywords": [
+        "3d",
+        "sdf",
+        "raymarch"
+      ],
       "params": [
         {
           "choices": [
@@ -4236,7 +4510,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/shape.wgsl",
+        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/shape.wgsl",
         "tier": "bundled"
       },
       "preview": "shape.png"
@@ -4248,8 +4522,12 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "source",
-      "summary": "",
-      "keywords": [],
+      "summary": "A primitive mesh \u2014 cube, sphere, torus, plane, cylinder, cone or pyramid \u2014 with a material.",
+      "keywords": [
+        "3d",
+        "shape",
+        "mesh"
+      ],
       "params": [
         {
           "choices": [
@@ -4617,7 +4895,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/shatter.wgsl",
+        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/shatter.wgsl",
         "tier": "bundled"
       },
       "preview": "shatter.png"
@@ -5372,6 +5650,61 @@
       "preview": "text.png"
     },
     {
+      "name": "TimeMachine",
+      "display_name": "Time Machine",
+      "slug": "timemachine",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "transform",
+      "summary": "Slit-scan / time-displacement: each pixel samples a different point in a history buffer, chosen by a grayscale map.",
+      "keywords": [
+        "effect",
+        "slitscan",
+        "time"
+      ],
+      "params": [
+        {
+          "default": 1.0,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "depth",
+          "type": "float"
+        },
+        {
+          "default": 30.0,
+          "max": 120.0,
+          "min": 2.0,
+          "name": "frames",
+          "type": "int"
+        },
+        {
+          "default": 0.0,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "offset",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "in",
+          "name": "input",
+          "stream": "texture"
+        },
+        {
+          "dir": "in",
+          "name": "map",
+          "stream": "texture"
+        },
+        {
+          "dir": "out",
+          "name": "texture",
+          "stream": "texture"
+        }
+      ],
+      "source": null
+    },
+    {
       "name": "Transform",
       "display_name": "Transform",
       "slug": "transform",
@@ -5439,7 +5772,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/transform.wgsl",
+        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/transform.wgsl",
         "tier": "bundled"
       },
       "preview": "transform.png"
