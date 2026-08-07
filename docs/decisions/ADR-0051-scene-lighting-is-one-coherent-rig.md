@@ -1,6 +1,6 @@
 # ADR-0051: Scene Lighting Is One Coherent Rig
 
-Status: proposed
+Status: accepted (Phases 1–5 implemented; Phases 1b and 2c deferred — see As Built)
 
 Date: 2026-08-06
 
@@ -361,4 +361,37 @@ by direct binary path (`app/build/vivid.app/Contents/MacOS/vivid` with `VIVID_NO
   `visible_when_*` predicates that would tell it are not exposed over `list_operators`. Exposing
   them there is the cheapest real consumer of that metadata and belongs with Phase 1b.
 
-- **Phases 1b, 2c, 5** — not started.
+- **Phase 5 (the demos light as authored) — verified; no re-tuning needed.** All four
+  light-bearing generators (`blob`, `crystal`, `lattice`, `spectrum`) were built against a live app
+  with `build(save=False)` — nothing written, since there is no saved demo lighting to regenerate.
+  All four build and render correctly, and none looks worse.
+
+  The visible impact is **smaller than this ADR first implied**, for a reason worth recording.
+  Measuring the angle between each authored aim and the pre-ADR accident:
+
+  | light | angle from the accident |
+  | --- | --- |
+  | `blob` key | 4.6° |
+  | `crystal` key | 5.9° |
+  | `spectrum` key | 7.3° |
+  | `lattice` key | 8.9° |
+  | **`spectrum` fill** | **114.1°** |
+
+  Four of the five authored aims land within 9° of the direction the bug happened to produce — all
+  of them are "down and to the left-back", and so is `-normalize(0.5, 1, 0.8)`. So for those, no
+  visible change is the *correct* outcome, not a failed fix. The one substantive case is
+  `spectrum`'s fill at 114°: it finally lights from the opposite side instead of piling onto the
+  key, which is precisely the "no key/fill separation" defect the evaluation found. Its overall
+  brightness moves from 0.022 to 0.052 with the authored aim live.
+
+  A methodological note for anyone verifying visual work here: **frame-diffing a playing demo is
+  not a sound instrument**. These scenes animate, so the same-setting animation noise floor swung
+  between 1.8% and 20.5% of pixels across runs depending on where in the music the capture landed —
+  swamping a lighting change and making a threshold-based pass/fail unreproducible. The angle above
+  is the deterministic measure of how much a demo *should* shift, and Phase 1's static-scene checks
+  are what actually prove the mechanism. Heavily emissive geometry compounds this: direct lighting
+  is a minor term in these particular demos' final pixels.
+
+- **Phases 1b and 2c — deferred, with the reasons recorded above.** 1b: honour `visible_when_*` in
+  the UI (and expose it over `list_operators`, which would also stop the audit harness reporting
+  type-inapplicable params as dead). 2c: omni/point cube shadows.
