@@ -21,6 +21,14 @@ enum class WarpMode { Complex = 0, Beats = 1, Repitch = 2 };
 
 struct AudioClip {
     std::vector<float> L, R;       // PCM (R empty => mono)
+    // UI waveform-preview cache: session_audio_waveform() rescans ALL of L for peak-per-bin, and the
+    // session view called it EVERY frame per audio clip cell — an O(N) full-sample scan per frame that
+    // dominated the render frame time. Cache the bins; invalidated when the requested bin count or the
+    // sample data (size/ptr) changes. UI-thread only — the audio thread never reads/writes these, so no
+    // synchronization is needed.
+    mutable std::vector<float> wave_bins_;
+    mutable size_t             wave_src_n_   = 0;         // L.size() when the cache was built
+    mutable const float*       wave_src_ptr_ = nullptr;   // L.data() when the cache was built
     double             loop_beats = 4.0;
     double             src_bpm = 0.0;   // source tempo (0 = generated / unknown)
     uint32_t           sr = 0;          // sample rate the PCM is at (device rate; for fades/ms)
