@@ -71,10 +71,23 @@ public:
     // there are too few samples to trust — never a fake 0.0 that reads as "dead".
     json av_metrics(double window, double now) const;
 
+    // Phase 2 (multimodal judge): assemble up to `max_cells` of the window's retained thumbnails into a
+    // single left-to-right, top-to-bottom montage RGBA image (so a vision model sees how the visual
+    // evolved over the window). Evenly samples across the window. Writes `out` (out_w*out_h*4) and the
+    // montage dimensions; returns false if there are no usable frames. Frame-thread only.
+    bool capture_montage(int max_cells, double window, double now,
+                         std::vector<uint8_t>& out, uint32_t& out_w, uint32_t& out_h) const;
+
+    // A compact textual sparkline of the window's audio energy + onset times, injected into the judge
+    // prompt so the vision model can align frames to audio it cannot hear.
+    std::string energy_sparkline(double window, double now) const;
+
 private:
     static constexpr double   kPushInterval = 0.08;   // ~12.5 fps sampling
     static constexpr double   kWindowMax    = 12.0;   // retain ~12 s of history
-    static constexpr uint32_t kThumbMax     = 64;     // thumbnail longest edge (metrics + montage)
+    static constexpr uint32_t kThumbMax     = 128;    // thumbnail longest edge — metrics are fine at any
+                                                      // size; 128 gives the multimodal judge's montage
+                                                      // enough detail to read the form (64 looked like dots)
     static constexpr float    kOnsetThresh  = 0.28f;  // transient rising-edge threshold for an onset
 
     std::deque<Sample> s_;

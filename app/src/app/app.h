@@ -14,6 +14,7 @@
 #include "packages/hot_reload_manager.h"   // live operator hot-reload (opt-in/dev)
 #include "platform/midi_input.h"           // hardware MIDI input (M6.4)
 #include "audio/music_eval.h"              // ADR-0026: in-app Gemini music evaluation
+#include "audio/visual_eval.h"             // reactive-visuals loop: multimodal Gemini visual judge
 #include "app/reactivity_ring.h"           // reactive-visuals loop: reliable time-based visual perception
 
 namespace vivid {
@@ -68,6 +69,7 @@ struct App {
     Logger              log;       // ADR-0019 leveled logger; drained each frame (drain_rt)
     MusicEval           music_eval; // ADR-0026: in-app Gemini audio evaluation (async jobs)
     ReactivityRing      reactivity;  // reactive-visuals loop: per-frame visual+audio ring for analyze_output(av)
+    VisualEval          visual_eval; // reactive-visuals loop: multimodal Gemini judge (async jobs)
 
     bool recovered_unsaved = false;   // ADR-0018: a launch-time autosave recovery ran; mark dirty post-baseline
     bool reduce_motion = false;       // UX Ph4 F1: app-level accessibility toggle (persisted in settings.json)

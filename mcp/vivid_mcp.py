@@ -2118,5 +2118,82 @@ def compare_audio_to_intent(intent: str = "", reference_path: str = "", window_s
             "key_deviations": r.get("key_deviations", []), "summary": r.get("summary")}
 
 
+# ---- Reactive-visuals loop: multimodal Gemini visual judge (the taste lens) ----
+
+def _veval_poll(job_id: int, timeout_s: float) -> dict:
+    """Poll visual_eval_result until the async Gemini job finishes (or times out)."""
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        r = _post("visual_eval_result", {"job_id": job_id})
+        if r.get("ok") is False or r.get("status") in ("done", "error"):
+            return r
+        time.sleep(1.0)
+    return {"ok": False, "status": "timeout", "error": "visual eval timed out"}
+
+
+@mcp.tool
+def configure_visual_eval_backend(backend: str = "gemini", api_key: str = "", model: str = "") -> dict:
+    """Configure the Gemini backend for the multimodal VISUAL judge. Shares the key with the music-eval
+    backend (setting it here sets it for both). Verify with visual_eval_status that has_key is true
+    before trusting any verdict."""
+    return _post("configure_visual_eval_backend", {"backend": backend, "api_key": api_key, "model": model})
+
+
+@mcp.tool
+def visual_eval_status() -> dict:
+    """Report the visual-judge backend readiness: {backend, ready, has_key, model}. has_key=false means
+    every evaluate/compare call fails closed (no fabricated verdict) until a Gemini key is configured."""
+    return _post("visual_eval_status")
+
+
+@mcp.tool
+def visual_eval_result(job_id: int) -> dict:
+    """Poll a visual-judge job: {status: pending|done|error, ...}. The evaluate_visual_reactivity /
+    compare_visual_to_intent tools poll this for you."""
+    return _post("visual_eval_result", {"job_id": job_id})
+
+
+@mcp.tool
+def evaluate_visual_reactivity(intent: str = "", window_seconds: float = 4.0, frames: int = 12,
+                               include_payload: bool = False) -> dict:
+    """The qualitative taste lens: assemble a frame-strip montage of the live output over the last
+    `window_seconds` (plus the audio-energy series) and have Gemini judge whether the visual is REACTIVE
+    (changes look caused by the audio), LEGIBLE (a viewer can see the music driving the form — punctual
+    bursts or large monotonic moves, not generic wiggle), and on-intent. Returns booleans + 0..1 scores
+    + concrete issues[] and actionable fixes[] + a summary. Pair with analyze_output(mode='av') for the
+    hard numbers. Requires a configured Gemini key (configure_visual_eval_backend); fails closed
+    otherwise — never a fabricated verdict. The app must be PLAYING. Blocks ~5-15s while Gemini runs."""
+    started = _post("evaluate_visual_reactivity",
+                    {"intent": intent, "window_seconds": window_seconds, "frames": frames})
+    if not started.get("ok") or "job_id" not in started:
+        return started
+    r = _veval_poll(started["job_id"], max(30.0, window_seconds + 90.0))
+    if include_payload or not r.get("ok", True):
+        return r
+    return {"ok": True, "reactive": r.get("reactive"), "legible": r.get("legible"),
+            "on_intent": r.get("on_intent"), "issues": r.get("issues", []),
+            "fixes": r.get("fixes", []), "summary": r.get("summary")}
+
+
+@mcp.tool
+def compare_visual_to_intent(intent: str = "", reference_path: str = "", window_seconds: float = 4.0,
+                             frames: int = 12, include_payload: bool = False) -> dict:
+    """Judge the live visual against a free-text intent and/or a REFERENCE IMAGE (the intended look) —
+    the visual analog of compare_audio_to_intent. Builds a montage of the live output and (if given)
+    sends the reference image alongside. Returns reactive/legible/on_intent booleans + scores + issues[]
+    + fixes[] + summary. Requires a configured Gemini key; fails closed otherwise. Blocks ~5-15s."""
+    started = _post("compare_visual_to_intent",
+                    {"intent": intent, "reference_path": reference_path,
+                     "window_seconds": window_seconds, "frames": frames})
+    if not started.get("ok") or "job_id" not in started:
+        return started
+    r = _veval_poll(started["job_id"], max(30.0, window_seconds + 90.0))
+    if include_payload or not r.get("ok", True):
+        return r
+    return {"ok": True, "reactive": r.get("reactive"), "legible": r.get("legible"),
+            "on_intent": r.get("on_intent"), "intent_score": r.get("intent_score"),
+            "issues": r.get("issues", []), "fixes": r.get("fixes", []), "summary": r.get("summary")}
+
+
 if __name__ == "__main__":
     mcp.run()

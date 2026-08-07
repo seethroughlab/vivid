@@ -222,4 +222,69 @@ json ReactivityRing::av_metrics(double window, double now) const {
     };
 }
 
+bool ReactivityRing::capture_montage(int max_cells, double window, double now,
+                                     std::vector<uint8_t>& out, uint32_t& out_w, uint32_t& out_h) const {
+    const auto win = window_samples(window, now);
+    // Keep only samples that carry a thumbnail, then evenly subsample down to max_cells.
+    std::vector<const Sample*> withThumb;
+    for (const Sample* p : win) if (!p->thumb.empty()) withThumb.push_back(p);
+    if (withThumb.empty()) return false;
+    if (max_cells < 1) max_cells = 1;
+
+    std::vector<const Sample*> cells;
+    if (static_cast<int>(withThumb.size()) <= max_cells) {
+        cells = withThumb;
+    } else {
+        for (int i = 0; i < max_cells; ++i) {
+            const size_t idx = static_cast<size_t>((static_cast<double>(i) * (withThumb.size() - 1)) / (max_cells - 1));
+            cells.push_back(withThumb[idx]);
+        }
+    }
+
+    const uint32_t cw = cells.front()->thumb_w, ch = cells.front()->thumb_h;
+    if (cw == 0 || ch == 0) return false;
+    // Roughly-square grid; a bit wider than tall reads best left-to-right as a timeline.
+    int cols = static_cast<int>(std::ceil(std::sqrt(static_cast<double>(cells.size()))));
+    cols = std::max(1, cols);
+    const int rows = static_cast<int>(std::ceil(static_cast<double>(cells.size()) / cols));
+    out_w = cw * cols;
+    out_h = ch * static_cast<uint32_t>(rows);
+    out.assign(static_cast<size_t>(out_w) * out_h * 4, 0);
+
+    for (size_t i = 0; i < cells.size(); ++i) {
+        const Sample* p = cells[i];
+        if (p->thumb_w != cw || p->thumb_h != ch) continue;   // skip odd-sized (resolution changed mid-window)
+        const uint32_t gx = static_cast<uint32_t>(i % cols) * cw;
+        const uint32_t gy = static_cast<uint32_t>(i / cols) * ch;
+        for (uint32_t y = 0; y < ch; ++y) {
+            const uint8_t* srow = p->thumb.data() + static_cast<size_t>(y) * cw * 4;
+            uint8_t* drow = out.data() + (static_cast<size_t>(gy + y) * out_w + gx) * 4;
+            std::copy(srow, srow + static_cast<size_t>(cw) * 4, drow);
+        }
+    }
+    return true;
+}
+
+std::string ReactivityRing::energy_sparkline(double window, double now) const {
+    const auto win = window_samples(window, now);
+    if (win.empty()) return "energy: (no samples)";
+    // ~12 evenly-spaced energy readings + onset offsets, so the vision model can align frames to audio.
+    const int buckets = 12;
+    char buf[512];
+    std::string s = "master energy (0..1) L->R over " + std::to_string(win.back()->t - win.front()->t) + "s: ";
+    for (int i = 0; i < buckets; ++i) {
+        const size_t idx = static_cast<size_t>((static_cast<double>(i) * (win.size() - 1)) / (buckets - 1));
+        std::snprintf(buf, sizeof buf, "%.2f ", win[idx]->energy);
+        s += buf;
+    }
+    const double t0 = win.front()->t;
+    std::string onsets;
+    for (const Sample* p : win) if (p->onset) {
+        std::snprintf(buf, sizeof buf, "+%.2fs ", p->t - t0);
+        onsets += buf;
+    }
+    s += onsets.empty() ? "; no discrete onsets" : ("; onsets at " + onsets);
+    return s;
+}
+
 }  // namespace vivid

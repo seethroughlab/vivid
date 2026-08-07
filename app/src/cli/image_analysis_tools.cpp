@@ -111,7 +111,7 @@ int hash_hamming(const std::string& a, const std::string& b) {
     return d;
 }
 
-bool write_png(const std::string& path, const uint8_t* rgba, uint32_t w, uint32_t h) {
+bool encode_png(const uint8_t* rgba, uint32_t w, uint32_t h, std::vector<uint8_t>& out) {
     if (!rgba || w == 0 || h == 0) return false;
     // Raw = per-scanline [filter byte 0][RGBA row]. Then zlib-deflate into IDAT.
     std::vector<uint8_t> raw;
@@ -126,14 +126,19 @@ bool write_png(const std::string& path, const uint8_t* rgba, uint32_t w, uint32_
     if (compress2(comp.data(), &bound, raw.data(), static_cast<uLong>(raw.size()), Z_BEST_SPEED) != Z_OK) return false;
     comp.resize(bound);
 
-    std::vector<uint8_t> png = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
+    out = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
     std::vector<uint8_t> ihdr;
     put_u32(ihdr, w); put_u32(ihdr, h);
     ihdr.push_back(8); ihdr.push_back(6); ihdr.push_back(0); ihdr.push_back(0); ihdr.push_back(0);   // 8-bit RGBA
-    chunk(png, "IHDR", ihdr);
-    chunk(png, "IDAT", comp);
-    chunk(png, "IEND", {});
+    chunk(out, "IHDR", ihdr);
+    chunk(out, "IDAT", comp);
+    chunk(out, "IEND", {});
+    return true;
+}
 
+bool write_png(const std::string& path, const uint8_t* rgba, uint32_t w, uint32_t h) {
+    std::vector<uint8_t> png;
+    if (!encode_png(rgba, w, h, png)) return false;
     std::FILE* f = std::fopen(path.c_str(), "wb");
     if (!f) return false;
     const bool ok = std::fwrite(png.data(), 1, png.size(), f) == png.size();
