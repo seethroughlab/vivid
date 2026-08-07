@@ -23,6 +23,9 @@
 #include <mutex>
 #include <thread>
 #include <condition_variable>
+#if defined(__APPLE__)
+#include <dispatch/dispatch.h>   // dispatch_semaphore_t for the track-parallel audio worker pool
+#endif
 #include <deque>
 
 using namespace Steinberg;
@@ -613,6 +616,24 @@ struct Session {
     std::string              clap_last_error;    // main-thread only (last failed async load)
     std::vector<std::string> unresolved_instruments;  // main-thread only: display-names of instruments that
                                                        // failed to resolve on load (UX Ph6 F2); drained to a toast
+
+    // --- Track-parallel audio executor (ADR-0052): a persistent RT worker pool so per-track DSP fans
+    // out across cores instead of serializing on the one CoreAudio thread (2 heavy synths were tanking
+    // the render framerate via preemption). Created once by session_set_audio_workgroup after the
+    // device exists; joined in session_destroy. RT-safe: the per-block path only stores scalars, does
+    // atomic fetch_add/fetch_sub, and posts/waits dispatch_semaphores — no alloc, no lock. ---
+#if defined(__APPLE__)
+    std::vector<std::thread> audio_workers;
+    dispatch_semaphore_t     aw_go   = nullptr;   // master posts W times to wake W workers
+    dispatch_semaphore_t     aw_done = nullptr;   // last participant posts once; master waits once
+    std::atomic<uint32_t>    aw_next_slot{0};     // work-stealing task index into render_list
+    std::atomic<int>         aw_remaining{0};     // participant barrier countdown
+    std::atomic<bool>        aw_running{false};   // pool-alive flag (shutdown)
+    int                      aw_n_workers = 0;    // persistent worker count (0 => always serial)
+    bool                     aw_enabled   = true; // VIVID_AUDIO_WORKERS kill-switch (read once at start)
+    void*                    aw_workgroup = nullptr;  // retained os_workgroup_t (or null → no RT join)
+    uint32_t                 aw_frames = 0, aw_sr = 0, aw_n = 0;   // per-block params (published before go)
+#endif
 };
 
 // Resolve a (session, track index) to the Track (or null). Defined in vst3_host.cpp; declared here so
