@@ -72,6 +72,7 @@ add_vivid_operator(vivid_mesh_render packages/core-visuals/mesh_render_op.cpp)
 add_vivid_operator(vivid_mesh_displace packages/core-visuals/mesh_displace.cpp)
 add_vivid_operator(vivid_feedback packages/core-visuals/feedback.cpp)
 add_vivid_operator(vivid_bloom packages/core-visuals/bloom.cpp)
+add_vivid_operator(vivid_time_machine packages/core-visuals/time_machine.cpp)
 # Video: a SELF-DECODING movie source op. On macOS it owns the AVFoundation + HAP decoder layer
 # (packages/core-visuals/movie/) and the vendored HAP lib (deps/hap/hap.c + snappy); the classic-
 # ported .mm files use ARC, avf_decoder.mm uses manual retain/release. Off-macOS it degrades to a
