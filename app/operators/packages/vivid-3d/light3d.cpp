@@ -64,6 +64,11 @@ struct Light3D : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> spot_angle {"spot_angle", 45.0f, 5.0f, 90.0f};
     vivid::Param<float> spot_blend {"spot_blend", 0.1f, 0.0f, 1.0f};
 
+    // ADR-0051 Phase 2: whether this light casts. On by default so existing scenes are unchanged;
+    // turn it off for a fill light, which should lift the shadows a key light casts, not add its own.
+    // Point lights never cast regardless (an omni shadow needs a cube map — Phase 2c).
+    vivid::Param<int>   cast_shadow {"cast_shadow", 1, {"Off", "On"}};
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::param_group(type, "Light");
         vivid::param_group(intensity, "Light");
@@ -84,6 +89,10 @@ struct Light3D : vivid::OperatorBase, vivid::GpuProcessable {
         // intent is recorded where it belongs and lights up when the consumer lands.
         // `radius` attenuates local lights, so it is meaningless on a directional one.
         vivid::visible_when_ne(radius, type, kDirectional);
+
+        // Only directional + spot can cast (Phase 2c would add omni cube shadows).
+        vivid::param_group(cast_shadow, "Light");
+        vivid::visible_when_ne(cast_shadow, type, kPoint);
 
         // Position: Point + Spot. A directional light has no position.
         vivid::param_group(pos_x, "Position");
@@ -120,6 +129,7 @@ struct Light3D : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back(&dir_z);
         out.push_back(&spot_angle);
         out.push_back(&spot_blend);
+        out.push_back(&cast_shadow);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -143,6 +153,7 @@ struct Light3D : vivid::OperatorBase, vivid::GpuProcessable {
         fragment_.light_direction[2] = dir_z.value;
         fragment_.light_spot_angle   = spot_angle.value;
         fragment_.light_spot_blend   = spot_blend.value;
+        fragment_.light_cast_shadow  = (cast_shadow.int_value() != 0);
 
         // Position/direction encoded in model_matrix translation
         mat4x4_translate(fragment_.model_matrix, pos_x.value, pos_y.value, pos_z.value);

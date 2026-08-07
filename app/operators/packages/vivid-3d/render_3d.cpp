@@ -2,6 +2,7 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
 #include "operator_api/gpu_3d.h"
+#include <algorithm>   // std::clamp / std::max — clang pulls these in transitively, gcc does not
 #include <cstring>
 #include <cmath>
 #include <string>
@@ -36,7 +37,7 @@ struct Material {
 @group(0) @binding(2) var<uniform> lighting: LightsUniform;
 @group(0) @binding(3) var<uniform> shadow: ShadowData;
 @group(0) @binding(4) var shadow_cmp_sampler: sampler_comparison;
-@group(0) @binding(5) var dir_shadow_map: texture_depth_2d;
+@group(0) @binding(5) var dir_shadow_map: texture_depth_2d_array;
 
 fn apply_fog(color: vec3f, world_pos: vec3f) -> vec3f {
     if (material.fog_enabled < 0.5) {
@@ -131,9 +132,11 @@ fn fs_main(in: Vertex3DOutput) -> @location(0) vec4f {
         let light_color = light.color_and_radius.xyz;
         let bp = blinn_phong(N, V, light, in.world_pos);
 
+        // ADR-0051 P2: a light casts from its OWN array layer, or not at all (-1).
         var shadow_factor: f32 = 1.0;
-        if (i < shadow.shadow_count_dir && light.position_and_type.w < 0.5) {
-            shadow_factor = sample_shadow_dir(in.world_pos, i, shadow,
+        let sslot = shadow_slot_for(i, shadow);
+        if (sslot >= 0) {
+            shadow_factor = sample_shadow_dir(in.world_pos, sslot, shadow,
                                                dir_shadow_map, shadow_cmp_sampler);
         }
 
@@ -182,7 +185,7 @@ struct InstanceData {
 @group(0) @binding(2) var<uniform> lighting: LightsUniform;
 @group(0) @binding(3) var<uniform> shadow: ShadowData;
 @group(0) @binding(4) var shadow_cmp_sampler: sampler_comparison;
-@group(0) @binding(5) var dir_shadow_map: texture_depth_2d;
+@group(0) @binding(5) var dir_shadow_map: texture_depth_2d_array;
 @group(1) @binding(0) var<storage, read> instances: array<InstanceData>;
 
 fn apply_fog(color: vec3f, world_pos: vec3f) -> vec3f {
@@ -359,9 +362,11 @@ fn fs_instanced(in: InstancedOutput) -> @location(0) vec4f {
         let light_color = light.color_and_radius.xyz;
         let bp = blinn_phong_i(N, V, light, in.world_pos);
 
+        // ADR-0051 P2: a light casts from its OWN array layer, or not at all (-1).
         var shadow_factor: f32 = 1.0;
-        if (i < shadow.shadow_count_dir && light.position_and_type.w < 0.5) {
-            shadow_factor = sample_shadow_dir(in.world_pos, i, shadow,
+        let sslot = shadow_slot_for(i, shadow);
+        if (sslot >= 0) {
+            shadow_factor = sample_shadow_dir(in.world_pos, sslot, shadow,
                                                dir_shadow_map, shadow_cmp_sampler);
         }
 
@@ -410,7 +415,7 @@ struct InstanceData {
 @group(0) @binding(2) var<uniform> lighting: LightsUniform;
 @group(0) @binding(3) var<uniform> shadow: ShadowData;
 @group(0) @binding(4) var shadow_cmp_sampler: sampler_comparison;
-@group(0) @binding(5) var dir_shadow_map: texture_depth_2d;
+@group(0) @binding(5) var dir_shadow_map: texture_depth_2d_array;
 @group(1) @binding(0) var<storage, read> instances: array<InstanceData>;
 
 fn apply_fog(color: vec3f, world_pos: vec3f) -> vec3f {
@@ -524,7 +529,7 @@ struct Material {
 @group(0) @binding(2) var<uniform> lighting: LightsUniform;
 @group(0) @binding(3) var<uniform> shadow: ShadowData;
 @group(0) @binding(4) var shadow_cmp_sampler: sampler_comparison;
-@group(0) @binding(5) var dir_shadow_map: texture_depth_2d;
+@group(0) @binding(5) var dir_shadow_map: texture_depth_2d_array;
 
 @group(1) @binding(0) var pbr_sampler: sampler;
 @group(1) @binding(1) var albedo_map: texture_2d<f32>;
@@ -637,9 +642,11 @@ fn fs_textured(in: Vertex3DOutput) -> @location(0) vec4f {
 
         let kD = (1.0 - F) * (1.0 - metallic);
 
+        // ADR-0051 P2: a light casts from its OWN array layer, or not at all (-1).
         var shadow_factor: f32 = 1.0;
-        if (i < shadow.shadow_count_dir && light.position_and_type.w < 0.5) {
-            shadow_factor = sample_shadow_dir(in.world_pos, i, shadow,
+        let sslot = shadow_slot_for(i, shadow);
+        if (sslot >= 0) {
+            shadow_factor = sample_shadow_dir(in.world_pos, sslot, shadow,
                                                dir_shadow_map, shadow_cmp_sampler);
         }
 
@@ -707,7 +714,7 @@ struct Material {
 @group(0) @binding(2) var<uniform> lighting: LightsUniform;
 @group(0) @binding(3) var<uniform> shadow: ShadowData;
 @group(0) @binding(4) var shadow_cmp_sampler: sampler_comparison;
-@group(0) @binding(5) var dir_shadow_map: texture_depth_2d;
+@group(0) @binding(5) var dir_shadow_map: texture_depth_2d_array;
 
 fn apply_fog(color: vec3f, world_pos: vec3f) -> vec3f {
     if (material.fog_enabled < 0.5) {
@@ -815,9 +822,11 @@ fn fs_main(in: Vertex3DOutput) -> @location(0) vec4f {
         let light_color = light.color_and_radius.xyz;
         let bp = blinn_phong(N, V, light, in.world_pos);
 
+        // ADR-0051 P2: a light casts from its OWN array layer, or not at all (-1).
         var shadow_factor: f32 = 1.0;
-        if (i < shadow.shadow_count_dir && light.position_and_type.w < 0.5) {
-            shadow_factor = sample_shadow_dir(in.world_pos, i, shadow,
+        let sslot = shadow_slot_for(i, shadow);
+        if (sslot >= 0) {
+            shadow_factor = sample_shadow_dir(in.world_pos, sslot, shadow,
                                                dir_shadow_map, shadow_cmp_sampler);
         }
 
@@ -860,7 +869,7 @@ struct Material {
 @group(0) @binding(2) var<uniform> lighting: LightsUniform;
 @group(0) @binding(3) var<uniform> shadow: ShadowData;
 @group(0) @binding(4) var shadow_cmp_sampler: sampler_comparison;
-@group(0) @binding(5) var dir_shadow_map: texture_depth_2d;
+@group(0) @binding(5) var dir_shadow_map: texture_depth_2d_array;
 
 @group(1) @binding(0) var pbr_sampler: sampler;
 @group(1) @binding(1) var albedo_map: texture_2d<f32>;
@@ -985,9 +994,11 @@ fn fs_textured(in: Vertex3DOutput) -> @location(0) vec4f {
 
         let kD = (1.0 - F) * (1.0 - metallic);
 
+        // ADR-0051 P2: a light casts from its OWN array layer, or not at all (-1).
         var shadow_factor: f32 = 1.0;
-        if (i < shadow.shadow_count_dir && light.position_and_type.w < 0.5) {
-            shadow_factor = sample_shadow_dir(in.world_pos, i, shadow,
+        let sslot = shadow_slot_for(i, shadow);
+        if (sslot >= 0) {
+            shadow_factor = sample_shadow_dir(in.world_pos, sslot, shadow,
                                                dir_shadow_map, shadow_cmp_sampler);
         }
 
@@ -1069,12 +1080,13 @@ struct LightsUniform {
 static_assert(sizeof(LightsUniform) == 272, "LightsUniform must be 272 bytes");
 
 struct ShadowUniform {
-    float light_vp[4][16];      // 4 lights × 64 bytes = 256 bytes
+    float light_vp[4][16];      // 4 casters × 64 bytes = 256 bytes
     float shadow_bias;           // 4 bytes
-    uint32_t shadow_count_dir;   // 4 bytes
-    float _pad[2];               // 8 bytes → 272 total
+    uint32_t shadow_count_dir;   // 4 bytes — number of occupied caster slots
+    float _pad[2];               // 8 bytes → 272
+    int32_t shadow_slot[4];      // 16 bytes — light index -> caster slot, -1 = casts none
 };
-static_assert(sizeof(ShadowUniform) == 272, "ShadowUniform must be 272 bytes");
+static_assert(sizeof(ShadowUniform) == 288, "ShadowUniform must be 288 bytes");
 
 // =============================================================================
 // Shadow caster shader (vertex-only, depth-only pass)
@@ -1111,6 +1123,10 @@ fn fs_shadow() -> @location(0) vec4f {
 
 static constexpr uint32_t kMaxDrawSlots       = 128;
 static constexpr uint32_t kMaxLights          = 4;
+// ADR-0051 Phase 2: shadow-casting lights each own a layer of the depth array and a block of
+// shadow-camera UBO slots. Equal to kMaxLights today (every light may cast), but named separately
+// because the two ceilings are independent — raising kMaxLights should not multiply shadow memory.
+static constexpr uint32_t kMaxShadowCasters   = 4;
 static constexpr uint64_t kCameraSlotStride   = 256;  // 256-byte aligned for dynamic offsets
 static constexpr uint64_t kMaterialSlotStride = 256;
 
@@ -1135,6 +1151,7 @@ struct CollectedLight {
     float radius;
     float spot_angle_cos;   // cos(outer cone angle)
     float spot_inner_cos;   // cos(inner cone angle)
+    bool  cast_shadow;      // ADR-0051 P2: does this light cast at all
 };
 
 // ADR-0051 Phase 1: a light's aim, in world space — `light_direction` rotated by the upper-3x3 of
@@ -1185,6 +1202,7 @@ static void collect_fragments(const vivid::gpu::VividSceneFragment* node,
             cl.color[1]   = node->light_color[1];
             cl.color[2]   = node->light_color[2];
             cl.radius     = node->light_radius;
+            cl.cast_shadow = node->light_cast_shadow;
 
             // ADR-0051 Phase 1: ONE rule for aim — `light_direction` is the direction the light
             // SHINES (away from it), for every light type that has an aim. The uniform carries the
@@ -1531,6 +1549,8 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
             def.intensity  = 1.0f;
             def.color[0] = 1.0f; def.color[1] = 1.0f; def.color[2] = 1.0f;
             def.radius = 10.0f;
+            def.cast_shadow = true;   // value-init would leave this false and silently kill the
+                                      // shadow in every scene that never adds a Light3D
             collected_lights.push_back(def);
         }
 
@@ -1569,25 +1589,39 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
 
         bool shadows_active = shadow_enabled.value > 0.5f && !collected_lights.empty();
         uint32_t dir_shadow_count = 0;
+        for (auto& s : shadow_data.shadow_slot) s = -1;   // default: this light casts nothing
 
         if (shadows_active) {
             uint32_t sres = static_cast<uint32_t>(shadow_resolution.value);
             if (sres < 64) sres = 64;
             ensure_shadow_maps(ctx, sres);
 
-            // Count directional lights and run shadow passes
+            // ADR-0051 Phase 2: every light that HAS an aim can cast — directional (ortho) and
+            // spot (perspective from the cone). Point lights still can't: an omni shadow needs six
+            // cube faces and a distance compare (Phase 2c). Each caster gets its own array layer
+            // AND its own block of shadow-camera UBO slots: all wgpuQueueWriteBuffer calls land
+            // before any command in the frame's single submit, so sharing one block would leave
+            // every pass rendering the LAST caster's matrices.
             for (uint32_t li = 0; li < lights_data.light_count && li < kMaxLights; ++li) {
                 auto& cl = collected_lights[li];
-                if (cl.light_type > 0.5f) continue;  // skip point lights
+                const bool is_point = (cl.light_type > 0.5f && cl.light_type < 1.5f);
+                if (is_point || !cl.cast_shadow) continue;
+                if (dir_shadow_count >= kMaxShadowCasters) break;
 
-                // Compute light VP (ortho fitting camera frustum + scene geometry)
+                const uint32_t slot = dir_shadow_count;
                 mat4x4 light_vp;
-                compute_directional_light_vp(light_vp, cl.direction, eye, target, fov_rad, aspect,
-                                              near_p.value, far_p.value, draws);
+                if (cl.light_type > 1.5f) {
+                    compute_spot_light_vp(light_vp, cl);
+                } else {
+                    compute_directional_light_vp(light_vp, cl.direction, eye, target, fov_rad,
+                                                  aspect, near_p.value, far_p.value, draws);
+                }
 
-                std::memcpy(shadow_data.light_vp[dir_shadow_count], light_vp, 64);
+                std::memcpy(shadow_data.light_vp[slot], light_vp, 64);
+                shadow_data.shadow_slot[li] = static_cast<int32_t>(slot);
 
-                // Write shadow camera UBOs to dedicated shadow buffer
+                // Write this caster's per-draw matrices into ITS OWN slot block.
+                const uint64_t block = static_cast<uint64_t>(slot) * kMaxDrawSlots * kCameraSlotStride;
                 for (uint32_t di = 0; di < static_cast<uint32_t>(draws.size()); ++di) {
                     auto& dc = draws[di];
                     mat4x4 shadow_mvp;
@@ -1597,14 +1631,14 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
                     std::memcpy(shadow_cam.mvp, shadow_mvp, 64);
                     std::memcpy(shadow_cam.model, dc.composed_model, 64);
                     wgpuQueueWriteBuffer(ctx->queue, shadow_camera_ubo_,
-                                         di * kCameraSlotStride, &shadow_cam, sizeof(shadow_cam));
+                                         block + di * kCameraSlotStride,
+                                         &shadow_cam, sizeof(shadow_cam));
                 }
 
-                render_shadow_pass(ctx, draws, dir_shadow_view_, sres, sres,
+                render_shadow_pass(ctx, draws, dir_shadow_layer_views_[slot], sres, sres, slot,
                                    "Render3D Shadow Pass");
 
                 dir_shadow_count++;
-                if (dir_shadow_count >= kMaxLights) break;
             }
         }
 
@@ -1839,7 +1873,7 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::gpu::release(shadow_camera_bg_);
         vivid::gpu::release(shadow_camera_ubo_);
         vivid::gpu::release(dir_shadow_tex_);
-        vivid::gpu::release(dir_shadow_view_);
+        for (auto& v : dir_shadow_layer_views_) vivid::gpu::release(v);
         vivid::gpu::release(dir_shadow_sample_);
         vivid::gpu::release(shadow_sampler_);
         vivid::gpu::release(shadow_ubo_);
@@ -1959,9 +1993,9 @@ private:
     WGPUBindGroupLayout shadow_camera_bgl_     = nullptr;
     WGPUBindGroup       shadow_camera_bg_      = nullptr;
     WGPUBuffer          shadow_camera_ubo_     = nullptr;   // dedicated buffer for shadow pass
-    WGPUTexture         dir_shadow_tex_        = nullptr;
-    WGPUTextureView     dir_shadow_view_       = nullptr;  // render target
-    WGPUTextureView     dir_shadow_sample_     = nullptr;  // for sampling in fragment
+    WGPUTexture         dir_shadow_tex_        = nullptr;  // depth ARRAY, one layer per caster
+    WGPUTextureView     dir_shadow_layer_views_[kMaxShadowCasters] = {};  // per-caster render targets
+    WGPUTextureView     dir_shadow_sample_     = nullptr;  // 2d-array view, for sampling in fragment
     WGPUSampler         shadow_sampler_        = nullptr;   // comparison sampler
     WGPUBuffer          shadow_ubo_            = nullptr;
     uint32_t            cached_shadow_res_     = 0;
@@ -2059,22 +2093,35 @@ private:
         if (res == cached_shadow_res_ && dir_shadow_tex_) return;
 
         vivid::gpu::release(dir_shadow_tex_);
-        vivid::gpu::release(dir_shadow_view_);
+        for (auto& v : dir_shadow_layer_views_) vivid::gpu::release(v);
         vivid::gpu::release(dir_shadow_sample_);
         vivid::gpu::release(shadow_color_tex_);
         vivid::gpu::release(shadow_color_view_);
 
+        // ADR-0051 Phase 2: ONE LAYER PER CASTER. This used to be a single 2D map that every
+        // shadow pass cleared and re-rendered, so with two casters the last one's depth was all
+        // that survived while the shader still sampled it per-light — the first light's shadow
+        // came out projected from the wrong viewpoint.
         dir_shadow_tex_ = vivid::gpu::create_shadow_map_texture(
-            ctx->device, res, res, "Render3D Dir Shadow Map");
-        dir_shadow_view_ = vivid::gpu::create_depth_view(dir_shadow_tex_,
-            "Render3D Dir Shadow Render View");
+            ctx->device, res, res, "Render3D Dir Shadow Map", kMaxShadowCasters);
+        for (uint32_t i = 0; i < kMaxShadowCasters; ++i) {
+            WGPUTextureViewDescriptor vd{};
+            vd.label = vivid_sv("Render3D Dir Shadow Layer View");
+            vd.format = vivid::gpu::kDepthFormat;
+            vd.dimension = WGPUTextureViewDimension_2D;   // a single layer, as a render target
+            vd.baseArrayLayer = i;
+            vd.arrayLayerCount = 1;
+            vd.mipLevelCount = 1;
+            vd.aspect = WGPUTextureAspect_All;            // depth render target: all aspects
+            dir_shadow_layer_views_[i] = wgpuTextureCreateView(dir_shadow_tex_, &vd);
+        }
         {
             WGPUTextureViewDescriptor vd{};
             vd.label = vivid_sv("Render3D Dir Shadow Sample View");
             vd.format = vivid::gpu::kDepthFormat;
-            vd.dimension = WGPUTextureViewDimension_2D;
+            vd.dimension = WGPUTextureViewDimension_2DArray;
             vd.mipLevelCount = 1;
-            vd.arrayLayerCount = 1;
+            vd.arrayLayerCount = kMaxShadowCasters;
             vd.aspect = WGPUTextureAspect_DepthOnly;
             dir_shadow_sample_ = wgpuTextureCreateView(dir_shadow_tex_, &vd);
         }
@@ -2229,10 +2276,43 @@ private:
         mat4x4_mul(out, light_proj, light_view);
     }
 
+    // ADR-0051 Phase 2b: a SPOT light's view-projection — a perspective frustum straight down the
+    // cone, which is exactly what a spot already is, so unlike an omni light it needs no cube map.
+    // The fov is the full cone angle with a small margin so the penumbra at the rim still has depth
+    // behind it; far tracks the light's influence radius, since past it the light contributes zero.
+    void compute_spot_light_vp(mat4x4 out, const CollectedLight& cl) {
+        vec3 eye = { cl.position[0], cl.position[1], cl.position[2] };
+        vec3 tgt = { cl.position[0] + cl.direction[0],
+                     cl.position[1] + cl.direction[1],
+                     cl.position[2] + cl.direction[2] };
+        // Any up-vector works except one parallel to the aim; swap axes when shining near-vertically
+        // (a spot pointing straight down is the common case, and would make look_at degenerate).
+        vec3 up = { 0.f, 1.f, 0.f };
+        if (std::fabs(cl.direction[1]) > 0.99f) { up[1] = 0.f; up[2] = 1.f; }
+
+        mat4x4 view, proj;
+        mat4x4_look_at(view, eye, tgt, up);
+
+        // spot_angle_cos is cos(outer half-angle); recover the angle and double it for the fov.
+        const float outer = std::acos(std::clamp(cl.spot_angle_cos, -1.0f, 1.0f));
+        float fov = 2.0f * outer * 1.05f;                       // 5% margin for the soft rim
+        fov = std::clamp(fov, 0.05f, 3.0f);                     // keep well inside a degenerate pi
+        const float far_plane = std::max(cl.radius, 0.2f);
+        // The near plane has to be pushed OUT, not pulled in. A perspective depth buffer spends
+        // most of its precision just past `near`, so a tiny near (0.05 against a far of 30) crushes
+        // the whole scene into ~0.002 of depth range — less than the default 0.005 shadow_bias, and
+        // every occluder silently stops registering. Trading occluders within `near` of the lamp for
+        // a usable depth range is the right trade: geometry that close is inside the fixture.
+        const float near_plane = std::clamp(far_plane * 0.05f, 0.1f, 5.0f);
+        vivid::gpu::perspective_wgpu(proj, fov, 1.0f, near_plane, far_plane);
+        mat4x4_mul(out, proj, view);
+    }
+
     // Phase 6d: Run shadow render pass (depth + scratch color attachment)
+    // `slot` selects this caster's block of shadow-camera UBO slots (ADR-0051 Phase 2).
     void render_shadow_pass(const VividGpuContext* ctx, const std::vector<DrawCall>& draws,
                             WGPUTextureView depth_target, uint32_t w, uint32_t h,
-                            const char* label) {
+                            uint32_t slot, const char* label) {
         auto shadow_pipeline = get_or_create_pipeline(ctx, vivid::gpu::kPipelineShadowCaster);
         if (!shadow_pipeline) return;
 
@@ -2269,7 +2349,8 @@ private:
             if (!dc.frag->cast_shadow) continue;
             if (dc.frag->billboard) continue;
 
-            uint32_t dynamic_offset = static_cast<uint32_t>(i * kCameraSlotStride);
+            uint32_t dynamic_offset = static_cast<uint32_t>(
+                (static_cast<uint64_t>(slot) * kMaxDrawSlots + i) * kCameraSlotStride);
             wgpuRenderPassEncoderSetBindGroup(pass, 0, shadow_camera_bg_, 1, &dynamic_offset);
 
             wgpuRenderPassEncoderSetVertexBuffer(pass, 0, dc.frag->vertex_buffer,
@@ -2635,15 +2716,17 @@ skybox_shader_ = vivid::gpu::create_wgsl_shader(
         }
 
         // ---- Phase 6d: fallback 1x1 depth texture for shadow sampling ----
+        // ADR-0051 Phase 2: an ARRAY of kMaxShadowCasters layers — the bind group layout now
+        // declares 2d-array, and a plain 2D view would fail validation when no shadows are active.
         fallback_shadow_tex_ = vivid::gpu::create_shadow_map_texture(
-            ctx->device, 1, 1, "Render3D Fallback Shadow Tex");
+            ctx->device, 1, 1, "Render3D Fallback Shadow Tex", kMaxShadowCasters);
         {
             WGPUTextureViewDescriptor vd{};
             vd.label = vivid_sv("Render3D Fallback Shadow View");
             vd.format = vivid::gpu::kDepthFormat;
-            vd.dimension = WGPUTextureViewDimension_2D;
+            vd.dimension = WGPUTextureViewDimension_2DArray;
             vd.mipLevelCount = 1;
-            vd.arrayLayerCount = 1;
+            vd.arrayLayerCount = kMaxShadowCasters;
             vd.aspect = WGPUTextureAspect_DepthOnly;
             fallback_shadow_view_ = wgpuTextureCreateView(fallback_shadow_tex_, &vd);
         }
@@ -2679,7 +2762,7 @@ skybox_shader_ = vivid::gpu::create_wgsl_shader(
         entries[5].binding = 5;
         entries[5].visibility = WGPUShaderStage_Fragment;
         entries[5].texture.sampleType = WGPUTextureSampleType_Depth;
-        entries[5].texture.viewDimension = WGPUTextureViewDimension_2D;
+        entries[5].texture.viewDimension = WGPUTextureViewDimension_2DArray;  // ADR-0051 P2
 
         WGPUBindGroupLayoutDescriptor bgl_desc{};
         bgl_desc.label = vivid_sv("Render3D BGL");
@@ -2748,8 +2831,11 @@ skybox_shader_ = vivid::gpu::create_wgsl_shader(
             // Dedicated shadow camera UBO (separate from main camera_ubo_ to avoid
             // queue write ordering issues — all wgpuQueueWriteBuffer calls complete
             // before any command buffer executes)
+            // One block of draw slots PER CASTER (ADR-0051 Phase 2) — see the shadow loop for why
+            // the blocks cannot be shared.
             shadow_camera_ubo_ = vivid::gpu::create_uniform_buffer(
-                ctx->device, kMaxDrawSlots * kCameraSlotStride, "Render3D Shadow Camera UBO");
+                ctx->device, kMaxShadowCasters * kMaxDrawSlots * kCameraSlotStride,
+                "Render3D Shadow Camera UBO");
 
             // Shadow caster bind group (uses dedicated shadow_camera_ubo_)
             WGPUBindGroupEntry sc_bg_entry{};

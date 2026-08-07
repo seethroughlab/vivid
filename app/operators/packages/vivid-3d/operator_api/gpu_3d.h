@@ -64,11 +64,14 @@ inline WGPUTextureView create_depth_view(WGPUTexture depth_texture,
 
 // Shadow map depth texture: same as depth texture but adds TextureBinding for
 // sampling in fragment shader during the main pass.
+// `layers` > 1 makes it an ARRAY — one layer per shadow-casting light (ADR-0051 Phase 2), so
+// casters stop overwriting each other's depth.
 inline WGPUTexture create_shadow_map_texture(WGPUDevice device, uint32_t width,
-                                              uint32_t height, const char* label) {
+                                              uint32_t height, const char* label,
+                                              uint32_t layers = 1) {
     WGPUTextureDescriptor desc{};
     desc.label = vivid_sv(label);
-    desc.size = { width, height, 1 };
+    desc.size = { width, height, layers };
     desc.mipLevelCount = 1;
     desc.sampleCount = 1;
     desc.dimension = WGPUTextureDimension_2D;
@@ -386,6 +389,9 @@ struct VividSceneFragment {
     float light_direction[3]     = {0, -1, 0};  // spot light aim direction
     float light_spot_angle       = 45.0f;       // outer cone half-angle (degrees)
     float light_spot_blend       = 0.1f;        // inner/outer blend (0=hard, 1=soft)
+    // ADR-0051 Phase 2: whether THIS LIGHT casts a shadow (distinct from `cast_shadow` below,
+    // which is whether a piece of GEOMETRY is an occluder). A fill light usually should not.
+    bool  light_cast_shadow      = true;
 
     // Instancing (Phase 4)
     WGPUBuffer  instance_buffer   = nullptr;  // storage buffer, per-instance data
@@ -603,6 +609,11 @@ struct ShadowData {
     shadow_count_dir: u32,
     _pad0: f32,
     _pad1: f32,
+    // ADR-0051 Phase 2: which shadow-map LAYER each light owns, or -1 for a light that casts
+    // none (a point light, or one with cast_shadow off). Casters no longer line up with light
+    // indices, so the mapping has to be explicit. A vec4i rather than array<i32,4>: a uniform
+    // array of scalars is padded to a 16-byte stride, which would silently misread.
+    shadow_slot: vec4i,
 }
 
 fn vogel_disk_offset(index: u32, count: u32) -> vec2f {
@@ -612,9 +623,21 @@ fn vogel_disk_offset(index: u32, count: u32) -> vec2f {
     return vec2f(cos(theta), sin(theta)) * r;
 }
 
-fn sample_shadow_dir(world_pos: vec3f, light_idx: u32, shadow: ShadowData,
-                     shadow_map: texture_depth_2d, shadow_samp: sampler_comparison) -> f32 {
-    let light_clip = shadow.light_vp[light_idx] * vec4f(world_pos, 1.0);
+// The shadow-map layer light `light_idx` casts into, or -1 if it casts none. Call this to decide
+// whether to sample at all — before ADR-0051 every light sampled layer 0, so a second caster
+// silently read the wrong light's depth.
+fn shadow_slot_for(light_idx: u32, shadow: ShadowData) -> i32 {
+    if (light_idx >= 4u) { return -1; }
+    return shadow.shadow_slot[light_idx];
+}
+
+fn sample_shadow_dir(world_pos: vec3f, slot: i32, shadow: ShadowData,
+                     shadow_map: texture_depth_2d_array, shadow_samp: sampler_comparison) -> f32 {
+    if (slot < 0) { return 1.0; }
+    let light_clip = shadow.light_vp[u32(slot)] * vec4f(world_pos, 1.0);
+    // A perspective (spot) light divides by w, and w <= 0 is behind the light — outside its
+    // frustum entirely, so nothing there is shadowed by it.
+    if (light_clip.w <= 0.0) { return 1.0; }
     let ndc = light_clip.xyz / light_clip.w;
 
     // Out of shadow map bounds → not in shadow
@@ -636,7 +659,7 @@ fn sample_shadow_dir(world_pos: vec3f, light_idx: u32, shadow: ShadowData,
     for (var s: u32 = 0u; s < sample_count; s++) {
         let offset = vec2i(vogel_disk_offset(s, sample_count) * 1.5);
         let sp = clamp(px + offset, vec2i(0), vec2i(dims) - vec2i(1));
-        let stored = textureLoad(shadow_map, sp, 0);
+        let stored = textureLoad(shadow_map, sp, slot, 0);
         accum += select(0.0, 1.0, depth < stored);
     }
     return accum / f32(sample_count);

@@ -270,4 +270,28 @@ by direct binary path (`app/build/vivid.app/Contents/MacOS/vivid` with `VIVID_NO
   - The mis-authored lights live in the demo **generators**, not in any bundled project — the
     shipped project set changed and carries no Light3D. Phase 5 shrank accordingly.
 
-- **Phases 1b, 2–5** — not started.
+- **Phase 2a + 2b (shadows) — implemented.** The directional shadow map is now a
+  `kMaxShadowCasters`-layer depth array: each caster renders into its own layer view and into its
+  own block of shadow-camera UBO slots, so neither the depth nor the matrices are clobbered by the
+  next caster before the frame's single submit. `ShadowData` gained a `shadow_slot` table
+  (light index → layer, -1 for none) because casters no longer line up with light indices; it is a
+  `vec4i` rather than `array<i32,4>`, since a uniform array of scalars carries a 16-byte stride and
+  would silently misread. Spot lights now cast through `compute_spot_light_vp` — a perspective
+  frustum down the cone. `Light3D` gained a `cast_shadow` param, distinct from the existing
+  geometry-side `cast_shadow`.
+
+  One trap worth recording: the spot's first implementation cast *nothing*, because a near plane of
+  0.05 against a far of 30 crushed the whole scene into ~0.002 of depth range — less than the
+  default `shadow_bias` of 0.005, so no occluder ever registered. A perspective shadow map needs
+  its near plane pushed OUT (`far * 0.05`, clamped), not pulled in.
+
+  Verified: 85/85 ctest, 0 GPU validation errors, and 8 live checks measured at the PIXEL level —
+  a whole-frame average or an 8×8 hash cannot distinguish "a small shadow appeared" from "nothing
+  happened" (the frame-signature delta for a correct spot shadow is 0.002). Headline: adding a
+  second caster that emits no light now changes the first light's shadow by **0 pixels, max delta
+  0**, where it previously stretched it ~4× and slid it off the object. Two opposite casters
+  produce two correctly-placed, correctly-tinted shadows. A spot shadow moves 0.17% of pixels by up
+  to 155 levels; `cast_shadow=Off` removes a light's shadow while leaving its illumination within
+  0.0002 brightness; a point light still casts nothing either way.
+
+- **Phases 1b, 2c, 3–5** — not started.
