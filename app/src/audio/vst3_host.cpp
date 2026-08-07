@@ -1873,12 +1873,20 @@ int session_audio_waveform(Session* s, int t, int sc, float* out, int n) {
     const AudioClip& smp = s->tracks[t]->aud_clips[sc];
     if (!smp.ok()) return 0;
     const size_t N = smp.L.size();
-    for (int i = 0; i < n; ++i) {
-        const size_t a = N * static_cast<size_t>(i) / n, b = N * static_cast<size_t>(i + 1) / n;
-        float peak = 0.f;
-        for (size_t j = a; j < b && j < N; ++j) peak = std::max(peak, std::fabs(smp.L[j]));
-        out[i] = peak;
+    // Cache: the peak-per-bin scan is O(N); recompute ONLY when the bin count or the sample data
+    // (size/ptr, i.e. a reload) changes — not every frame. UI-thread only (see AudioClip::wave_bins_).
+    if (static_cast<int>(smp.wave_bins_.size()) != n || smp.wave_src_n_ != N || smp.wave_src_ptr_ != smp.L.data()) {
+        smp.wave_bins_.assign(static_cast<size_t>(n), 0.f);
+        for (int i = 0; i < n; ++i) {
+            const size_t a = N * static_cast<size_t>(i) / n, b = N * static_cast<size_t>(i + 1) / n;
+            float peak = 0.f;
+            for (size_t j = a; j < b && j < N; ++j) peak = std::max(peak, std::fabs(smp.L[j]));
+            smp.wave_bins_[static_cast<size_t>(i)] = peak;
+        }
+        smp.wave_src_n_ = N;
+        smp.wave_src_ptr_ = smp.L.data();
     }
+    std::memcpy(out, smp.wave_bins_.data(), static_cast<size_t>(n) * sizeof(float));
     return n;
 }
 int session_audio_copy_pcm(Session* s, int t, int sc, std::vector<float>& outL, std::vector<float>& outR,
