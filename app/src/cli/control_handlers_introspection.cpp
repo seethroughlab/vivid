@@ -1031,10 +1031,26 @@ void register_introspection_handlers(Handlers& handlers_) {
             for (int l = 0; l < g.op_param_count_at(i); ++l)
                 params.push_back({ {"name", g.op_param_label_at(i, l)}, {"base", g.op_param_base_at(i, l)},
                                    {"value", g.op_param_value_at(i, l)}, {"wired", g.op_param_wired_at(i, l)} });
-            nodes.push_back({ {"id", id}, {"op", g.op_kind_name(i)}, {"name", g.op_name_at(i)},  // ADR-0033 P5 label
-                              {"input", in},
-                              {"inputs", g.op_inputs_at(i)},   // all texture input edges (port order)
-                              {"x", x}, {"y", y}, {"params", params} });
+            // ADR-0053 Phase B: typed control edges driving this node's params (a source node's value lane
+            // -> a param). Emitted only when present, so unmodulated nodes stay uncluttered.
+            json cedges = json::array();
+            if (c.vgraph && i < static_cast<int>(c.vgraph->nodes().size()))
+                for (const auto& ce : c.vgraph->nodes()[i].control_edges) {
+                    const char* pn = (ce.param_index >= 0 && ce.param_index < g.op_param_count_at(i))
+                                   ? g.op_param_label_at(i, ce.param_index) : "";
+                    cedges.push_back({ {"param", pn ? pn : ""}, {"param_index", ce.param_index},
+                                       {"src_node_id", ce.src_node}, {"src_lane", ce.src_lane},
+                                       {"amount", ce.shape.amount}, {"curve", ce.shape.curve},
+                                       {"invert", ce.shape.invert}, {"lo", ce.shape.out_lo},
+                                       {"hi", ce.shape.out_hi}, {"attack", ce.shape.attack},
+                                       {"release", ce.shape.release} });
+                }
+            json node = { {"id", id}, {"op", g.op_kind_name(i)}, {"name", g.op_name_at(i)},  // ADR-0033 P5 label
+                          {"input", in},
+                          {"inputs", g.op_inputs_at(i)},   // all texture input edges (port order)
+                          {"x", x}, {"y", y}, {"params", params} };
+            if (!cedges.empty()) node["control_edges"] = cedges;
+            nodes.push_back(node);
         }
         json dnodes = json::array();
         for (int i = 0; i < g.node_count(); ++i) {

@@ -392,13 +392,17 @@ private:
     bool op_in_port(int i, int port, float& px, float& py) const;  // texture input port `port`; false if out of range
     bool op_out_port(int i, float& px, float& py) const;  // false if op has no output (= output port 0)
     bool op_out_port(int i, int port, float& px, float& py) const;  // a specific OUTPUT port (multi-output)
+    // ADR-0053 Phase B: value-lane ordinal of op i's OUTPUT port `port` (-1 if not a value lane), and the
+    // inverse (screen position of the output stub carrying value `lane`) — the control-edge port bridge.
+    int  op_out_value_lane(int i, int port) const;
+    bool op_out_port_of_lane(int i, int lane, float& px, float& py) const;
     void set_op_input_port(int node, int port, int src);  // wire src -> node's texture input `port` (-1 clears)
     int  first_node_of(const std::string& op_type) const; // -1 if none
     // Per-node param port: position of node_idx's local param row. False if out of range.
     bool param_port(int node_idx, int local, float& px, float& py) const;
     bool nearest_param(double x, double y, double maxd, int& node_idx, int& local) const;
     int  nearest_op_in(double x, double y, double maxd, int& port) const; // node index (-1 none) + which input port
-    int  nearest_op_out(double x, double y, double maxd) const;// node index, -1
+    int  nearest_op_out(double x, double y, double maxd, int& port) const;// node index (-1 none) + which OUTPUT port
 };
 
 }  // namespace vivid::ui

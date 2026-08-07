@@ -371,6 +371,35 @@ bool NodeGraph::op_out_port(int i, int port, float& px, float& py) const {
     return true;
 }
 bool NodeGraph::op_out_port(int i, float& px, float& py) const { return op_out_port(i, 0, px, py); }
+// ADR-0053 Phase B: the VALUE-LANE ordinal of op i's OUTPUT port `port` (an all-outputs ordinal, as
+// op_out_port uses), or -1 if that output isn't a value lane (SCALAR+MANY). A control edge reads a
+// value lane, so this both gates the drag (only value-lane outputs start a control wire) and converts
+// the dragged output port into the ParamControlEdge::src_lane.
+int NodeGraph::op_out_value_lane(int i, int port) const {
+    if (!vg_ || i < 0 || i >= int(vg_->nodes().size())) return -1;
+    int lane = 0, ord = 0;
+    for (const auto& pd : vg_->nodes()[i].inst.ports) {
+        if (pd.direction != VIVID_PORT_OUTPUT) continue;
+        const bool vlane = pd.type == VIVID_PORT_SCALAR && pd.multiplicity == VIVID_MULTIPLICITY_MANY;
+        if (ord == port) return vlane ? lane : -1;
+        if (vlane) ++lane;
+        ++ord;
+    }
+    return -1;
+}
+// The inverse: the screen position of op i's OUTPUT port carrying value lane `lane`. Used to draw a
+// control-edge wire back to its source stub. False if the node has no such value lane.
+bool NodeGraph::op_out_port_of_lane(int i, int lane, float& px, float& py) const {
+    if (!vg_ || i < 0 || i >= int(vg_->nodes().size())) return false;
+    int vlane = 0, ord = 0;
+    for (const auto& pd : vg_->nodes()[i].inst.ports) {
+        if (pd.direction != VIVID_PORT_OUTPUT) continue;
+        const bool v = pd.type == VIVID_PORT_SCALAR && pd.multiplicity == VIVID_MULTIPLICITY_MANY;
+        if (v) { if (vlane == lane) return op_out_port(i, ord, px, py); ++vlane; }
+        ++ord;
+    }
+    return false;
+}
 int NodeGraph::first_node_of(const std::string& op_type) const {
     if (!vg_) return -1;
     for (int i = 0; i < int(vg_->nodes().size()); ++i) if (vg_->nodes()[i].op_type == op_type) return i;
@@ -419,12 +448,13 @@ int NodeGraph::nearest_op_in(double x, double y, double maxd, int& port) const {
 void NodeGraph::set_op_input_port(int node, int port, int src) {
     if (vg_) vg_->set_input(node, port, src);   // any port (N-input)
 }
-int NodeGraph::nearest_op_out(double x, double y, double maxd) const {
-    int best = -1; double bd = maxd;
-    if (vg_) for (int i = 0; i < int(vg_->nodes().size()); ++i) {
-        float px, py; if (!op_out_port(i, px, py)) continue;
-        double d = std::hypot(x - px, y - py); if (d < bd) { bd = d; best = i; }
-    }
+int NodeGraph::nearest_op_out(double x, double y, double maxd, int& port) const {
+    int best = -1; double bd = maxd; port = 0;
+    if (vg_) for (int i = 0; i < int(vg_->nodes().size()); ++i)
+        for (int p = 0, no = op_out_count(vg_, i); p < no; ++p) {   // hit-test EVERY output stub (multi-output)
+            float px, py; if (!op_out_port(i, p, px, py)) continue;
+            double d = std::hypot(x - px, y - py); if (d < bd) { bd = d; best = i; port = p; }
+        }
     return best;
 }
 
@@ -920,7 +950,10 @@ void NodeGraph::op_draw_editor(int i, VividEditorContext* ctx) const {
 }
 bool NodeGraph::op_param_wired_at(int i, int local) const {
     if (!op_node_valid(vg_, i)) return false;
-    return reg_.source_of(node_param_dest(vg_->nodes()[i].id, node_plabel(vg_, i, local))) != nullptr;
+    if (reg_.source_of(node_param_dest(vg_->nodes()[i].id, node_plabel(vg_, i, local))) != nullptr) return true;
+    // ADR-0053 Phase B: a typed control edge also drives (and therefore exposes) its param — so its row,
+    // port, and wire render, and the param stays a visible drop target after the edge is made.
+    return vg_->nodes()[i].control_edge_for(local) != nullptr;
 }
 
 // Curated body params: the param indices shown as rows on node i, in index order. A param appears iff it
@@ -1216,13 +1249,24 @@ void NodeGraph::draw(Renderer2D& r) {
             node_wire(r, ox, oy, px, py, 0.45f, 0.78f, 0.85f);
         }
     }
+    // ADR-0053 Phase B: typed control-edge wires (a source op's value-lane OUTPUT -> a consumer param
+    // port), drawn in a distinct WARM GOLD so they read apart from texture edges (grey-blue) and the
+    // legacy registry param-wires (teal). The source is a real graph node addressed by stable id.
+    for (int i = 0; i < n; ++i)
+        for (const auto& ce : vg_->nodes()[i].control_edges) {
+            const int si = op_index_of_id(ce.src_node);
+            if (si < 0) continue;
+            float ox, oy, px, py;
+            if (op_out_port_of_lane(si, ce.src_lane, ox, oy) && param_port(i, ce.param_index, px, py))
+                node_wire(r, ox, oy, px, py, 0.95f, 0.72f, 0.30f);
+        }
     // drag preview (ADR-0023 Layer 2: the ghost wire comes from the canvas)
     if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < int(nodes_data_.size()) && wire_from_out_ >= 0) {
         float ox, oy; source_out_port(wire_from_, wire_from_out_, ox, oy);
         const float c[3] = { 0.55f, 0.85f, 0.80f }; canvas_.ghost_wire(r, ox, oy, float(cx_), float(cy_), c);
     }
     if (drag_mode_ == 4 && wire_from_ >= 0) {
-        float ox, oy; if (op_out_port(wire_from_, ox, oy)) {
+        float ox, oy; if (op_out_port(wire_from_, wire_from_out_ >= 0 ? wire_from_out_ : 0, ox, oy)) {
             const float c[3] = { 0.5f, 0.65f, 0.9f }; canvas_.ghost_wire(r, ox, oy, float(cx_), float(cy_), c); }
     }
 
@@ -1239,7 +1283,8 @@ void NodeGraph::draw(Renderer2D& r) {
         for (int l = 0; l < pc; ++l) {
             float px, py; if (!param_port(i, l, px, py)) continue;
             const char* name = node_plabel(vg_, i, l);
-            const bool on = reg_.source_of(node_param_dest(vg_->nodes()[i].id, name)) != nullptr;
+            const bool on = reg_.source_of(node_param_dest(vg_->nodes()[i].id, name)) != nullptr
+                            || vg_->nodes()[i].control_edge_for(l) != nullptr;   // ADR-0053 B2: edge lights the port too
             node_port(r, px, py, 4.f, on ? 0.31f : 0.34f, on ? 0.80f : 0.40f, on ? 0.75f : 0.45f);
             if (a_param > 0.01f)
                 r.draw_text(px + 10.f, py - 5.f, name,
@@ -1448,6 +1493,7 @@ bool NodeGraph::on_down(double x, double y, bool shift, bool super) {
     int pni, pl;
     if (nearest_param(wx, wy, pr, pni, pl)) {
         reg_.disconnect(node_param_dest(vg_->nodes()[pni].id, node_plabel(vg_, pni, pl)));
+        if (vg_) vg_->clear_param_control(pni, pl);   // ADR-0053 B2: also drop a typed control edge into this param
         note_edit_("Disconnect Mapping");
         return true;
     }
@@ -1458,9 +1504,10 @@ bool NodeGraph::on_down(double x, double y, bool shift, bool super) {
             float px, py; source_out_port(i, o, px, py);
             if (std::hypot(wx - px, wy - py) < hr) { drag_mode_ = 3; wire_from_ = i; wire_from_out_ = o; return true; }
         }
-    // start a wire from an op output port
-    int oo = nearest_op_out(wx, wy, hr);
-    if (oo >= 0) { drag_mode_ = 4; wire_from_ = oo; return true; }
+    // start a wire from an op output port (capture WHICH output — a multi-lane producer like
+    // ReactiveMaster / LanePalette has several; the drop target decides texture edge vs control edge)
+    int ooPort = 0; int oo = nearest_op_out(wx, wy, hr, ooPort);
+    if (oo >= 0) { drag_mode_ = 4; wire_from_ = oo; wire_from_out_ = ooPort; return true; }
 
     // op-node x button / body drag
     for (int i = 0; i < n; ++i) {
@@ -1563,11 +1610,26 @@ void NodeGraph::on_up(double x, double y) {
             }
         }
     } else if (drag_mode_ == 4 && wire_from_ >= 0) {
-        int tport = 0; int target = nearest_op_in(wx, wy, 18.0 / canvas_.view().scale, tport);
+        const double R = 18.0 / canvas_.view().scale;
+        int tport = 0; int target = nearest_op_in(wx, wy, R, tport);
         // ADR-0047: refuse a wire whose stream types don't match (the drag sources output port 0, as
         // set_op_input_port does) — the wire just doesn't form, mirroring a rejected audio note edge.
         if (target >= 0 && vg_ && vg_->can_connect(target, tport, wire_from_, 0)) {
             set_op_input_port(target, tport, wire_from_); note_edit_("Connect");
+        } else {
+            // ADR-0053 B2: dropped on a PARAM port instead of a texture input → a typed CONTROL EDGE, if
+            // the dragged output is a value lane (only value lanes can drive a param; a texture output
+            // resolves to lane -1 and forms nothing). The source is referenced by stable id so the edge
+            // survives reorder/removal.
+            int pni, pl;
+            if (vg_ && nearest_param(wx, wy, R, pni, pl)) {
+                const int lane = op_out_value_lane(wire_from_, wire_from_out_ >= 0 ? wire_from_out_ : 0);
+                if (lane >= 0 && pni != wire_from_) {
+                    vivid::VisualControlShape sh;   // default: full-range unipolar, no smoothing (tune in the M panel)
+                    vg_->set_param_control(pni, pl, vg_->nodes()[wire_from_].id, lane, sh);
+                    note_edit_("Connect Control");
+                }
+            }
         }
     } else if (drag_mode_ == 6) {   // ADR-0033 P1: resolve the marquee against every op card
         std::vector<SelItem> items;
