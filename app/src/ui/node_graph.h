@@ -82,7 +82,7 @@ public:
     void set_visual_graph(vivid::VisualGraph* vg);   // also seeds the default mapping
 
     // Persistence + inspection.
-    int  node_count() const { return static_cast<int>(data_.size()); }
+    int  node_count() const { return static_cast<int>(nodes_data_.size()); }
     void get_node(int i, float& x, float& y, std::string& source, std::string& title) const;
     void get_shader(float& x, float& y) const { x = sx_; y = sy_; }
     void reset_nodes();
@@ -133,9 +133,16 @@ public:
     void advance_mappings(float dt) { reg_.advance(dt); }
     // Connect a bridge DATA node's source to op node `op_idx`'s param `local` (the same wire the drop path
     // makes). Records an undo note. Used by the param-reveal menu (Gesture B). False on invalid indices.
-    bool connect_data_to_param(int data_idx, int op_idx, int local);
-    // A track (stable id) was deleted: drop the mappings sourced from it.
-    int drop_track_sources(int id) { return reg_.drop_track_sources(id); }
+    bool connect_data_to_param(int data_idx, int op_idx, int local, int out_idx = 0);
+    // A track (stable id) was deleted: drop the mappings sourced from it AND its Track source node.
+    int drop_track_sources(int id) {
+        const int dropped = reg_.drop_track_sources(id);
+        for (size_t i = 0; i < nodes_data_.size(); ++i)
+            if (nodes_data_[i].kind == SourceKind::Track && nodes_data_[i].track_id == id) {
+                nodes_data_.erase(nodes_data_.begin() + i); ++data_gen_; break;
+            }
+        return dropped;
+    }
     // Mapping shaping edits (from the M overview).
     void set_mapping_amount(const std::string& dst, float a) { if (auto* m = reg_.find(dst)) m->amount = a; }
     void set_mapping_curve(const std::string& dst, float c)  { if (auto* m = reg_.find(dst)) m->curve = c; }
@@ -280,14 +287,22 @@ public:
 
 private:
     static constexpr int kHistN = 64;   // data-node value history (rolling sparkline)
-    struct DataNode { float x, y, w, h; std::string title; std::string source; float value; int flash;
-                      float hist[kHistN]; int hist_head; };
-    std::vector<DataNode> data_;
+    // ADR-0053 Phase A2: audio sources are ENTITY nodes with multiple named value OUTPUTS. A "Master"
+    // node exposes level/transient/low/mid/high + transport phases; a "Track <id>" node exposes its 8
+    // characteristics. Each output row carries a right-edge port whose identity is a full bridge source
+    // string ("master.low", "track_1.gate"); wiring an output->param is still just a MappingRegistry wire.
+    enum class SourceKind { Master, Track, Other };
+    struct SourceOutput { std::string suffix; std::string source; float value = 0.f;
+                          float hist[kHistN] = {}; int hist_head = 0; };
+    struct SourceNode { float x = 0, y = 0, w = 0, h = 0; SourceKind kind = SourceKind::Other;
+                        int track_id = -1; std::string title; int flash = 0;
+                        std::vector<SourceOutput> outs; };
+    std::vector<SourceNode> nodes_data_;
     // ADR-0028 interning: one Pub per distinct published source. `cell` is a stable pointer into the
-    // registry's value map (see MappingRegistry::intern_source); `data_idx` caches the matching data
-    // node (for its live sparkline), re-resolved whenever `data_gen_` changes (the data-node set grew or
-    // was cleared — indices only ever append or clear, never shift, so an index stays valid otherwise).
-    struct Pub { float* cell; int data_idx; uint32_t data_gen; std::string id; };
+    // registry's value map (see MappingRegistry::intern_source); (node_idx,out_idx) caches the matching
+    // source-node OUTPUT (for its live sparkline), re-resolved whenever `data_gen_` changes (the source
+    // set grew/cleared — indices only ever append or clear, never shift, so they stay valid otherwise).
+    struct Pub { float* cell; int node_idx; int out_idx; uint32_t data_gen; std::string id; };
     std::vector<Pub> pubs_;
     // ADR-0033 P5: sticky-note store (mirrors the DataNode pattern). id is stable within a session;
     // annos never shift index on remove would break nothing here since callers address by id.
@@ -318,6 +333,7 @@ private:
     int    drag_idx_ = -1;     // dragged node (data for mode 1, op for mode 2)
     int    anno_drag_ = -1;    // ADR-0033 P5: annotation id being dragged (mode 7), -1 = none
     int    wire_from_ = -1;    // data node (mode 3) or op node (mode 4) the wire starts at
+    int    wire_from_out_ = -1;// ADR-0053 A2: which OUTPUT row of the source node the wire started at (mode 3)
     int    pmreq_node_ = -1;   // Gesture B: pending param-reveal-menu request (target op node index)
     int    pmreq_src_  = -1;   // Gesture B: the data node the dropped wire started from
     double pmreq_sx_ = 0, pmreq_sy_ = 0;   // Gesture B: the drop SCREEN position (where to open the menu)
@@ -351,11 +367,15 @@ private:
     vivid::EditGateway* edit_gateway_ = nullptr;      // ADR-0017 (optional; UI edit capture)
     void note_edit_(const char* label, const char* key = "");   // fold a graph edit into the gesture
 
-    static void data_out(const DataNode& n, float& px, float& py);
-    int  find_source_node(const std::string& src) const;
-    // ADR-0053 Phase A: create a visible bridge source node for `src` if none exists yet (idempotent,
-    // no undo note — safe on load + programmatic mapping). The single chokepoint that makes every
-    // mapping's source appear on the canvas. Title is derived from the source id.
+    // ADR-0053 A2: the port position of source node `ni`'s output row `oi` (right edge, row-centre).
+    void source_out_port(int ni, int oi, float& px, float& py) const;
+    int  find_source_node(const std::string& src) const;             // node index whose ANY output == src, -1
+    bool find_source_output(const std::string& src, int& ni, int& oi) const;  // node+output for src; false if none
+    void size_source_node(SourceNode& n) const;                      // recompute w/h from outs.size()
+    // ADR-0053 Phase A: ensure a visible ENTITY source node exists for `src` (idempotent, no undo note —
+    // safe on load + programmatic mapping). Parses master.*/transport.* -> one "Master" node, track_<id>.*
+    // -> one "Track <id>" node (each with its full default output set), else a single-output "Other" node.
+    // The single chokepoint that makes every mapping's source appear on the canvas.
     void ensure_source_node(const std::string& src);
 
     void sync_op_pos();
