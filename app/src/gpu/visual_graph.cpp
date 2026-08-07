@@ -16,6 +16,7 @@
 #include <cstring>
 #include <filesystem>
 #include <functional>
+#include <unordered_map>
 
 namespace vivid {
 
@@ -261,17 +262,44 @@ void VisualGraph::remove_node(int i) {
         int outs = 0; for (auto& n : nodes_) if (n.is_output()) ++outs;
         if (outs <= 1) return;
     }
+    const int gone_id = nodes_[i].id;   // control edges reference the SOURCE by stable id, not index
     nodes_.erase(nodes_.begin() + i);
-    for (auto& n : nodes_)
+    for (auto& n : nodes_) {
         for (int& e : n.inputs) {   // drop edges to the removed node; shift indices above it down
             if (e == i) e = -1; else if (e > i) --e;
         }
+        // ADR-0053 Phase B: drop control edges whose SOURCE was the removed node (stable-id match, so
+        // no index shifting needed) — mirrors dropping texture edges into a removed producer.
+        auto& ce = n.control_edges;
+        ce.erase(std::remove_if(ce.begin(), ce.end(),
+                                [&](const ParamControlEdge& e) { return e.src_node == gone_id; }),
+                 ce.end());
+    }
     ensure_resources(nodes_.size());
 }
 void VisualGraph::set_input(int node, int port, int src, int src_port) {
     if (node < 0 || node >= static_cast<int>(nodes_.size()) || port < 0) return;
     if (src == node) return;                          // no self-loops
     nodes_[node].set_in(port, (src >= 0 && src < static_cast<int>(nodes_.size())) ? src : -1, std::max(0, src_port));
+}
+void VisualGraph::set_param_control(int node, int param_index, int src_node_id, int src_lane,
+                                    const VisualControlShape& shape) {
+    if (node < 0 || node >= static_cast<int>(nodes_.size()) || param_index < 0) return;
+    if (nodes_[node].id == src_node_id) return;       // no self-modulation
+    auto& edges = nodes_[node].control_edges;
+    for (auto& ce : edges)                            // replace any existing edge into this param
+        if (ce.param_index == param_index) {
+            ce.src_node = src_node_id; ce.src_lane = std::max(0, src_lane); ce.shape = shape;
+            return;
+        }
+    edges.push_back({ param_index, src_node_id, std::max(0, src_lane), shape });
+}
+void VisualGraph::clear_param_control(int node, int param_index) {
+    if (node < 0 || node >= static_cast<int>(nodes_.size())) return;
+    auto& edges = nodes_[node].control_edges;
+    edges.erase(std::remove_if(edges.begin(), edges.end(),
+                               [&](const ParamControlEdge& e) { return e.param_index == param_index; }),
+                edges.end());
 }
 // ADR-0047: the p-th port descriptor of a given direction (the direction-filtered walk over inst.ports).
 static const VividPortDescriptor* nth_port_desc(const VisualNode& n, int p, VividPortDirection dir) {
@@ -374,11 +402,27 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
     if (outIdx < 0) return;
     const int feed = nodes_[outIdx].in(0);
 
+    // Stable id -> current node index, for resolving control edges (which reference the source by
+    // stable id, not index — so an edge survives node reorder/removal). ADR-0053 Phase B.
+    const int nnodes = static_cast<int>(nodes_.size());
+    std::unordered_map<int, int> id2idx;
+    id2idx.reserve(nnodes * 2);
+    for (int i = 0; i < nnodes; ++i) id2idx[nodes_[i].id] = i;
+
     // Topological order (post-order DFS over ALL input ports, cycle-safe) — the shared,
     // headless-testable helper. Subsumes the old linear back-walk and supports N-input ops.
-    const int nnodes = static_cast<int>(nodes_.size());
+    // A CONTROL EDGE is a real dependency too: its source node must run (and commit its value lane)
+    // before the consumer resolves params, so fold control-edge sources into the adjacency. This is
+    // what makes a Reactive source node — wired only via a control edge, not a texture edge — get
+    // processed even though nothing reads its texture output (ADR-0053 Phase B).
     std::vector<std::vector<int>> adj(nnodes);
-    for (int i = 0; i < nnodes; ++i) adj[i] = nodes_[i].inputs;
+    for (int i = 0; i < nnodes; ++i) {
+        adj[i] = nodes_[i].inputs;
+        for (const auto& ce : nodes_[i].control_edges) {
+            auto it = id2idx.find(ce.src_node);
+            if (it != id2idx.end()) adj[i].push_back(it->second);
+        }
+    }
     const std::vector<int> order = topo_order(adj, feed);
 
     // Per-node published custom-ref OUTPUT slots (the value channel, parallel to rts_): size each to
@@ -479,6 +523,32 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
             ctx.metronome_bar_phase = static_cast<float>(bars - std::floor(bars));
         }
         ctx.metronome_beat_ms = metro_bpm_ > 0.f ? 60000.f / metro_bpm_ : 500.f;
+        // ADR-0053 Phase B: resolve this node's control edges into n.params, replacing the hidden
+        // MappingRegistry wire with a real graph edge. Read the source node's committed value lane (the
+        // source sorted earlier via the control-edge adjacency, so its lane is ready), advance the
+        // per-edge envelope with the frame dt, then combine base + modulation into the param slot.
+        // apply_params left every edged param at its base, so the edge is the single owner. Byte-identical
+        // to the registry formula (see control_shape.h). No-op for a node with no control edges.
+        for (auto& ce : n.control_edges) {
+            if (ce.param_index < 0 || ce.param_index >= static_cast<int>(n.params.size())) continue;
+            const vivid::ParamBase* pb = (ce.param_index < static_cast<int>(n.inst.param_ptrs.size()))
+                                       ? n.inst.param_ptrs[ce.param_index] : nullptr;
+            if (!pb) continue;
+            float src = 0.f;   // source not live / lane empty -> 0 -> param falls back to base
+            auto it = id2idx.find(ce.src_node);
+            if (it != id2idx.end()) {
+                const int si = it->second;
+                if (ce.src_lane >= 0 && ce.src_lane < static_cast<int>(published_values_[si].size())) {
+                    const ValueSlot& s = published_values_[si][ce.src_lane];
+                    if (s.count > 0) src = s.buf[0];
+                }
+            }
+            visual_control_advance(ce.shape, src, dt);
+            const float base = (ce.param_index < static_cast<int>(n.base.size()))
+                             ? n.base[ce.param_index] : pb->default_value;
+            n.params[ce.param_index] =
+                visual_control_resolve(base, src, ce.shape, pb->min_value, pb->max_value);
+        }
         ctx.param_values = n.params.empty() ? nullptr : n.params.data();
         ctx.device = dev_; ctx.queue = q_; ctx.command_encoder = enc;
         ctx.output_texture = rts_[idx].tex;

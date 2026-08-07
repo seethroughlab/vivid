@@ -500,6 +500,10 @@ void NodeGraph::apply_params() {
             // the old behavior, but an int/enum param (an aspect preset, an octave count) is no
             // longer silently pinned to 1.
             const float lo = pb->min_value, hi = pb->max_value;
+            // ADR-0053 Phase B single-owner invariant: a live control edge OWNS this param — leave it at
+            // base here (run_chain resolves the edge on top), so the registry and edges never fight over
+            // the same slot while both models coexist (until the B4 cutover).
+            if (n.control_edge_for(l)) { n.params[l] = std::clamp(n.base[l], lo, hi); continue; }
             const float mod = reg_.dest_value(node_param_dest(n.id, pb->name));
             n.params[l] = std::clamp(n.base[l] + mod * (hi - lo), lo, hi);   // manual base + live modulation
         }

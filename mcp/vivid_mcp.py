@@ -544,6 +544,33 @@ def disconnect_mapping(dst: str) -> dict:
 
 
 @mcp.tool
+def connect_control_to_param(node_id: int, param: str, src_node_id: int,
+                             signal: str = "", src_lane: int = -1,
+                             amount: float = 1.0, curve: float = 0.0, invert: bool = False,
+                             lo: float = 0.0, hi: float = 1.0,
+                             attack: float = 0.0, release: float = 0.0) -> dict:
+    """ADR-0053 Phase B: wire a SOURCE node's value-lane output into a visual op PARAMETER as a
+    first-class graph control edge (the typed replacement for the hidden string mapping). node_id/param
+    name the consumer; src_node_id is the source node (e.g. a ReactiveMaster / ReactiveTrack); identify
+    the source lane by output-port NAME (signal, e.g. 'low' / 'beat_pulse') or by ordinal (src_lane).
+    Shaping matches connect_mapping: amount (gain), curve, invert, [lo,hi] range, attack/release (s)."""
+    payload = {"node_id": node_id, "param": param, "src_node_id": src_node_id,
+               "amount": amount, "curve": curve, "invert": invert, "lo": lo, "hi": hi,
+               "attack": attack, "release": release}
+    if signal:
+        payload["signal"] = signal
+    if src_lane >= 0:
+        payload["src_lane"] = src_lane
+    return _post("connect_control_to_param", payload)
+
+
+@mcp.tool
+def disconnect_control(node_id: int, param: str) -> dict:
+    """Remove the control edge driving this visual param (ADR-0053 Phase B)."""
+    return _post("disconnect_control", {"node_id": node_id, "param": param})
+
+
+@mcp.tool
 def connect_mapping_by_intent(source_intent: str, dest_intent: str, amount: float | None = None,
                               curve: float | None = None, invert: bool = False,
                               lo: float | None = None, hi: float | None = None,
