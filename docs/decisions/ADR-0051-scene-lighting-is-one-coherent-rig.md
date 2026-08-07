@@ -294,4 +294,30 @@ by direct binary path (`app/build/vivid.app/Contents/MacOS/vivid` with `VIVID_NO
   to 155 levels; `cast_shadow=Off` removes a light's shadow while leaving its illumination within
   0.0002 brightness; a point light still casts nothing either way.
 
-- **Phases 1b, 2c, 3–5** — not started.
+- **Phase 3 (one rig for every shading path) — implemented.** `LightData` / `LightsUniform` now
+  live in `gpu_3d.h` immediately beside the `LIGHTS_3D_WGSL` preamble they mirror, so the CPU
+  struct and the shader declaration are edited together. Render3D and SDF3D both alias the shared
+  pair; SDF3D's private copy was 208 bytes and could not represent a spot cone, behind a comment
+  claiming it matched Render3D "exactly" — the drift was invisible precisely because the two
+  definitions sat in different files.
+
+  `VividSceneFragment` gained `custom_lights_ubo`, the light-side twin of the existing
+  `custom_camera_ubo` channel. SDF3D publishes its lights buffer and Render3D fills it with the
+  scene's collected lights, so SDF and mesh geometry are lit by one rig. SDF3D still writes a
+  default first — operators run before Render3D, whose later queue write wins — so an SDF rendered
+  by something that supplies no lights still looks as it did.
+
+  Ambient became a fourth `Light3D` type: colour × intensity summed across every Ambient light in
+  the scene, occupying no shading slot and casting nothing. The hardcoded `0.15` grey survives only
+  as the fallback when a scene places none. One consequence worth its own guard: an ambient-only
+  scene must NOT get the fallback key light, or the renderer would override an author who
+  deliberately asked for flat fill.
+
+  Verified: 85/85 ctest, 0 GPU validation errors, 6 live checks. A Light3D's colour, direction and
+  intensity all now reach SDF geometry — the three frames that demonstrate it were **byte-identical
+  before this phase**. An Ambient light at 0 darkens the scene below the old built-in grey
+  (0.3809 → 0.32302) and tints it when raised (→ 0.40901); an ambient-only scene with a black
+  ambient renders at brightness 0.0, proving no fallback light was conjured. Phases 1 and 2 both
+  re-verified green.
+
+- **Phases 1b, 2c, 4, 5** — not started.

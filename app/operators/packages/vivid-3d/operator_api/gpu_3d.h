@@ -402,6 +402,11 @@ struct VividSceneFragment {
     // Custom camera UBO (Phase 5b: SDF3D — Render3D writes camera data here for custom pipelines)
     WGPUBuffer custom_camera_ubo = nullptr;
 
+    // ADR-0051 Phase 3: the same channel for LIGHTS. A custom-pipeline operator publishes its
+    // lights UBO here and Render3D fills it with the scene's collected lights, so SDF geometry is
+    // lit by the same rig as everything else instead of a hardcoded light of its own.
+    WGPUBuffer custom_lights_ubo = nullptr;
+
     // CPU vertex cache (Phase 4: allows Deformer to read source geometry)
     const Vertex3D* cpu_vertices     = nullptr;  // non-owning ptr to CPU vertex data
     uint32_t        cpu_vertex_count = 0;
@@ -597,6 +602,25 @@ struct LightsUniform {
     ambient_b: f32,
 }
 )";
+
+// The CPU mirror of LIGHTS_3D_WGSL above — ADR-0051 Phase 3. These two must be edited together,
+// which is exactly why they now live side by side: Render3D and SDF3D each used to keep a private
+// copy, and SDF3D's had silently drifted to 208 bytes (no spot_params) behind a comment claiming it
+// "matches Render3D's LightsUniform exactly". One definition, one place, one shader preamble.
+struct LightData {
+    float position_and_type[4];        // xyz = position (point/spot) or toward-light (directional)
+    float direction_and_intensity[4];
+    float color_and_radius[4];
+    float spot_params[4];              // x=cos(outer), y=cos(inner), zw unused
+};
+static_assert(sizeof(LightData) == 64, "LightData must match WGSL Light (4 x vec4f)");
+
+struct LightsUniform {
+    LightData lights[4];               // 256 bytes
+    uint32_t  light_count;             // 4
+    float     ambient[3];              // 12
+};
+static_assert(sizeof(LightsUniform) == 272, "LightsUniform must match WGSL LightsUniform");
 
 // ---------------------------------------------------------------------------
 // WGSL preamble for shadow mapping (Phase 6d)

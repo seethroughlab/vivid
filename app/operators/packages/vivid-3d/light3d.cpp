@@ -21,6 +21,9 @@
  *     use it; Point ignores it.
  *   - `pos_*` is where the light IS. Point and Spot use it; Directional ignores it (a
  *     directional light is infinitely far away, so it has no position — only an aim).
+ * An `Ambient` type (ADR-0051 Phase 3) contributes flat fill from every direction: colour ×
+ * intensity, no position, no aim, no shadow. Placing one replaces the renderer's built-in 0.15
+ * grey, so a scene can finally be properly dark, or tinted.
  * Before ADR-0051 a directional light took its direction from `pos_*` and silently ignored
  * `dir_*`, which meant every hand-authored key light in the shipped demos had no effect. A
  * pre-v5 session migrates on load (see `migrate_node_params` in `app/src/persist.h`).
@@ -41,8 +44,10 @@ struct Light3D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr int kDirectional = 0;
     static constexpr int kPoint       = 1;
     static constexpr int kSpot        = 2;
+    static constexpr int kAmbient     = 3;   // ADR-0051 P3
 
-    vivid::Param<int>   type      {"type",      kDirectional, {"Directional", "Point", "Spot"}};
+    vivid::Param<int>   type      {"type",      kDirectional,
+                                   {"Directional", "Point", "Spot", "Ambient"}};
     vivid::Param<float> intensity {"intensity", 1.0f, 0.0f, 10.0f};
     vivid::Param<float> r         {"r",         1.0f, 0.0f, 1.0f};
     vivid::Param<float> g         {"g",         1.0f, 0.0f, 1.0f};
@@ -87,28 +92,28 @@ struct Light3D : vivid::OperatorBase, vivid::GpuProcessable {
         // needs a visible-index mapping shared by layout + draw + hit-test. That is a change for
         // every operator, not a lighting one; ADR-0051 Phase 1b tracks it. Declared now so the
         // intent is recorded where it belongs and lights up when the consumer lands.
-        // `radius` attenuates local lights, so it is meaningless on a directional one.
-        vivid::visible_when_ne(radius, type, kDirectional);
+        // `radius` attenuates local lights, so it is meaningless on a directional or ambient one.
+        vivid::visible_when_ne(radius, type, {kDirectional, kAmbient});
 
         // Only directional + spot can cast (Phase 2c would add omni cube shadows).
         vivid::param_group(cast_shadow, "Light");
-        vivid::visible_when_ne(cast_shadow, type, kPoint);
+        vivid::visible_when_ne(cast_shadow, type, {kPoint, kAmbient});
 
-        // Position: Point + Spot. A directional light has no position.
+        // Position: Point + Spot. Directional is infinitely far away; ambient is everywhere.
         vivid::param_group(pos_x, "Position");
         vivid::param_group(pos_y, "Position");
         vivid::param_group(pos_z, "Position");
-        vivid::visible_when_ne(pos_x, type, kDirectional);
-        vivid::visible_when_ne(pos_y, type, kDirectional);
-        vivid::visible_when_ne(pos_z, type, kDirectional);
+        vivid::visible_when_ne(pos_x, type, {kDirectional, kAmbient});
+        vivid::visible_when_ne(pos_y, type, {kDirectional, kAmbient});
+        vivid::visible_when_ne(pos_z, type, {kDirectional, kAmbient});
 
-        // Direction: Directional + Spot. A point light shines every way at once.
+        // Direction: Directional + Spot. A point light shines every way at once, ambient has no aim.
         vivid::param_group(dir_x, "Direction");
         vivid::param_group(dir_y, "Direction");
         vivid::param_group(dir_z, "Direction");
-        vivid::visible_when_ne(dir_x, type, kPoint);
-        vivid::visible_when_ne(dir_y, type, kPoint);
-        vivid::visible_when_ne(dir_z, type, kPoint);
+        vivid::visible_when_ne(dir_x, type, {kPoint, kAmbient});
+        vivid::visible_when_ne(dir_y, type, {kPoint, kAmbient});
+        vivid::visible_when_ne(dir_z, type, {kPoint, kAmbient});
 
         vivid::param_group(spot_angle, "Spot");
         vivid::param_group(spot_blend, "Spot");

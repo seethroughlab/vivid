@@ -1064,20 +1064,10 @@ struct MaterialUniform {
 };
 static_assert(sizeof(MaterialUniform) == 80, "MaterialUniform must be 80 bytes");
 
-struct LightData {
-    float position_and_type[4];
-    float direction_and_intensity[4];
-    float color_and_radius[4];
-    float spot_params[4];
-};
-static_assert(sizeof(LightData) == 64, "LightData must be 64 bytes");
-
-struct LightsUniform {
-    LightData lights[4];   // 256 bytes
-    uint32_t light_count;  // 4 bytes
-    float ambient[3];      // 12 bytes
-};
-static_assert(sizeof(LightsUniform) == 272, "LightsUniform must be 272 bytes");
+// ADR-0051 Phase 3: LightData / LightsUniform are the CANONICAL pair in gpu_3d.h, next to the
+// LIGHTS_3D_WGSL preamble they mirror. Aliased here so the rest of this file reads unchanged.
+using LightData     = vivid::gpu::LightData;
+using LightsUniform = vivid::gpu::LightsUniform;
 
 struct ShadowUniform {
     float light_vp[4][16];      // 4 casters × 64 bytes = 256 bytes
@@ -1154,6 +1144,19 @@ struct CollectedLight {
     bool  cast_shadow;      // ADR-0051 P2: does this light cast at all
 };
 
+// ADR-0051 Phase 3: ambient is a LIGHT you place in the scene, not a constant buried in the
+// renderer. Ambient lights don't occupy one of the four shading slots and never cast — they just
+// sum. `any` distinguishes "the author set the ambient to black" from "the author never said",
+// which is what keeps the old hardcoded grey working as a fallback and only as a fallback.
+struct CollectedAmbient {
+    bool  any = false;
+    float rgb[3] = {0.f, 0.f, 0.f};
+};
+
+// The fill Render3D uses when a scene places no Ambient light. Matches what was hardcoded here (and
+// in SDF3D) before ADR-0051, so an existing scene is unchanged.
+static constexpr float kDefaultAmbient = 0.15f;
+
 // ADR-0051 Phase 1: a light's aim, in world space — `light_direction` rotated by the upper-3x3 of
 // its composed transform (so parenting a light under a Transform3D swings its beam) and normalized.
 // A degenerate aim — an all-zero direction, or a scale-0 parent that collapses the rotation — falls
@@ -1180,6 +1183,7 @@ static void collect_fragments(const vivid::gpu::VividSceneFragment* node,
                                const mat4x4 parent_transform,
                                std::vector<DrawCall>& draws,
                                std::vector<CollectedLight>& lights,
+                               CollectedAmbient& ambient,
                                const vivid::gpu::VividSceneFragment* material = nullptr,
                                const vivid::gpu::VividSceneFragment** out_env = nullptr) {
     if (!node) return;
@@ -1193,7 +1197,13 @@ static void collect_fragments(const vivid::gpu::VividSceneFragment* node,
         active_material = node;
     }
 
-    if (node->fragment_type == vivid::gpu::VividSceneFragment::LIGHT) {
+    if (node->fragment_type == vivid::gpu::VividSceneFragment::LIGHT
+        && node->light_type > 2.5f) {
+        // ADR-0051 P3: Ambient — sums into the scene fill, costs no shading slot.
+        ambient.any = true;
+        for (int c = 0; c < 3; ++c)
+            ambient.rgb[c] += node->light_color[c] * node->light_intensity;
+    } else if (node->fragment_type == vivid::gpu::VividSceneFragment::LIGHT) {
         if (lights.size() < kMaxLights) {
             CollectedLight cl{};
             cl.light_type = node->light_type;
@@ -1254,7 +1264,8 @@ static void collect_fragments(const vivid::gpu::VividSceneFragment* node,
     }
 
     for (uint32_t i = 0; i < node->child_count; ++i) {
-        collect_fragments(node->children[i], composed, draws, lights, active_material, out_env);
+        collect_fragments(node->children[i], composed, draws, lights, ambient,
+                          active_material, out_env);
     }
 }
 
@@ -1504,11 +1515,12 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
         // Tree walk: collect geometry, lights, and environment
         std::vector<DrawCall> draws;
         std::vector<CollectedLight> collected_lights;
+        CollectedAmbient collected_ambient;
         const vivid::gpu::VividSceneFragment* env = nullptr;
         mat4x4 identity;
         mat4x4_identity(identity);
         collect_fragments(vivid::gpu::scene_input(ctx, 0), identity, draws, collected_lights,
-                         nullptr, &env);
+                         collected_ambient, nullptr, &env);
 
         if (draws.empty()) {
             WGPURenderPassEncoder pass = vivid::gpu::begin_3d_pass(
@@ -1537,8 +1549,10 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
             return;
         }
 
-        // Default light fallback — matches the previous hardcoded directional light
-        if (collected_lights.empty()) {
+        // Default light fallback — matches the previous hardcoded directional light. Suppressed
+        // when the scene placed an Ambient light (ADR-0051 P3): ambient-only is a deliberate flat
+        // look, and conjuring a key light on top of it would override the author.
+        if (collected_lights.empty() && !collected_ambient.any) {
             CollectedLight def{};
             float dir[3] = {0.5f, 1.0f, 0.8f};
             float len = std::sqrt(dir[0]*dir[0] + dir[1]*dir[1] + dir[2]*dir[2]);
@@ -1557,9 +1571,11 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
         // Write lights uniform (shared across all draws)
         LightsUniform lights_data{};
         lights_data.light_count = static_cast<uint32_t>(collected_lights.size());
-        lights_data.ambient[0] = 0.15f;
-        lights_data.ambient[1] = 0.15f;
-        lights_data.ambient[2] = 0.15f;
+        // ADR-0051 P3: an Ambient Light3D drives the fill; the old constant is now only the
+        // fallback for a scene that places none.
+        for (int c = 0; c < 3; ++c)
+            lights_data.ambient[c] = collected_ambient.any ? collected_ambient.rgb[c]
+                                                           : kDefaultAmbient;
         for (uint32_t i = 0; i < lights_data.light_count && i < kMaxLights; ++i) {
             auto& cl = collected_lights[i];
             auto& ld = lights_data.lights[i];
@@ -1713,6 +1729,17 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
                 ccam.resolution[1] = static_cast<float>(h);
                 wgpuQueueWriteBuffer(ctx->queue, dc.frag->custom_camera_ubo,
                                      0, &ccam, sizeof(ccam));
+            }
+
+            // ADR-0051 P3: custom pipeline LIGHT injection, the same channel as the camera above.
+            // SDF3D used to upload a hardcoded directional light of its own, so a Light3D changed
+            // the mesh geometry in a scene and left the SDF geometry beside it untouched. This is
+            // the byte-identical LightsUniform every other shading path already gets, so both are
+            // lit by one rig. Ordered after SDF3D's own default write (operators run before
+            // Render3D in graph order), so this wins.
+            if (dc.frag->pipeline && dc.frag->custom_lights_ubo) {
+                wgpuQueueWriteBuffer(ctx->queue, dc.frag->custom_lights_ubo,
+                                     0, &lights_data, sizeof(lights_data));
             }
         }
 
