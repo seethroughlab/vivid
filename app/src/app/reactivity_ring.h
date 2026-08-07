@@ -47,9 +47,17 @@ public:
         std::vector<uint8_t> thumb;
     };
 
-    // Frame-loop throttle: true when enough time has elapsed to take another sample (~12 fps). The
-    // caller gates the GPU readback on this so we sample at a bounded rate regardless of frame rate.
-    bool due(double now) const { return now - last_push_ >= kPushInterval; }
+    // "Arm" the ring for a short window. A perception call (analyze_output / motion / judge) arms it;
+    // the frame loop then samples for the next kArmSeconds. When NOT armed the ring takes no samples at
+    // all, so the per-frame GPU readback (a blocking device poll) costs nothing during normal
+    // watching/authoring — you only pay it while actively measuring. Re-arming on each call keeps it
+    // running through a tuning session, then it goes quiet.
+    void arm(double now) { armed_until_ = now + kArmSeconds; }
+
+    // Frame-loop throttle: true when the ring is armed AND enough time has elapsed for another sample
+    // (~12 fps). The caller gates the GPU readback on this so we sample at a bounded rate, and only
+    // while a perception tool is in use.
+    bool due(double now) const { return now < armed_until_ && (now - last_push_ >= kPushInterval); }
 
     // Push one frame. `rgba` is tightly-packed RGBA8 at (w,h) — the live Output readback. Downsamples
     // to a <=64px thumbnail, runs analyze_rgba on it, reads the Transport atomics, computes motion vs
@@ -85,6 +93,7 @@ public:
 private:
     static constexpr double   kPushInterval = 0.08;   // ~12.5 fps sampling
     static constexpr double   kWindowMax    = 12.0;   // retain ~12 s of history
+    static constexpr double   kArmSeconds   = 8.0;    // keep sampling this long after the last perception call
     static constexpr uint32_t kThumbMax     = 128;    // thumbnail longest edge — metrics are fine at any
                                                       // size; 128 gives the multimodal judge's montage
                                                       // enough detail to read the form (64 looked like dots)
@@ -92,6 +101,7 @@ private:
 
     std::deque<Sample> s_;
     double last_push_ = -1e9;
+    double armed_until_ = -1e9;   // ring samples only while now < armed_until_ (set by arm())
 
     // Samples within [now-window, now]; at least the most recent 2 if the window is very short.
     std::vector<const Sample*> window_samples(double window, double now) const;

@@ -193,6 +193,7 @@ void register_visual_analysis_handlers(Handlers& handlers_) {
     handlers_["analyze_visual_motion"] = [](const ControlCtx& c, const json& b) {
         if (!c.app) return err(code::kBadArg, "no app context");
         const double window = b.value("duration_seconds", 2.0);
+        c.app->reactivity.arm(steady_seconds());   // keep the ring sampling while perception is in use
         const json m = c.app->reactivity.motion(window, steady_seconds());
         json r = ok();
         r.update(m);
@@ -213,6 +214,7 @@ void register_visual_analysis_handlers(Handlers& handlers_) {
         }
         const json a = analyze_rgba(px.data(), w, h);
         const double window = b.value("duration_seconds", 2.0);
+        if (c.app) c.app->reactivity.arm(steady_seconds());
         json r = ok();
         r["frame"] = a;
         r["motion"] = c.app ? c.app->reactivity.motion(window, steady_seconds())
@@ -236,6 +238,7 @@ void register_visual_analysis_handlers(Handlers& handlers_) {
         if (!c.app) return err(code::kBadArg, "no app context");
         const std::string mode = b.value("mode", std::string("frame"));
         const double now = steady_seconds();
+        c.app->reactivity.arm(now);   // arm the ring so it samples while you're measuring (0 cost otherwise)
         json r = ok();
         r["mode"] = mode;
         if (mode == "frame") {
