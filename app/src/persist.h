@@ -27,7 +27,11 @@ namespace vivid {
 // that ever picked a blend mode would silently render a different one.
 // v4 (ADR-0033 P5): added graph sticky notes (jg["annotations"]) + per-node labels (chain "name").
 // Both are purely additive and read back with defaults, so a v3 file loads unchanged (absent ⇒ none).
-constexpr int kSessionSchemaVersion = 4;
+// v5 (ADR-0051 P1): a DIRECTIONAL Light3D used to take its direction from `pos_*` and ignore `dir_*`
+// entirely; now `dir_*` is the aim for every light type that has one. A pre-v5 directional light
+// therefore has its intent in the WRONG field, and reading it as-is would swing every key light in
+// every existing project. Loading one moves it across (see migrate_node_params).
+constexpr int kSessionSchemaVersion = 5;
 
 enum class SessionVersionStatus { Ok, Migrated, TooNew };
 
@@ -62,6 +66,45 @@ inline float migrate_param_value(int file_ver, const std::string& op_type, const
     if (file_ver < 3 && op_type == "Composite" && name && std::strcmp(name, "mode") == 0)
         return std::round(v * 4.f);
     return v;
+}
+
+// A migration that has to see a node's params TOGETHER — migrate_param_value above is handed one
+// name/value at a time and so cannot move a value from one param to another. Rewrites the params
+// object in place, before the per-param loop reads it. Pure and total (an absent or malformed
+// param is left alone), so it is unit-testable without a Session.
+//
+// v5 (ADR-0051 P1): a DIRECTIONAL Light3D took its direction from the translation column, i.e.
+// from `pos_*`, and ignored `dir_*`. Now `dir_*` is the aim for every light type that has one.
+// The uniform carries the vector pointing TOWARD the light, which the renderer derives as -aim,
+// so the old `normalize(pos)` and the new `-normalize(dir)` agree exactly when dir = -pos. Move
+// the value across with that negation and zero the now-meaningless position, and a pre-v5
+// directional light keeps pointing where it always did.
+inline void migrate_node_params(int file_ver, const std::string& op_type,
+                                nlohmann::json& params) {
+    if (!params.is_object()) return;
+
+    if (file_ver < 5 && op_type == "Light3D") {
+        auto num = [&params](const char* k, float dflt) {
+            auto it = params.find(k);
+            return (it != params.end() && it->is_number()) ? it->get<float>() : dflt;
+        };
+        // Only DIRECTIONAL lights changed meaning; point/spot already used pos_*/dir_* this way.
+        // The default type is 0 (Directional), so an absent `type` must migrate too.
+        if (static_cast<int>(std::lround(num("type", 0.f))) == 0) {
+            const float px = num("pos_x", 0.5f);   // the pre-v5 Light3D pos_* defaults, which
+            const float py = num("pos_y", 1.0f);   // doubled as the default direction
+            const float pz = num("pos_z", 0.8f);
+            const float len = std::sqrt(px*px + py*py + pz*pz);
+            if (len > 1e-8f) {
+                params["dir_x"] = -px / len;
+                params["dir_y"] = -py / len;
+                params["dir_z"] = -pz / len;
+            }   // a degenerate pre-v5 position rendered as an unlit NaN; leave dir_* at its default
+            params["pos_x"] = 0.0f;
+            params["pos_y"] = 0.0f;
+            params["pos_z"] = 0.0f;
+        }
+    }
 }
 
 // In-memory session <-> JSON: window + splitter/dock, per-track gain/active +

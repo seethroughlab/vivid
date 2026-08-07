@@ -16,11 +16,20 @@
  * Light3D creates directional, point, or spot lights with adjustable color, placement, and
  * intensity so scenes can be lit without embedding light logic inside geometry operators.
  *
+ * ADR-0051 Phase 1 — ONE rule for aim, one for placement:
+ *   - `dir_*` is the direction the light SHINES (pointing away from it). Directional and Spot
+ *     use it; Point ignores it.
+ *   - `pos_*` is where the light IS. Point and Spot use it; Directional ignores it (a
+ *     directional light is infinitely far away, so it has no position — only an aim).
+ * Before ADR-0051 a directional light took its direction from `pos_*` and silently ignored
+ * `dir_*`, which meant every hand-authored key light in the shipped demos had no effect. A
+ * pre-v5 session migrates on load (see `migrate_node_params` in `app/src/persist.h`).
+ *
  * @param type Light type: directional, point, or spot.
  * @param intensity Overall light intensity.
  * @param radius Influence radius for local lights.
- * @param pos_x Light position along the X axis.
- * @param dir_y Y component of the light direction.
+ * @param pos_x Light position along the X axis (Point/Spot).
+ * @param dir_y Y component of the direction the light shines (Directional/Spot).
  * @param spot_angle Cone angle for spot lights.
  */
 struct Light3D : vivid::OperatorBase, vivid::GpuProcessable {
@@ -28,7 +37,12 @@ struct Light3D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr bool kTimeDependent = false;
 
-    vivid::Param<int>   type      {"type",      0, {"Directional", "Point", "Spot"}};
+    // `type` choice indices — the wire values Render3D switches on (see VividSceneFragment::light_type).
+    static constexpr int kDirectional = 0;
+    static constexpr int kPoint       = 1;
+    static constexpr int kSpot        = 2;
+
+    vivid::Param<int>   type      {"type",      kDirectional, {"Directional", "Point", "Spot"}};
     vivid::Param<float> intensity {"intensity", 1.0f, 0.0f, 10.0f};
     vivid::Param<float> r         {"r",         1.0f, 0.0f, 1.0f};
     vivid::Param<float> g         {"g",         1.0f, 0.0f, 1.0f};
@@ -38,10 +52,13 @@ struct Light3D : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> pos_y     {"pos_y",     1.0f, -50.0f, 50.0f};
     vivid::Param<float> pos_z     {"pos_z",     0.8f, -50.0f, 50.0f};
 
-    // Spot light direction
-    vivid::Param<float> dir_x     {"dir_x",     0.0f, -1.0f, 1.0f};
-    vivid::Param<float> dir_y     {"dir_y",    -1.0f, -1.0f, 1.0f};
-    vivid::Param<float> dir_z     {"dir_z",     0.0f, -1.0f, 1.0f};
+    // The direction the light SHINES (Directional + Spot). The defaults are -normalize(0.5, 1, 0.8):
+    // the exact key direction Render3D's built-in no-light fallback uses, so a freshly-added
+    // Light3D still lights a scene identically to having no light at all — an invariant worth
+    // keeping, and a nicer 3/4 key than straight-down would be.
+    vivid::Param<float> dir_x     {"dir_x",    -0.363696f, -1.0f, 1.0f};
+    vivid::Param<float> dir_y     {"dir_y",    -0.727393f, -1.0f, 1.0f};
+    vivid::Param<float> dir_z     {"dir_z",    -0.581914f, -1.0f, 1.0f};
 
     // Spot light cone params
     vivid::Param<float> spot_angle {"spot_angle", 45.0f, 5.0f, 90.0f};
@@ -59,16 +76,35 @@ struct Light3D : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::display_hint(g, VIVID_DISPLAY_COLOR);
         vivid::display_hint(b, VIVID_DISPLAY_COLOR);
 
+        // ADR-0051: declare which params each type actually reads. NOTE: these predicates reach the
+        // C descriptor (VIVID_REGISTER copies them) and are readable over the control server, but
+        // no UI consumes them yet — the param panel lays out by param INDEX, so honouring them
+        // needs a visible-index mapping shared by layout + draw + hit-test. That is a change for
+        // every operator, not a lighting one; ADR-0051 Phase 1b tracks it. Declared now so the
+        // intent is recorded where it belongs and lights up when the consumer lands.
+        // `radius` attenuates local lights, so it is meaningless on a directional one.
+        vivid::visible_when_ne(radius, type, kDirectional);
+
+        // Position: Point + Spot. A directional light has no position.
         vivid::param_group(pos_x, "Position");
         vivid::param_group(pos_y, "Position");
         vivid::param_group(pos_z, "Position");
+        vivid::visible_when_ne(pos_x, type, kDirectional);
+        vivid::visible_when_ne(pos_y, type, kDirectional);
+        vivid::visible_when_ne(pos_z, type, kDirectional);
 
+        // Direction: Directional + Spot. A point light shines every way at once.
         vivid::param_group(dir_x, "Direction");
         vivid::param_group(dir_y, "Direction");
         vivid::param_group(dir_z, "Direction");
+        vivid::visible_when_ne(dir_x, type, kPoint);
+        vivid::visible_when_ne(dir_y, type, kPoint);
+        vivid::visible_when_ne(dir_z, type, kPoint);
 
         vivid::param_group(spot_angle, "Spot");
         vivid::param_group(spot_blend, "Spot");
+        vivid::visible_when_eq(spot_angle, type, kSpot);
+        vivid::visible_when_eq(spot_blend, type, kSpot);
 
         out.push_back(&type);
         out.push_back(&intensity);

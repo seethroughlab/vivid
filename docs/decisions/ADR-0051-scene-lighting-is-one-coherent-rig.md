@@ -29,25 +29,29 @@ two light-uniform layouts, and an ambient term nobody can reach.
 
 ### The four defects
 
-**1. `dir_x/y/z` do nothing on a Directional light — and every shipped demo is mis-authored
-because of it.** For `type = Directional`, `collect_fragments` derives the direction from the
-*translation column* of the composed transform (`render_3d.cpp:1168`); the entire "Direction"
-param group is spot-only. Sweeping `dir_*` from `(0,-1,0)` to `(-1,1,-1)` on a directional light
-produced byte-identical frames (matching hash, brightness, contrast and colour-spread).
+**1. `dir_x/y/z` do nothing on a Directional light — and every demo that lights a scene is
+mis-authored because of it.** For `type = Directional`, `collect_fragments` derives the direction
+from the *translation column* of the composed transform (`render_3d.cpp:1168`); the entire
+"Direction" param group is spot-only. Sweeping `dir_*` from `(0,-1,0)` to `(-1,1,-1)` on a
+directional light produced byte-identical frames (matching hash, brightness, contrast and
+colour-spread).
 
-Auditing the five shipped demo projects, **every one** authors its key light this way:
+Auditing the demo generators, **every one that adds a Light3D** authors its key light this way:
 
-| demo | type | `pos_*` — the *real* direction | `dir_*` — authored, ignored |
+| generator | type | `pos_*` — the *real* direction | `dir_*` — authored, ignored |
 | --- | --- | --- | --- |
-| blob | Directional | **0.5, 1.0, 0.8 (default)** | -0.4, -0.7, -0.5 |
-| crystal | Directional | **default** | -0.4, -0.6, -0.5 |
-| lattice | Directional | **default** | -0.4, -0.8, -0.45 |
-| spectrum | Directional ×2 | **both default** | -0.3,-0.8,-0.5 / 0.6,-0.2,0.4 |
-| storm | Directional ×2 | **both default** | -0.5,-0.7,-0.5 / 0.6,0.2,0.4 |
+| `blob.py` | Directional | **0.5, 1.0, 0.8 (default)** | -0.4, -0.7, -0.5 |
+| `crystal.py` | Directional | **default** | -0.4, -0.6, -0.5 |
+| `lattice.py` | Directional | **default** | -0.4, -0.8, -0.45 |
+| `spectrum.py` | Directional ×2 | **both default** | -0.3,-0.8,-0.5 / 0.6,-0.2,0.4 |
 
-`spectrum` and `storm` therefore have no key/fill separation at all: both lights sit on the
-identical default axis and simply sum into one brighter light. The authored intent in those files
-was never expressed on screen.
+`spectrum` therefore has no key/fill separation at all: both lights sit on the identical default
+axis and simply sum into one brighter light. The authored intent was never expressed on screen.
+
+The bundled projects under `examples/demos/projects/` currently contain **no** Light3D — they are a
+different, later demo set (drift, generative-fields, geometry, grid, signal, surge-lead). So no
+shipped `project.json` needs the migration; it exists for user projects and for saved sessions on
+other branches, where a directional Light3D's aim really is stored in `pos_*`.
 
 **2. A second directional light corrupts the first one's shadow.** `ensure_shadow_maps` allocates
 a single, non-array depth texture. The per-light loop (`render_3d.cpp:1555-1590`) renders *every*
@@ -121,9 +125,20 @@ uses both. One rule, no exceptions.
 - Guard the degenerate aim in C++: a zero-length direction falls back to a canonical `(0,-1,0)`,
   so a light animated through the origin can never emit `normalize(vec3(0))` → NaN. One place,
   because every shading path consumes the same uniform.
-- `light3d.cpp`: apply the **existing** `visible_when_eq` / `visible_when_ne` helpers
-  (`operator.h:253-266`, which this operator simply does not use today) so Position hides for
-  Directional and Direction hides for Point. No new UI machinery is required.
+- `light3d.cpp`: declare which params each type reads via the existing `visible_when_eq` /
+  `visible_when_ne` helpers (`operator.h:253-266`) — Position is meaningless on Directional,
+  Direction on Point, the Spot group on both.
+
+**Phase 1b — make param visibility real (split out).** The `visible_when_*` helpers and their
+descriptor fields already exist and `VIVID_REGISTER` copies them through
+(`operator.h:825-831`), but **no operator used them and nothing consumes them** — they are dead
+plumbing today. Honouring them is not a lighting change: the param panel lays out by param *index*
+(`node_param_row(i, ...)` in `ui/session_view.cpp`), and `ui/layout.h` is deliberately shared so
+draw and hit-test agree, so hiding a param requires a visible-index mapping threaded through
+layout, draw and hit-test on both the panel and the node body. That is a cross-cutting UX feature
+worth its own slice for all 67 operators, and burying it inside a lighting fix would risk exactly
+the misaligned-click-target bug the shared-layout convention exists to prevent. Light3D declares
+its predicates now so the intent is recorded and lights up for free when the consumer lands.
 
 **Migration.** Bump `kSessionSchemaVersion` 4 → **5** (`persist.h:30`). The existing
 `migrate_param_value` (`persist.h:60`) is per-param and pure, so it cannot copy `pos_*` into
@@ -186,27 +201,32 @@ Add a per-light `cast_shadow` parameter. Today only the geometry side has one, o
 - Fix `tools/operator_audit/audit.py:221`. Until the harness runs, none of the above can be
   checked against the ADR-0042 Definition of Done.
 
-### Phase 5 — Re-author the demos
+### Phase 5 — Verify the demos now light as authored
 
-Re-run the five generators (`examples/demos/{blob,crystal,lattice,spectrum,storm}.py`), each of
-which builds the graph against a live app and calls `save_project` via `save_geo` / `save_demo`
-(`examples/demos/vivid_demo.py:470-486`). Their authored `dir_*` values start taking effect with
-**no source edits** — Phase 1 makes the existing intent live. `spectrum` and `storm` gain real
-key/fill separation for the first time.
+Run the four generators that add lights (`examples/demos/{blob,crystal,lattice,spectrum}.py`),
+each of which builds the graph against a live app via `save_project` / `save_geo`
+(`examples/demos/vivid_demo.py:470-486`), and capture a frame of each. Their authored `dir_*`
+values start taking effect with **no source edits** — Phase 1 makes the existing intent live, and
+`spectrum` gains real key/fill separation for the first time. Re-tune only where the now-live key
+direction reads worse than the accident it replaces.
 
-Recorded as a follow-up rather than folded in: the nine showcase clips on CloudFront were captured
-under the old lighting and will eventually want a re-shoot through `site/scripts/*`.
+Smaller than first scoped: the bundled demo projects carry no Light3D, so there is no saved
+lighting to regenerate and no showcase re-shoot implied by this ADR.
 
 ## Consequences
 
-- Directional lights in pre-v5 files keep their current look via migration. The five demos
-  deliberately change look, because they are regenerated from source rather than migrated.
+- Directional lights in pre-v5 files keep their current look via migration. The four
+  light-bearing demo generators deliberately change look, because their authored intent finally
+  takes effect rather than being migrated away.
 - A v5 session file is refused by an older Vivid (`SessionVersionStatus::TooNew`). That is the
   intended policy, not a regression.
+- A `Light3D` added fresh still lights a scene identically to adding no light at all: its `dir_*`
+  defaults are `-normalize(0.5, 1, 0.8)`, the exact key direction Render3D's built-in no-light
+  fallback uses. Verified at a frame-signature delta of 0.00001.
 - Shadow-map memory grows 4× at a given resolution (four layers) — worth noting against the 2048²
   default.
 - Point and omni lights remain shadowless until 2c is picked up.
-- The showcase videos diverge from the shipped demos until they are re-shot.
+- Param visibility stays declared-but-inert until Phase 1b lands the consumer.
 
 ## Verification
 
@@ -229,4 +249,25 @@ by direct binary path (`app/build/vivid.app/Contents/MacOS/vivid` with `VIVID_NO
 
 ## As Built
 
-_(to be filled in as phases land)_
+- **Phase 1 (one rule for aim) — implemented.** `collect_fragments` now derives a directional
+  light's aim from `light_direction` through a shared `aim_from_fragment` helper — the same
+  rotate-by-upper-3×3 the spot branch used — and negates it into the toward-light vector the
+  shaders expect. Parenting a light under a `Transform3D` now swings its beam, which it never did.
+  A degenerate aim falls back to straight down instead of emitting `normalize(vec3(0))`. `dir_*`
+  defaults to `-normalize(0.5, 1, 0.8)` so fallback parity is preserved exactly.
+  Schema v5 + `migrate_node_params` move a pre-v5 directional light's aim from `pos_*` to `dir_*`;
+  the load path runs it on a copy, since `session_from_json` must not mutate a caller's document.
+
+  Verified: 85/85 ctest green, plus 8 live frame-signature checks — `dir_*` now aims a directional
+  light (delta 0.20084, **was exactly 0.00000**), `pos_*` no longer does (0.00000), a zero aim stays
+  lit, a default Light3D still matches the no-light fallback (0.00001), and spot/point behaviour is
+  unregressed.
+
+  Two corrections to what this ADR first assumed, both found during implementation:
+  - `visible_when_*` was **dead plumbing** — declared, copied into the descriptor by
+    `VIVID_REGISTER`, used by no operator and read by no UI. Honouring it needs a visible-index
+    mapping across the index-based param layout, so it is split out as Phase 1b.
+  - The mis-authored lights live in the demo **generators**, not in any bundled project — the
+    shipped project set changed and carries no Light3D. Phase 5 shrank accordingly.
+
+- **Phases 1b, 2–5** — not started.

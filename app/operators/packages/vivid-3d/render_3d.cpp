@@ -1137,6 +1137,28 @@ struct CollectedLight {
     float spot_inner_cos;   // cos(inner cone angle)
 };
 
+// ADR-0051 Phase 1: a light's aim, in world space — `light_direction` rotated by the upper-3x3 of
+// its composed transform (so parenting a light under a Transform3D swings its beam) and normalized.
+// A degenerate aim — an all-zero direction, or a scale-0 parent that collapses the rotation — falls
+// back to straight down instead of propagating normalize(0) = NaN into the shader, where it would
+// silently poison `max(dot(N, L), 0)` and drop the light to ambient-only.
+static void aim_from_fragment(const vivid::gpu::VividSceneFragment* node,
+                              const mat4x4 composed, float out_aim[3]) {
+    const float dx = node->light_direction[0];
+    const float dy = node->light_direction[1];
+    const float dz = node->light_direction[2];
+    float rx = composed[0][0]*dx + composed[1][0]*dy + composed[2][0]*dz;
+    float ry = composed[0][1]*dx + composed[1][1]*dy + composed[2][1]*dz;
+    float rz = composed[0][2]*dx + composed[1][2]*dy + composed[2][2]*dz;
+    const float len = std::sqrt(rx*rx + ry*ry + rz*rz);
+    if (len > 1e-8f) {
+        rx /= len; ry /= len; rz /= len;
+    } else {
+        rx = 0.0f; ry = -1.0f; rz = 0.0f;   // canonical fallback: shining straight down
+    }
+    out_aim[0] = rx; out_aim[1] = ry; out_aim[2] = rz;
+}
+
 static void collect_fragments(const vivid::gpu::VividSceneFragment* node,
                                const mat4x4 parent_transform,
                                std::vector<DrawCall>& draws,
@@ -1164,33 +1186,26 @@ static void collect_fragments(const vivid::gpu::VividSceneFragment* node,
             cl.color[2]   = node->light_color[2];
             cl.radius     = node->light_radius;
 
+            // ADR-0051 Phase 1: ONE rule for aim — `light_direction` is the direction the light
+            // SHINES (away from it), for every light type that has an aim. The uniform carries the
+            // vector pointing TOWARD the light (what every shader's `L` expects), so directional
+            // negates the aim; spot keeps it (its cone test dots against -L).
+            float aim[3];
+            aim_from_fragment(node, composed, aim);
+
             if (node->light_type < 0.5f) {
-                // Directional: direction from translation column (normalized)
-                float dx = composed[3][0];
-                float dy = composed[3][1];
-                float dz = composed[3][2];
-                float len = std::sqrt(dx*dx + dy*dy + dz*dz);
-                if (len > 1e-8f) { dx /= len; dy /= len; dz /= len; }
-                cl.direction[0] = dx;
-                cl.direction[1] = dy;
-                cl.direction[2] = dz;
+                // Directional: no position — only the aim matters. Toward-light = -aim.
+                cl.direction[0] = -aim[0];
+                cl.direction[1] = -aim[1];
+                cl.direction[2] = -aim[2];
             } else if (node->light_type > 1.5f) {
-                // Spot: position from translation, direction rotated by composed transform
+                // Spot: position from the translation column, cone aimed along `aim`.
                 cl.position[0] = composed[3][0];
                 cl.position[1] = composed[3][1];
                 cl.position[2] = composed[3][2];
-                // Rotate direction by the upper-3x3 of composed transform
-                float dx = node->light_direction[0];
-                float dy = node->light_direction[1];
-                float dz = node->light_direction[2];
-                float rx = composed[0][0]*dx + composed[1][0]*dy + composed[2][0]*dz;
-                float ry = composed[0][1]*dx + composed[1][1]*dy + composed[2][1]*dz;
-                float rz = composed[0][2]*dx + composed[1][2]*dy + composed[2][2]*dz;
-                float rlen = std::sqrt(rx*rx + ry*ry + rz*rz);
-                if (rlen > 1e-8f) { rx /= rlen; ry /= rlen; rz /= rlen; }
-                cl.direction[0] = rx;
-                cl.direction[1] = ry;
-                cl.direction[2] = rz;
+                cl.direction[0] = aim[0];
+                cl.direction[1] = aim[1];
+                cl.direction[2] = aim[2];
                 float outer_deg = node->light_spot_angle;
                 float blend = node->light_spot_blend;
                 float outer_rad = outer_deg * 3.14159265358979f / 180.0f;
