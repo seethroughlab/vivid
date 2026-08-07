@@ -865,10 +865,11 @@ def explain_tradeoffs(a: dict, b: dict, criteria: list[str] | None = None) -> di
 
 @mcp.tool
 def analyze_visual_motion(duration_seconds: float = 2.0) -> dict:
-    """Measure motion/change in the visual output over a short window. Each call samples the LIVE output;
-    poll it a few times across your window to accumulate samples (motion = the inter-sample change).
-    Returns motion_score (0..1), inter_frame_change, is_moving, samples, span_seconds. The first call
-    just seeds the window — call again to get a reading."""
+    """Measure motion/change in the visual output over a recent window. Reliable in a SINGLE call — the
+    app samples the output into a rolling ring at ~12fps while running, so you no longer need to poll to
+    accumulate. Returns motion_score (0..1), inter_frame_change, is_moving, samples, span_seconds. The
+    app must be PLAYING for motion to register. For audio-reactivity (not just 'is it moving'), use
+    analyze_output(mode='av')."""
     return _post("analyze_visual_motion", {"duration_seconds": duration_seconds})
 
 
@@ -878,6 +879,47 @@ def summarize_visual_output(duration_seconds: float = 2.0) -> dict:
     contrast, activity, dominant colors, blank state) plus recent motion. A quick 'what's on screen, and
     is it moving?' check."""
     return _post("summarize_visual_output", {"duration_seconds": duration_seconds})
+
+
+@mcp.tool
+def analyze_output(mode: str = "frame", window_seconds: float = 3.0, node_id: str = "") -> dict:
+    """Analyze the live runtime output — the primary 'measure a change' tool for reactive visuals.
+
+    Modes:
+      mode="frame" — current-frame perception: brightness, contrast, activity, blank state, hash.
+      mode="audio" — windowed master energy sampled at the frame rate: rms, transient, band_low/mid/
+        high, onsets.
+      mode="av"    — three complementary reactivity lenses over the window:
+
+        1. Per-axis correlations — Pearson r between audio energy and each visual axis. Best for
+           continuous coupling (an audio envelope drives a parameter directly):
+             energy_brightness_correlation, energy_motion_correlation, energy_contrast_correlation.
+           (energy_motion_correlation catches displacement/position reactivity that doesn't change
+           brightness.)
+        2. Onset-aligned reactivity — for each detected audio onset, did the visual change within
+           ~400ms? Best for percussive / feedback-rich graphs where smoothing or visual decay shifts
+           the visual peak relative to the audio peak (Pearson breaks down there):
+             detected_onsets, onset_response_rate (0..1), reactivity_latency_ms (median onset→peak).
+        3. Per-band correlations — energy split by band (bass/mid/treble). Surfaces selective coupling
+           (e.g. bass→motion works, treble→motion doesn't):
+             band_brightness_correlations.{bass,mid,treble}, band_motion_correlations.{...},
+             band_contrast_correlations.{...}.
+
+    Use ALL THREE lenses: overall correlation ≈ 0 with a HIGH onset_response_rate does NOT mean the
+    graph is dead — it's event-driven reactivity Pearson can't see; trust onset_response_rate there.
+    Feedback/smoothing can even make correlation NEGATIVE while onset_response_rate stays valid.
+
+    Trustworthy thresholds (mechanically-working, not aesthetic pass/fail): onset_response_rate > 0.7
+    (percussive), energy_motion_correlation > 0.5 (continuous), reactivity_latency_ms < 300,
+    motion_magnitude 0.05–0.3, mean_brightness 0.05–0.4.
+
+    The app must be PLAYING and settled (~0.5–4s after load) or av mode returns
+    status='insufficient_samples' — that means "no history yet", not "dead". window_seconds defaults to
+    3 (av needs a few seconds). node_id is accepted but currently scoped to the whole output."""
+    payload: dict = {"mode": mode, "window_seconds": window_seconds}
+    if node_id:
+        payload["node_id"] = node_id
+    return _post("analyze_output", payload)
 
 
 @mcp.tool
