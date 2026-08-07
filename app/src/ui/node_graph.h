@@ -125,16 +125,31 @@ public:
     void add_mapping(const std::string& src, const std::string& dst, float amt,
                      float curve = 0.f, bool invert = false, float lo = 0.f, float hi = 1.f,
                      float attack = 0.f, float release = 0.f) {
-        // ADR-0053 Phase A: make the coupling VISIBLE — every audio→visual mapping materializes a
-        // source node on the canvas (idempotent). Gated to visual-param dests so the reverse path
-        // (viz.* -> param:/gnode:) doesn't spawn spurious source cards.
-        if (dst.rfind("node:", 0) == 0) ensure_source_node(src);
+        // ADR-0053 Phase B4 CUTOVER: an audio→visual mapping is now a typed control EDGE from a Reactive
+        // SOURCE op, not a hidden registry wire (+ Phase-A teal card). This one chokepoint converts every
+        // caller alike — connect_mapping, map_audio_to_visual_param, the source-card drag, AND legacy-file
+        // load (transparent migration). Fall through to the registry only for the reverse path
+        // (viz.*→param:) and non-audio node:* mappings (viz.*→node param), which keep the Phase-A card.
+        if (dst.rfind("node:", 0) == 0) {
+            if (add_audio_control_edge(src, dst, amt, curve, invert, lo, hi, attack, release)) return;
+            ensure_source_node(src);   // non-audio node:* dest keeps its visible source card + registry wire
+        }
         reg_.connect(src, dst, amt);
         if (auto* m = reg_.find(dst)) {
             m->curve = curve; m->invert = invert; m->out_lo = lo; m->out_hi = hi;
             m->attack = attack; m->release = release; m->primed = false;
         }
     }
+    // ADR-0053 Phase B4: dedup/create the Reactive SOURCE VisualGraph node for a bridge audio source, and
+    // convert a legacy (src,dst) audio→visual pair into that node + a control edge (false when src is not a
+    // migratable audio source or the dst param/node is gone — the caller then keeps the registry wire).
+    int  ensure_reactive_source_node(const std::string& op_type, int track_id);
+    bool add_audio_control_edge(const std::string& src, const std::string& dst, float amount, float curve,
+                                bool invert, float lo, float hi, float attack, float release);
+    // ADR-0053 Phase B4: drop Phase-A AUDIO (master/track) source cards no registry mapping references —
+    // their wire migrated to a control edge. Called after load-migration; keeps cards still backing a
+    // registry mapping and all non-audio ("Other"/viz.*) cards.
+    void prune_orphan_audio_source_nodes();
     // Advance mapping smoothing one frame (dt seconds). Call before apply_params().
     void advance_mappings(float dt) { reg_.advance(dt); }
     // Connect a bridge DATA node's source to op node `op_idx`'s param `local` (the same wire the drop path

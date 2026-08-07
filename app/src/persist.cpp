@@ -1028,6 +1028,10 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                               jm.value("amt", 1.0f), jm.value("curve", 0.0f), jm.value("inv", false),
                               jm.value("lo", 0.0f), jm.value("hi", 1.0f),
                               jm.value("attack", 0.0f), jm.value("release", 0.0f));
+        // ADR-0053 Phase B4: a legacy audio→visual mapping just migrated to a Reactive SOURCE op + control
+        // edge (via add_mapping), leaving its persisted Phase-A teal source card orphaned. Drop those; a
+        // card still backing a registry mapping (a non-migratable / reverse-path source) is kept.
+        g.prune_orphan_audio_source_nodes();
     }
     return true;
 }

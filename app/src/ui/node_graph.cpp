@@ -556,6 +556,110 @@ void NodeGraph::add_data_node(const std::string&, const std::string& source) {
     note_edit_("Add Data Node");   // covers both the Tab chooser and the inspector menu
 }
 void NodeGraph::add_data_node(const std::string& title, int char_id) { add_data_node(title, source_id_for(char_id)); }
+// ADR-0053 Phase B4: parse a bridge audio source id -> the Reactive op that emits it + the value-lane
+// ordinal of its signal. False for non-audio sources (viz.*, node_*, *.fft.*), which keep the registry
+// reverse path. The reactive op's SIGNAL ORDER == the bridge suffix order, so lane = suffix index
+// (master 0..4, then transport 5..8; track 0..7) — keep in lockstep with reactive_master/track.cpp.
+static int reactive_suffix_index(const std::string& suf, const char* const* tbl, int n) {
+    for (int k = 0; k < n; ++k) if (suf == tbl[k]) return k;
+    return -1;
+}
+static bool parse_reactive_source(const std::string& src, std::string& op_type, int& track_id, int& lane) {
+    namespace B = vivid::bridge;
+    if (src.rfind("master.", 0) == 0) {
+        const int k = reactive_suffix_index(src.substr(7), B::kTrackKindSuffixes, 5);   // master exposes kinds 0..4
+        if (k < 0) return false;   // e.g. master.fft.3 — not a migratable scalar signal
+        op_type = "ReactiveMaster"; track_id = -1; lane = k; return true;
+    }
+    if (src.rfind("transport.", 0) == 0) {
+        const int k = reactive_suffix_index(src.substr(10), B::kTransportKindSuffixes, B::kNumTransportKinds);
+        if (k < 0) return false;
+        op_type = "ReactiveMaster"; track_id = -1; lane = 5 + k;   // transport lanes follow the 5 master signals
+        return true;
+    }
+    int tid; std::string rest;
+    if (vivid::parse_track_source(src, tid, rest) && rest.size() > 1 && rest[0] == '.') {
+        const int k = reactive_suffix_index(rest.substr(1), B::kTrackKindSuffixes, B::kNumTrackKinds);
+        if (k < 0) return false;   // e.g. track_2.fft.3
+        op_type = "ReactiveTrack"; track_id = tid; lane = k; return true;
+    }
+    return false;
+}
+
+int NodeGraph::ensure_reactive_source_node(const std::string& op_type, int track_id) {
+    if (!vg_) return -1;
+    // Dedup: reuse an existing Reactive op of this type (matching the bound track_id for ReactiveTrack).
+    for (int i = 0; i < int(vg_->nodes().size()); ++i) {
+        const vivid::VisualNode& n = vg_->nodes()[i];
+        if (n.op_type != op_type) continue;
+        if (op_type != "ReactiveTrack") return n.id;
+        for (int l = 0; l < node_pcount(vg_, i); ++l)
+            if (std::string("track_id") == node_plabel(vg_, i, l)) {
+                if (int(std::lround(op_param_base_at(i, l))) == track_id) return n.id;
+                break;
+            }
+    }
+    // Create it. A single atomic add (safe inside the load rebuild; on a huge LIVE graph this shares the
+    // known incremental-add-node fragility — authoring typically happens on small graphs). Parked in a
+    // left gutter column so a Reactive source doesn't stack on the visual chain.
+    const int idx = vg_->add_node(op_type);
+    if (idx < 0) return -1;
+    if (op_type == "ReactiveTrack")
+        for (int l = 0; l < node_pcount(vg_, idx); ++l)
+            if (std::string("track_id") == node_plabel(vg_, idx, l)) { set_op_param_base_at(idx, l, float(track_id)); break; }
+    sync_op_pos();
+    if (idx >= 0 && idx < int(op_pos_.size())) {
+        int rank = 0;
+        for (int i = 0; i < idx; ++i)
+            if (vg_->nodes()[i].op_type == "ReactiveMaster" || vg_->nodes()[i].op_type == "ReactiveTrack") ++rank;
+        op_pos_[idx] = { bx0_ + 8.f, by0_ + 30.f + rank * 96.f };
+    }
+    return vg_->nodes()[idx].id;
+}
+
+bool NodeGraph::add_audio_control_edge(const std::string& src, const std::string& dst,
+                                       float amount, float curve, bool invert, float lo, float hi,
+                                       float attack, float release) {
+    if (!vg_) return false;
+    std::string op_type; int track_id = -1, lane = -1;
+    if (!parse_reactive_source(src, op_type, track_id, lane)) return false;   // not a migratable audio source
+    if (dst.rfind("node:", 0) != 0) return false;
+    const size_t dot = dst.find('.', 5);
+    if (dot == std::string::npos) return false;   // dst must be node:<id>.<paramName> (not node:<id>:<index>)
+    const int consumer_id = std::atoi(dst.substr(5, dot - 5).c_str());
+    const std::string param = dst.substr(dot + 1);
+    const int cidx = op_index_of_id(consumer_id);
+    if (cidx < 0) return false;
+    int local = -1;
+    for (int l = 0; l < node_pcount(vg_, cidx); ++l)
+        if (param == node_plabel(vg_, cidx, l)) { local = l; break; }
+    if (local < 0) return false;   // param gone — caller keeps the registry wire (still resolvable)
+    const int src_id = ensure_reactive_source_node(op_type, track_id);
+    if (src_id < 0) return false;
+    vivid::VisualControlShape sh;
+    sh.amount = amount; sh.curve = curve; sh.invert = invert; sh.out_lo = lo; sh.out_hi = hi;
+    sh.attack = attack; sh.release = release;
+    vg_->set_param_control(cidx, local, src_id, lane, sh);
+    return true;
+}
+
+void NodeGraph::prune_orphan_audio_source_nodes() {
+    bool changed = false;
+    for (size_t i = 0; i < nodes_data_.size(); ) {
+        const SourceNode& n = nodes_data_[i];
+        const bool audio = (n.kind == SourceKind::Master || n.kind == SourceKind::Track);
+        bool referenced = false;
+        if (audio)
+            for (const auto& o : n.outs) {
+                for (const auto& m : reg_.mappings()) if (m.source == o.source) { referenced = true; break; }
+                if (referenced) break;
+            }
+        if (audio && !referenced) { nodes_data_.erase(nodes_data_.begin() + i); changed = true; }
+        else ++i;
+    }
+    if (changed) ++data_gen_;   // ADR-0028: source set shrank — invalidate cached publish->output indices
+}
+
 void NodeGraph::ensure_source_node(const std::string& src) {
     if (src.empty() || find_source_node(src) >= 0) return;   // idempotent — the source already has an output
 
