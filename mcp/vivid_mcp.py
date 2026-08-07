@@ -865,10 +865,11 @@ def explain_tradeoffs(a: dict, b: dict, criteria: list[str] | None = None) -> di
 
 @mcp.tool
 def analyze_visual_motion(duration_seconds: float = 2.0) -> dict:
-    """Measure motion/change in the visual output over a short window. Each call samples the LIVE output;
-    poll it a few times across your window to accumulate samples (motion = the inter-sample change).
-    Returns motion_score (0..1), inter_frame_change, is_moving, samples, span_seconds. The first call
-    just seeds the window — call again to get a reading."""
+    """Measure motion/change in the visual output over a recent window. Reliable in a SINGLE call — the
+    app samples the output into a rolling ring at ~12fps while running, so you no longer need to poll to
+    accumulate. Returns motion_score (0..1), inter_frame_change, is_moving, samples, span_seconds. The
+    app must be PLAYING for motion to register. For audio-reactivity (not just 'is it moving'), use
+    analyze_output(mode='av')."""
     return _post("analyze_visual_motion", {"duration_seconds": duration_seconds})
 
 
@@ -878,6 +879,47 @@ def summarize_visual_output(duration_seconds: float = 2.0) -> dict:
     contrast, activity, dominant colors, blank state) plus recent motion. A quick 'what's on screen, and
     is it moving?' check."""
     return _post("summarize_visual_output", {"duration_seconds": duration_seconds})
+
+
+@mcp.tool
+def analyze_output(mode: str = "frame", window_seconds: float = 3.0, node_id: str = "") -> dict:
+    """Analyze the live runtime output — the primary 'measure a change' tool for reactive visuals.
+
+    Modes:
+      mode="frame" — current-frame perception: brightness, contrast, activity, blank state, hash.
+      mode="audio" — windowed master energy sampled at the frame rate: rms, transient, band_low/mid/
+        high, onsets.
+      mode="av"    — three complementary reactivity lenses over the window:
+
+        1. Per-axis correlations — Pearson r between audio energy and each visual axis. Best for
+           continuous coupling (an audio envelope drives a parameter directly):
+             energy_brightness_correlation, energy_motion_correlation, energy_contrast_correlation.
+           (energy_motion_correlation catches displacement/position reactivity that doesn't change
+           brightness.)
+        2. Onset-aligned reactivity — for each detected audio onset, did the visual change within
+           ~400ms? Best for percussive / feedback-rich graphs where smoothing or visual decay shifts
+           the visual peak relative to the audio peak (Pearson breaks down there):
+             detected_onsets, onset_response_rate (0..1), reactivity_latency_ms (median onset→peak).
+        3. Per-band correlations — energy split by band (bass/mid/treble). Surfaces selective coupling
+           (e.g. bass→motion works, treble→motion doesn't):
+             band_brightness_correlations.{bass,mid,treble}, band_motion_correlations.{...},
+             band_contrast_correlations.{...}.
+
+    Use ALL THREE lenses: overall correlation ≈ 0 with a HIGH onset_response_rate does NOT mean the
+    graph is dead — it's event-driven reactivity Pearson can't see; trust onset_response_rate there.
+    Feedback/smoothing can even make correlation NEGATIVE while onset_response_rate stays valid.
+
+    Trustworthy thresholds (mechanically-working, not aesthetic pass/fail): onset_response_rate > 0.7
+    (percussive), energy_motion_correlation > 0.5 (continuous), reactivity_latency_ms < 300,
+    motion_magnitude 0.05–0.3, mean_brightness 0.05–0.4.
+
+    The app must be PLAYING and settled (~0.5–4s after load) or av mode returns
+    status='insufficient_samples' — that means "no history yet", not "dead". window_seconds defaults to
+    3 (av needs a few seconds). node_id is accepted but currently scoped to the whole output."""
+    payload: dict = {"mode": mode, "window_seconds": window_seconds}
+    if node_id:
+        payload["node_id"] = node_id
+    return _post("analyze_output", payload)
 
 
 @mcp.tool
@@ -2074,6 +2116,83 @@ def compare_audio_to_intent(intent: str = "", reference_path: str = "", window_s
         return r
     return {"ok": True, "match_score": r.get("match_score"),
             "key_deviations": r.get("key_deviations", []), "summary": r.get("summary")}
+
+
+# ---- Reactive-visuals loop: multimodal Gemini visual judge (the taste lens) ----
+
+def _veval_poll(job_id: int, timeout_s: float) -> dict:
+    """Poll visual_eval_result until the async Gemini job finishes (or times out)."""
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        r = _post("visual_eval_result", {"job_id": job_id})
+        if r.get("ok") is False or r.get("status") in ("done", "error"):
+            return r
+        time.sleep(1.0)
+    return {"ok": False, "status": "timeout", "error": "visual eval timed out"}
+
+
+@mcp.tool
+def configure_visual_eval_backend(backend: str = "gemini", api_key: str = "", model: str = "") -> dict:
+    """Configure the Gemini backend for the multimodal VISUAL judge. Shares the key with the music-eval
+    backend (setting it here sets it for both). Verify with visual_eval_status that has_key is true
+    before trusting any verdict."""
+    return _post("configure_visual_eval_backend", {"backend": backend, "api_key": api_key, "model": model})
+
+
+@mcp.tool
+def visual_eval_status() -> dict:
+    """Report the visual-judge backend readiness: {backend, ready, has_key, model}. has_key=false means
+    every evaluate/compare call fails closed (no fabricated verdict) until a Gemini key is configured."""
+    return _post("visual_eval_status")
+
+
+@mcp.tool
+def visual_eval_result(job_id: int) -> dict:
+    """Poll a visual-judge job: {status: pending|done|error, ...}. The evaluate_visual_reactivity /
+    compare_visual_to_intent tools poll this for you."""
+    return _post("visual_eval_result", {"job_id": job_id})
+
+
+@mcp.tool
+def evaluate_visual_reactivity(intent: str = "", window_seconds: float = 4.0, frames: int = 12,
+                               include_payload: bool = False) -> dict:
+    """The qualitative taste lens: assemble a frame-strip montage of the live output over the last
+    `window_seconds` (plus the audio-energy series) and have Gemini judge whether the visual is REACTIVE
+    (changes look caused by the audio), LEGIBLE (a viewer can see the music driving the form — punctual
+    bursts or large monotonic moves, not generic wiggle), and on-intent. Returns booleans + 0..1 scores
+    + concrete issues[] and actionable fixes[] + a summary. Pair with analyze_output(mode='av') for the
+    hard numbers. Requires a configured Gemini key (configure_visual_eval_backend); fails closed
+    otherwise — never a fabricated verdict. The app must be PLAYING. Blocks ~5-15s while Gemini runs."""
+    started = _post("evaluate_visual_reactivity",
+                    {"intent": intent, "window_seconds": window_seconds, "frames": frames})
+    if not started.get("ok") or "job_id" not in started:
+        return started
+    r = _veval_poll(started["job_id"], max(30.0, window_seconds + 90.0))
+    if include_payload or not r.get("ok", True):
+        return r
+    return {"ok": True, "reactive": r.get("reactive"), "legible": r.get("legible"),
+            "on_intent": r.get("on_intent"), "issues": r.get("issues", []),
+            "fixes": r.get("fixes", []), "summary": r.get("summary")}
+
+
+@mcp.tool
+def compare_visual_to_intent(intent: str = "", reference_path: str = "", window_seconds: float = 4.0,
+                             frames: int = 12, include_payload: bool = False) -> dict:
+    """Judge the live visual against a free-text intent and/or a REFERENCE IMAGE (the intended look) —
+    the visual analog of compare_audio_to_intent. Builds a montage of the live output and (if given)
+    sends the reference image alongside. Returns reactive/legible/on_intent booleans + scores + issues[]
+    + fixes[] + summary. Requires a configured Gemini key; fails closed otherwise. Blocks ~5-15s."""
+    started = _post("compare_visual_to_intent",
+                    {"intent": intent, "reference_path": reference_path,
+                     "window_seconds": window_seconds, "frames": frames})
+    if not started.get("ok") or "job_id" not in started:
+        return started
+    r = _veval_poll(started["job_id"], max(30.0, window_seconds + 90.0))
+    if include_payload or not r.get("ok", True):
+        return r
+    return {"ok": True, "reactive": r.get("reactive"), "legible": r.get("legible"),
+            "on_intent": r.get("on_intent"), "intent_score": r.get("intent_score"),
+            "issues": r.get("issues", []), "fixes": r.get("fixes", []), "summary": r.get("summary")}
 
 
 if __name__ == "__main__":

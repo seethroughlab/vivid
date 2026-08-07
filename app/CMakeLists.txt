@@ -223,6 +223,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/window_prefs.cpp
     src/app/app_settings.cpp
     src/app/video_recorder.cpp
+    src/app/reactivity_ring.cpp
     src/app/operator_clone.cpp
     src/app/runtime_health.cpp
     src/app/runtime_health_collect.cpp
@@ -268,6 +269,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/platform/gemini_client_stub.cpp
     src/platform/secret_store_stub.cpp
     src/audio/music_eval.cpp
+    src/audio/visual_eval.cpp
     src/persist.cpp
     src/persist_undo.cpp
     src/operator_api/operator_descriptor_validation.cpp
@@ -300,6 +302,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/cli/control_handlers_packages.cpp
     src/cli/control_handlers_edit.cpp
     src/cli/control_handlers_music_eval.cpp
+    src/cli/control_handlers_visual_eval.cpp
     src/cli/control_handlers_video_export.cpp
     src/cli/edit_methods.cpp
     src/ui/renderer_2d.cpp

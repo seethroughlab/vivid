@@ -31,6 +31,7 @@
 #include "ui/preset_popover.h"
 #include "ui/clip_editor.h"
 #include "transport.h"
+#include <chrono>
 #include "audio/vst3_host.h"
 #include "audio/mini_fft.h"   // frame-side spectrum for the <src>.fft.k bridge sources
 #include "operator_api/note_bus.h"   // publish each track's held notes for the note-instancer op
@@ -882,13 +883,21 @@ void run_frame_loop(App& app, Window& win) {
             draw_perf_hud(ui, win);   // always-on FPS / frame-time read-out, drawn last (on top)
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
             gpu.end_frame(frame);
-            // Video export (realtime): this frame's Output RT is now submitted to the queue, so
-            // read it back + drain the audio tap into the AV writer. Only touches the GPU while a
-            // recording is active. A true return means a timed export just auto-stopped — toast it.
-            if (app.recorder && app.recorder->is_recording()) {
+            // This frame's Output RT is now submitted to the queue and can be read back. TWO consumers
+            // want it: the reactive-visuals perception ring (throttled ~12fps, always-on so a single
+            // analyze_output call sees a real time-series) and the realtime video recorder (only while
+            // recording). Read back ONCE and feed both. The ring is frame-thread only — no locks.
+            const double react_now = std::chrono::duration<double>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            const bool recording = app.recorder && app.recorder->is_recording();
+            const bool sample_react = app.reactivity.due(react_now);
+            if (recording || sample_react) {
                 std::vector<uint8_t> rgba; uint32_t rw = 0, rh = 0;
                 const bool got = vgraph.read_output_pixels(rgba, rw, rh);
-                if (app.recorder->tick(got ? rgba.data() : nullptr, rw, rh, transport)) {
+                if (got && sample_react)
+                    app.reactivity.push(rgba.data(), rw, rh, transport, react_now);
+                // A true return means a timed export just auto-stopped — toast it.
+                if (recording && app.recorder->tick(got ? rgba.data() : nullptr, rw, rh, transport)) {
                     const auto st = app.recorder->status();
                     char m[192];
                     std::snprintf(m, sizeof m, "Video exported: %s (%llu frames, %.1fs)",

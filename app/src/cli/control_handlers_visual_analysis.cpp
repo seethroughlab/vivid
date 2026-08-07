@@ -8,6 +8,7 @@
 #include "cli/image_analysis_tools.h"
 #include "gpu/visual_graph.h"
 #include "platform/platform.h"
+#include "app/app.h"                    // c.app->reactivity (the per-frame perception ring)
 
 #include <algorithm>
 #include <chrono>
@@ -22,38 +23,10 @@
 namespace vivid {
 namespace {
 
-// ADR-0024 Phase 6 tail: motion is measured ACROSS calls. The output render target only advances once
-// per frame-loop tick and a control handler runs synchronously within one tick, so a single call can
-// only ever see one frame. Instead, each analyze_visual_motion / summarize_visual_output call captures
-// the live output's signature (average-hash + brightness) and appends it here; motion is the inter-
-// sample change over the recent window. An agent polls a few times over its window to fill it. This
-// keeps the render loop untouched and costs a GPU readback only while actively polled. Main-thread
-// only (control-server process_pending is single-threaded).
-struct MotionRing {
-    struct Sample { std::string hash; double brightness; double activity; double t; };
-    std::deque<Sample> s;
-    void push(std::string h, double b, double a, double t, double window) {
-        s.push_back({ std::move(h), b, a, t });
-        while (s.size() > 64) s.pop_front();
-        while (s.size() > 2 && t - s.front().t > window) s.pop_front();   // keep >=2 so motion is always computable
-    }
-    json motion(double window) const {
-        if (s.size() < 2)
-            return { {"samples", static_cast<int>(s.size())}, {"span_seconds", 0.0},
-                     {"inter_frame_change", 0.0}, {"motion_score", 0.0}, {"is_moving", false}, {"brightness_range", 0.0} };
-        double sumHam = 0.0; int pairs = 0; double bmin = 1e9, bmax = -1e9;
-        for (size_t i = 0; i < s.size(); ++i) {
-            bmin = std::min(bmin, s[i].brightness); bmax = std::max(bmax, s[i].brightness);
-            if (i > 0) { sumHam += hash_hamming(s[i - 1].hash, s[i].hash); ++pairs; }
-        }
-        const double meanHam = pairs ? sumHam / pairs : 0.0;
-        const double span = s.back().t - s.front().t;
-        return { {"samples", static_cast<int>(s.size())}, {"span_seconds", span},
-                 {"inter_frame_change", meanHam}, {"motion_score", std::min(1.0, meanHam / 32.0)},
-                 {"is_moving", meanHam > 3.0}, {"brightness_range", bmax - bmin} };
-    }
-};
-MotionRing g_motion;   // main-thread only
+// Reactive-visuals loop: motion is no longer measured across calls. The frame loop pushes a sample
+// per ~12fps into App::reactivity (visual metrics + the same-frame master-audio energy), so a SINGLE
+// call reads a genuine time-series. These handlers just read c.app->reactivity — no readback here.
+// The ring and these handlers both run on the frame/UI thread (process_pending), so this is race-free.
 double steady_seconds() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 
 }  // namespace
@@ -214,28 +187,24 @@ void register_visual_analysis_handlers(Handlers& handlers_) {
                                          : (std::to_string(tradeoffs.size()) + " notable difference(s) between A and B");
         return r;
     };
-    // ADR-0024 Phase 6 tail: motion over a short window. Each call samples the live output; poll a few
-    // times across your window to accumulate. Returns motion_score / inter_frame_change / is_moving.
+    // Motion over a recent window, read from the always-on reactivity ring. Reliable in a SINGLE call
+    // now (the frame loop fills the ring at ~12fps). `duration_seconds` sets the window. The app must
+    // be playing for motion to register.
     handlers_["analyze_visual_motion"] = [](const ControlCtx& c, const json& b) {
-        if (!c.vgraph) return err(code::kNoVgraph, "no visual graph");
-        std::vector<uint8_t> px; uint32_t w = 0, h = 0;
-        if (!c.vgraph->read_output_pixels(px, w, h)) return err(code::kBadArg, "no visual output to sample (nothing feeds the Output node)");
-        const json a = analyze_rgba(px.data(), w, h);
+        if (!c.app) return err(code::kBadArg, "no app context");
         const double window = b.value("duration_seconds", 2.0);
-        g_motion.push(a.value("hash", std::string()), a.value("brightness", 0.0), a.value("activity", 0.0), steady_seconds(), window);
+        const json m = c.app->reactivity.motion(window, steady_seconds());
         json r = ok();
-        r.update(g_motion.motion(window));
-        r["current"] = { {"brightness", a.value("brightness", 0.0)}, {"activity", a.value("activity", 0.0)}, {"is_blank", a.value("is_blank", false)} };
-        const int n = r.value("samples", 0);
+        r.update(m);
+        const int n = m.value("samples", 0);
         r["summary"] = n < 2
-            ? "sampling — call again across your window to measure motion (samples accumulate across calls)"
-            : (r.value("is_moving", false)
-                   ? "moving (avg change " + std::to_string(r.value("inter_frame_change", 0.0)) + "/sample over " + std::to_string(n) + " samples)"
+            ? "no motion history yet — is the app playing? (the ring fills at ~12fps while running)"
+            : (m.value("is_moving", false)
+                   ? "moving (avg change " + std::to_string(m.value("inter_frame_change", 0.0)) + "/sample over " + std::to_string(n) + " samples)"
                    : "static / near-static over " + std::to_string(n) + " samples");
         return r;
     };
-    // ADR-0024 Phase 6 tail: a rolled-up view of the live output — the current frame's perception plus
-    // recent motion, in one call.
+    // A rolled-up view of the live output — the current frame's perception plus recent motion, one call.
     handlers_["summarize_visual_output"] = [](const ControlCtx& c, const json& b) {
         if (!c.vgraph) return err(code::kNoVgraph, "no visual graph");
         std::vector<uint8_t> px; uint32_t w = 0, h = 0;
@@ -244,16 +213,67 @@ void register_visual_analysis_handlers(Handlers& handlers_) {
         }
         const json a = analyze_rgba(px.data(), w, h);
         const double window = b.value("duration_seconds", 2.0);
-        g_motion.push(a.value("hash", std::string()), a.value("brightness", 0.0), a.value("activity", 0.0), steady_seconds(), window);
         json r = ok();
         r["frame"] = a;
-        r["motion"] = g_motion.motion(window);
+        r["motion"] = c.app ? c.app->reactivity.motion(window, steady_seconds())
+                            : json{ {"samples", 0}, {"motion_score", 0.0}, {"is_moving", false} };
         r["summary"] = a.value("is_blank", false)
             ? ("Output is BLANK (" + a.value("blank_reason", std::string()) + ")")
             : (std::to_string(w) + "x" + std::to_string(h) + ": brightness=" + std::to_string(a.value("brightness", 0.0)) +
                ", activity=" + std::to_string(a.value("activity", 0.0)) +
                (r["motion"].value("is_moving", false) ? ", MOVING" : ", static"));
         return r;
+    };
+    // Reactive-visuals loop: the primary "measure a change" tool. Three modes over the reactivity ring:
+    //   mode="frame" — current-frame perception (brightness/contrast/activity/blank/hash)
+    //   mode="audio" — windowed master energy/bands/onsets sampled at the frame rate
+    //   mode="av"    — the three reactivity lenses: per-axis correlations (energy↔brightness/motion/
+    //                  contrast), per-band correlations, and onset-aligned response rate + latency.
+    // Read all three av lenses: overall correlation ≈ 0 with a high onset_response_rate is not "dead"
+    // — it's event-driven reactivity that Pearson can't see. window_seconds defaults to 3 (av needs a
+    // few seconds of history). node_id is accepted but currently scoped to the whole output.
+    handlers_["analyze_output"] = [](const ControlCtx& c, const json& b) {
+        if (!c.app) return err(code::kBadArg, "no app context");
+        const std::string mode = b.value("mode", std::string("frame"));
+        const double now = steady_seconds();
+        json r = ok();
+        r["mode"] = mode;
+        if (mode == "frame") {
+            if (!c.vgraph) return err(code::kNoVgraph, "no visual graph");
+            std::vector<uint8_t> px; uint32_t w = 0, h = 0;
+            if (!c.vgraph->read_output_pixels(px, w, h))
+                return err(code::kBadArg, "no visual output to capture (nothing feeds the Output node)");
+            const json a = analyze_rgba(px.data(), w, h);
+            r["metrics"] = { {"frame", a} };
+            r["summary"] = a.value("is_blank", false)
+                ? ("Frame is BLANK (" + a.value("blank_reason", std::string()) + ")")
+                : ("brightness=" + std::to_string(a.value("brightness", 0.0)) +
+                   ", contrast=" + std::to_string(a.value("contrast", 0.0)) +
+                   ", activity=" + std::to_string(a.value("activity", 0.0)));
+            return r;
+        }
+        const double window = b.value("window_seconds", 3.0);
+        if (mode == "audio") {
+            r["metrics"] = { {"audio", c.app->reactivity.audio_window(window, now)} };
+            r["summary"] = "windowed audio energy over " + std::to_string(window) + "s";
+            return r;
+        }
+        if (mode == "av") {
+            const json av = c.app->reactivity.av_metrics(window, now);
+            r["metrics"] = { {"reactivity", av} };
+            if (av.value("status", std::string()) == "insufficient_samples") {
+                r["summary"] = "insufficient samples — is the app playing? call again after ~0.5s";
+            } else {
+                char buf[192];
+                std::snprintf(buf, sizeof buf,
+                    "onset_response_rate=%.2f, energy_motion_corr=%.2f, latency=%.0fms over %d samples",
+                    av.value("onset_response_rate", 0.0), av.value("energy_motion_correlation", 0.0),
+                    av.value("reactivity_latency_ms", 0.0), av.value("samples", 0));
+                r["summary"] = buf;
+            }
+            return r;
+        }
+        return err(code::kBadArg, "unknown mode '" + mode + "' (expected frame|audio|av)");
     };
 }
 

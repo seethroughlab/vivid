@@ -93,6 +93,7 @@ void ControlServer::register_handlers() {
     register_introspection_handlers(handlers_);   // ---- status/version/health + discovery ----
     register_visuals_handlers(handlers_);   // ---- visuals construction ----
     register_visual_analysis_handlers(handlers_);   // ---- ADR-0024 Phase 6: visual perception ----
+    register_visual_eval_handlers(handlers_);       // ---- reactive-visuals loop: multimodal visual judge ----
 
     register_mappings_handlers(handlers_);   // ---- mapping (the bridge) ----
 
