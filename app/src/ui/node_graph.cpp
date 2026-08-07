@@ -956,6 +956,33 @@ bool NodeGraph::op_param_wired_at(int i, int local) const {
     return vg_->nodes()[i].control_edge_for(local) != nullptr;
 }
 
+// ADR-0053 Phase B: control-edge persistence accessors. Save exports the target param by NAME (resolved
+// back to an index on load, robust to a param reorder across versions) + the source's stable id + the
+// value-lane ordinal + the shape. The reactive SOURCE nodes themselves persist as ordinary chain nodes.
+int NodeGraph::op_control_edge_count(int i) const {
+    return op_node_valid(vg_, i) ? int(vg_->nodes()[i].control_edges.size()) : 0;
+}
+bool NodeGraph::get_op_control_edge(int i, int e, std::string& param, int& src_node, int& src_lane,
+                                    vivid::VisualControlShape& sh) const {
+    if (!op_node_valid(vg_, i)) return false;
+    const auto& ces = vg_->nodes()[i].control_edges;
+    if (e < 0 || e >= int(ces.size())) return false;
+    const auto& ce = ces[e];
+    const char* pn = (ce.param_index >= 0 && ce.param_index < node_pcount(vg_, i))
+                   ? node_plabel(vg_, i, ce.param_index) : "";
+    param = pn ? pn : ""; src_node = ce.src_node; src_lane = ce.src_lane; sh = ce.shape;
+    return true;
+}
+void NodeGraph::load_op_control_edge(int i, const std::string& param, int src_node, int src_lane,
+                                     const vivid::VisualControlShape& sh) {
+    if (!vg_ || !op_node_valid(vg_, i) || param.empty()) return;
+    int local = -1;
+    for (int l = 0; l < node_pcount(vg_, i); ++l)
+        if (param == node_plabel(vg_, i, l)) { local = l; break; }
+    if (local < 0) return;   // the target param is gone (op type changed) — drop the edge, like a dead texture edge
+    vg_->set_param_control(i, local, src_node, src_lane, sh);
+}
+
 // Curated body params: the param indices shown as rows on node i, in index order. A param appears iff it
 // is pinned OR wired — a connection is always visible so its wire has an endpoint (see the param-wire draw
 // pass). Empty for a fresh/uncurated node => the card is collapsed. One source of truth for card_ports()

@@ -222,7 +222,14 @@ public:
     float op_param_value_at(int i, int local) const;     // resolved (base + modulation)
     const char* op_file_param_at(int i, int local) const;         // FILE/TEXT param string ("" if none)
     void  set_op_file_param_at(int i, int local, const std::string& v);
-    bool  op_param_wired_at(int i, int local) const;     // a data source drives it
+    bool  op_param_wired_at(int i, int local) const;     // a data source OR a control edge drives it
+    // ADR-0053 Phase B: control-edge persistence (op index i). Edges are saved with the target param by
+    // NAME (resolved to an index on load, robust to param reorder) + the source's stable id + lane + shape.
+    int   op_control_edge_count(int i) const;
+    bool  get_op_control_edge(int i, int e, std::string& param, int& src_node, int& src_lane,
+                              vivid::VisualControlShape& sh) const;
+    void  load_op_control_edge(int i, const std::string& param, int src_node, int src_lane,
+                               const vivid::VisualControlShape& sh);   // load path (no undo note)
     // Curated body params (pure UI curation): the ordered param indices SHOWN as rows on node `i`'s card.
     // = the node's pinned set UNION any wired param (a connection is always shown so a wire never dangles).
     // A fresh/uncurated node returns empty -> collapsed. Mirrors AudioNodeGraph::exposed_params.
