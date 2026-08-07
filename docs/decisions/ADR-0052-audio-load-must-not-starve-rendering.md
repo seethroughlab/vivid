@@ -1,121 +1,92 @@
-# ADR-0052: Audio Load Must Not Starve Rendering
+# ADR-0052: Don't Block the Render Thread on Per-Frame O(N) Work
 
-Status: proposed
+Status: accepted (corrected)
 
 Date: 2026-08-07
 
-> **Origin.** Raised by a live performance investigation: the `grid` demo rendered at ~34fps while the
-> visually-equivalent, audio-free `geometry` demo ran at the 59fps vsync cap. Every claim below was
-> measured on a running app (`get_perf`, thread sampling) and cross-checked against the code by three
-> independent explorations of the audio thread model, the plugin path, and the render↔audio coupling.
+> **Correction (2026-08-07).** This ADR was first written to conclude that hosted-audio CPU load was
+> *starving the render thread* via core-scheduling contention, and proposed a plugin voice governor +
+> render-thread QoS. **That diagnosis was wrong — it was confounded by transient machine load.** A
+> clean measurement on a quiet machine found the real cause: a per-frame O(N) scan of the entire audio
+> clip in the *UI thread* (waveform preview). The ADR is retained, corrected, because (a) its audit of
+> the audio architecture stands and is worth keeping, and (b) the corrected finding yields a real,
+> durable invariant. The original decision (voice governor / QoS) is **withdrawn** — see below.
 
 ## Context
 
-A handful of synth tracks should never cost visual framerate. In Vivid they do:
+The investigation began from: the `grid` demo (2 Surge XT instances) rendered far below the
+audio-free `geometry` demo, and "a handful of synth tracks should never cost visual framerate."
 
-- `geometry` demo (real wireframe geometry, **0 audio tracks**): **59fps** (60Hz FIFO/vsync cap).
-- `grid` demo (the *same* kind of geometry + **2 Surge XT** synth instances): **34fps**.
-
-The visuals are not the cause — identical geometry with no audio hits the vsync cap, and output
-resolution (2× supersample → 0.5×) made no difference, confirming the render is cheap and GPU-bound.
-
-**The audio architecture is correct.** The investigation found no structural coupling to remove:
+**What the audit got right — the audio architecture is sound.** This part holds and is the reason to
+keep the ADR:
 
 - Audio runs on **miniaudio's own real-time CoreAudio thread**; the device is started once
   (`app/src/main.cpp:297-335`) and the callback (`app/src/audio/audio_callback.cpp:17-103`) does all
-  DSP there. `session_process` (`app/src/audio/vst3_host.cpp:2216`) is never called from the frame
-  loop.
-- All plugin `process()` calls (`app/src/audio/vst3_host_render.cpp` — VST3 `:121/:172`, CLAP
-  `clap_run` `:201/:222`) run on that RT thread, holding **no session lock** (`process_step` at
-  `vst3_host.cpp:2599` is outside every lock region).
+  DSP there. `session_process` (`app/src/audio/vst3_host.cpp:2216`) is never called from the frame loop.
+- All plugin `process()` calls run on that RT thread holding **no session lock**; the RT thread only
+  `try_lock`s and drops on contention, so heavy DSP **cannot block** the render thread.
 - The audio→visual bridge the frame loop reads (`transport.level/transient/band_*`, `beats`) is
-  **lock-free relaxed atomics + SPSC rings** (`app/src/transport.h:17-22`, read at
-  `app/src/app/frame.cpp:257-265`). The RT thread only ever `try_lock`s the session mutexes and drops
-  on contention (`vst3_host.cpp:2202/2232/2244/…`), so heavy DSP can never block the render thread.
-- Present is `WGPUPresentMode_Fifo` (vsync). There is no semaphore, condition variable, or
-  audio-buffer wait anywhere in the present/frame path.
+  **lock-free relaxed atomics + SPSC rings** (`app/src/transport.h`, read at `app/src/app/frame.cpp`).
+- Present is `WGPUPresentMode_Fifo` (vsync); there is no semaphore, condition variable, or audio-buffer
+  wait anywhere in the present/frame path.
 
-**So the coupling is soft: CPU / core-scheduling contention, not a lock or a sync gate.** The
-mechanism:
+**What the audit got wrong — the diagnosis.** The original ADR concluded the drop was *soft
+CPU/core-scheduling contention* (the RT audio thread preempting the render thread). Every number
+behind that conclusion (34/20/18fps, "process at ~74% of one core, descheduled") turned out to be
+**transient contention from other processes on the dev machine** (concurrent builds, indexing),
+not audio preempting the renderer. Three independent checks falsify the audio-coupling theory:
 
-1. `34fps ≈ 29ms/frame` is **not** a clean vsync divisor (30 would be), so the frame is
-   **wall-time-bound**, not vsync-bound — ~12ms of extra wall time lands on the render thread per
-   frame when the plugins run.
-2. Live sampling showed the process at only **~74% of one core** (not saturated) with the main thread
-   hot in UI rendering + **per-frame GPU buffer creation** (`wgpu StagingBuffer::new` / `create_buffer`
-   in `Renderer2D`). A 74%-of-one-core process running at 34fps means the render thread is being
-   **descheduled**, not out-computed.
-3. The two Surge instances have **spiky, uncapped DSP** on the **high-priority** RT audio thread. The
-   audio period was deliberately raised to **1024 frames (~23ms)** (`app/src/main.cpp:309`) to absorb
-   Surge voice-stacking cost spikes. When that RT thread bursts, the OS preempts the normal-priority
-   render/main thread mid-frame, stretching the frame from ~16ms to ~29ms → missed vsync deadlines.
+1. **Grid playing == grid stopped** (~46 ≈ 47fps). If audio DSP were stealing render time, stopping
+   playback would recover it. It didn't.
+2. **Multi-core audio parallel == serial** (PR #283 A/B, no FPS change). If the single serial audio
+   loop were the bottleneck, fanning it across cores would help. It didn't.
+3. **Quiet-machine thread sample:** ~99% of the main-thread frame (705/713 samples) was in
+   `draw_ui → draw_clip_preview → session_audio_waveform` — a **UI** call, on the **render** thread,
+   with playback state irrelevant.
 
-The **root architectural gap**: Vivid imposes **no polyphony, voice, oversampling, or CPU governor on
-hosted plugins**. Plugin creation passes only sample rate and max block size
-(`app/src/audio/vst3_host_clap_loader.cpp:56-116`); Surge runs at whatever its patch specifies (default
-16 voices, often + unison + higher-quality oscillators). Nothing scales that load down, and the render
-thread has no scheduling protection from it. As the tool takes on real songs (many tracks, rich
-patches), rendering will degrade unboundedly — the perception loop, live authoring, and showcase
-capture all depend on a stable framerate.
+**The real root cause.** `session_audio_waveform()` recomputes 48 peak bins by scanning the **entire**
+audio clip (millions of samples) — and the session view called it **every frame** for every audio-clip
+cell. The PCM never changes between frames. The frame was **render-work-bound on redundant UI work**,
+not vsync- or audio-blocked. Fixed in **PR #284**: cache the peak-per-bin result on `AudioClip`
+(`mutable wave_bins_`, invalidated on bin-count or sample-data change), UI-thread only, no sync.
+**Grid 46 → ~73fps** (audio-free ceiling ~79); `draw_clip_preview` fell from 705 samples to 3.
 
 ## Decision
 
-**Adopt the invariant: hosted-audio CPU load must not be able to starve the render thread.** Enforce it
-on two independent axes so neither is a single point of failure:
+**Invariant: the render/frame thread must not perform per-frame work whose cost scales with content
+size (O(N) over PCM, geometry, file data, …).** Such work must be cached and invalidated on change, or
+moved off the render thread. Redundant per-frame recomputation — not audio load — is the demonstrated
+threat to framerate.
 
-1. **A hosted-plugin performance governor (audio side).** Cap and, under sustained overrun, scale down
-   the DSP cost of hosted synths so no patch can monopolize the RT thread:
-   - Set a **voice ceiling** and disable oversampling on load where the plugin exposes it via CLAP/VST3
-     params (Surge XT does), at `vst3_host_clap_loader.cpp` load time — a sane default (e.g. 8 voices,
-     no oversampling) with a per-track override.
-   - Extend the existing over-budget watchdog (ADR-0045) from *fault isolation* to *graceful
-     degradation*: when a plugin trends over its RT budget, first **reduce its voice cap** (a param
-     push, RT-safe) before the hard disable, and surface it as a toast.
+Concretely:
 
-2. **Render-thread scheduling protection (render side).** Give the frame/present thread a QoS that the
-   RT audio thread cannot indefinitely preempt on contention — set the main/render thread to
-   `USER_INTERACTIVE` QoS (macOS `pthread_set_qos_class_self_np`) at frame-loop start, so the scheduler
-   keeps a render slice under audio bursts. Validate that this does not regress audio (the audio thread
-   remains real-time priority; this only raises render from default).
+- Per-frame UI previews (waveforms, spectra, thumbnails) **cache their derived result** and rebuild only
+  on a real input change (size/ptr/hash), as PR #284 does for the clip waveform.
+- Watch for the same shape elsewhere in the immediate-mode UI: MIDI-clip previews, node-graph
+  waveforms, any preview that re-derives from raw content each frame.
+- The residual grid gap (73 vs 79fps) is the general immediate-mode `Renderer2D` re-emitting all UI
+  vertices per frame — inherent, broad, and low-leverage; not a single pathological scan. Batch/persist
+  only if a future profile shows it dominating.
 
-Additionally, **remove the per-frame GPU buffer churn** the profile exposed (reuse persistent
-uniform/vertex/staging buffers in `Renderer2D` and any op that recreates buffers each frame) so the
-render frame has budget headroom — with margin under 16ms, an occasional preemption no longer tips the
-frame past the vsync deadline.
+**Withdrawn from the original decision.** The plugin voice/oversampling governor and the render-thread
+QoS promotion are **not adopted** — they targeted a mechanism that does not exist here. They would have
+changed how patches sound (the governor) or added scheduling complexity (QoS) to fix a non-problem.
+Re-propose only if a *measured* audio-preemption case ever appears.
 
-These are complementary: (1) bounds the aggressor, (2) protects the victim, (3) widens the margin.
+## Related: multi-core audio (PR #283)
 
-## Alternatives Considered
-
-- **Tighten / remove locks between audio and render.** Rejected — the investigation proved there is no
-  lock coupling: the RT thread never blocks on a session mutex during DSP, and the bridge is lock-free.
-  There is no lock to remove.
-- **Lower the audio period (1024 → 512/256).** Reduces burst length and preemption impact, but the
-  period was raised to 1024 *specifically* to stop Surge voice-stacking spikes from overrunning the
-  deadline and crackling. Lowering it trades framerate for audio glitches. Worth testing as a tunable,
-  but not the primary fix.
-- **Just ship lighter demo patches.** Fixes the `grid` demo but not the class of problem — the next
-  real song with rich patches regresses again. It is a good *immediate* mitigation for the current
-  demos (and pairs with replacing the heavy bass patch), not the architectural answer.
-- **Cap the frame rate to 30fps and stop fighting it.** Unacceptable: the perception/eval loop, live
-  authoring feel, and 1080p showcase capture all want a stable 60.
-- **Do nothing / accept it.** Explicitly rejected by the product need ("a few tracks can't tank the
-  fps").
+The track-parallel audio engine prototyped during this investigation is **valid, but it is not a
+render-FPS fix** (see falsification #2). It is retained and merged purely as an **audio-headroom** win:
+many-plugin sessions can fan tracks across cores. Kept decoupled from anything render-side.
 
 ## Consequences
 
-- **Positive:** framerate becomes resilient to audio load — the defining property we want. A single
-  heavy patch, or many tracks, can no longer starve rendering; the perception loop and showcase capture
-  stay stable.
-- **Positive:** the buffer-reuse cleanup is a straight render-thread win independent of audio.
-- **Tradeoff:** a voice/oversampling cap changes how the heaviest patches *sound* (fewer simultaneous
-  voices, no oversampling). Mitigated by a sane default + per-track override, and by the fact that the
-  degradation is graceful (reduce before disable) and surfaced.
-- **Tradeoff:** raising render-thread QoS must be validated against audio — done wrong it could steal
-  from the RT thread and cause dropouts. Requires measuring both framerate *and* audio-callback overrun
-  after the change.
-- **Follow-up:** prototype the highest-leverage lever first (voice-cap governor **or** render QoS) and
-  measure the actual FPS recovery on the `grid` demo before committing to both; then the buffer-reuse
-  pass. Consider exposing an app-level "performance profile" (voice ceiling, oversampling, target fps)
-  once the mechanism exists. Update the stale `audio_callback.h:4-6` doc (still references the removed
-  test-tone path) while in this code.
+- **Positive:** the grid FPS problem is actually fixed (46 → 73fps) by a cheap, low-risk cache — no
+  plugin behavior change, no RT-thread scheduling change.
+- **Positive:** a correct, generalizable invariant (no per-frame O(content) work on the render thread)
+  replaces a wrong one (audio starves rendering), so future previews don't reintroduce the bug.
+- **Positive/record:** the audio-architecture audit is preserved and confirmed — audio is genuinely
+  decoupled from rendering, which is *why* the audio-coupling theory was falsifiable.
+- **Process lesson:** the original conclusion rested on FPS numbers taken on a **loaded** machine. Perf
+  root-causing requires a quiet machine and a thread sample pointing at a specific frame; A/B toggles
+  (play/stop, parallel/serial) are cheap falsification tests — run them before theorizing a mechanism.
