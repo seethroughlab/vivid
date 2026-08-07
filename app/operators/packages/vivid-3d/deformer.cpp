@@ -2,6 +2,7 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_3d.h"
 #include "operator_api/thumbnail_3d.h"
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -133,6 +134,8 @@ float simplex3d(float x, float y, float z) {
 struct Deformer : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Deformer";
     static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_TRANSFORM;   // ADR-0046
+    static constexpr const char* kSummary = "Displaces a mesh's vertices with noise or a wave, so geometry ripples and breathes.";
+    static constexpr std::array<const char*, 3> kKeywords = {"3d", "deform", "displace"};
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int>   mode      {"mode", 0, {"Noise", "Sine", "Audio"}};

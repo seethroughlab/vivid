@@ -954,11 +954,16 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                     }
                 if (ch[i].contains("params") && ch[i]["params"].is_object()) {
                     const std::string op_type = ch[i].value("op_type", std::string());
+                    // A whole-node migration can MOVE a value between params (ADR-0051's Light3D
+                    // aim), which the per-param pass below cannot. Run it on a copy — `ch` is const
+                    // and callers hand us documents they still own.
+                    json params = ch[i]["params"];
+                    migrate_node_params(file_ver, op_type, params);
                     for (int l = 0; l < g.op_param_count_at(i); ++l) {
                         const char* name = g.op_param_label_at(i, l);
-                        if (!ch[i]["params"].contains(name)) continue;
+                        if (!params.contains(name)) continue;
                         const float v = migrate_param_value(file_ver, op_type, name,
-                                                            ch[i]["params"][name].get<float>());
+                                                            params[name].get<float>());
                         g.set_op_param_base_at(i, l, v);
                     }
                 }

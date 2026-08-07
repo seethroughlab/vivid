@@ -2,6 +2,7 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_3d.h"
 #include "operator_api/thumbnail_3d.h"   // ADR-0041: animated 3D node thumbnail
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -625,6 +626,8 @@ static void generate_pyramid(std::vector<vivid::gpu::Vertex3D>& verts,
 struct Shape3D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Shape3D";
     static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
+    static constexpr const char* kSummary = "A primitive mesh — cube, sphere, torus, plane, cylinder, cone or pyramid — with a material.";
+    static constexpr std::array<const char*, 3> kKeywords = {"3d", "shape", "mesh"};
     static constexpr bool kTimeDependent = false;
 
     // Shape

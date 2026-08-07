@@ -2,6 +2,7 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_3d.h"
 #include "operator_api/thumbnail_3d.h"
+#include <array>
 #include <algorithm>
 #include <cstdint>
 #include <vector>
@@ -24,6 +25,8 @@
 struct InstancesFromLanes : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName         = "InstancesFromLanes";
     static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_ADAPTER;   // ADR-0046
+    static constexpr const char* kSummary = "Turns per-band lanes into instance transforms — bar heights driven by the audio.";
+    static constexpr std::array<const char*, 3> kKeywords = {"3d", "instances", "lanes"};
     static constexpr bool kTimeDependent       = false;
     static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_KERNEL;
 

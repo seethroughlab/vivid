@@ -209,18 +209,34 @@ def audit_op(v, op: dict, baseline_ms: float) -> dict:
 def main():
     only = sys.argv[1] if len(sys.argv) > 1 else None
     v = Vivid()
-    ops = [o for o in v.call("list_operators").get("operators", []) if o["name"] not in SKIP]
+    catalog = [o for o in v.call("list_operators").get("operators", []) if o["name"] not in SKIP]
+    ops = catalog
     if only:
         ops = [o for o in ops if o["name"] == only]
         if not ops:
             print(f"no operator '{only}'"); return
 
     foreground(); time.sleep(0.5)
-    # trivial baseline (Gradient -> Output) for the perf delta
+    # Trivial baseline (a bare texture source -> Output) for the perf delta. This used to name
+    # `Gradient`, which is no longer in the catalog — add_node raised and the harness died before
+    # auditing ANY operator. Resolve against the live catalog so a future rename degrades to a
+    # skipped perf baseline instead of taking the whole run down.
     v.call("new_project"); out = find_output(v)
-    v.connect(out, v.add_node("Gradient"), 0, 0); time.sleep(SETTLE + 0.3)
-    baseline_ms = frame_ms(v)
-    print(f"baseline frame_ms (Gradient->Output): {baseline_ms:.2f}\n")
+    baseline_ms = 0.0
+    # Resolved against the FULL catalog, not the (possibly single-op) filtered list.
+    baseline_op = next((n for n in ("NoiseField", "Lines", "Shape") if any(o["name"] == n for o in catalog)), None)
+    if baseline_op is None:
+        baseline_op = next((o["name"] for o in catalog
+                            if o.get("gpu") and not any(p.get("dir") == "in" for p in o.get("ports", []))), None)
+    if baseline_op:
+        try:
+            v.connect(out, v.add_node(baseline_op), 0, 0); time.sleep(SETTLE + 0.3)
+            baseline_ms = frame_ms(v)
+            print(f"baseline frame_ms ({baseline_op}->Output): {baseline_ms:.2f}\n")
+        except Exception as e:
+            print(f"baseline skipped ({baseline_op}: {e}) — perf deltas are absolute, not relative\n")
+    else:
+        print("baseline skipped (no input-free GPU op in the catalog)\n")
 
     records = []
     for i, op in enumerate(sorted(ops, key=lambda o: (not o.get("gpu"), o["name"])), 1):

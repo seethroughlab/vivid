@@ -14,7 +14,9 @@ int main() {
     // MIGRATED, so the bump and the migration have to be written together.
     //   v2 the dynamic-track set · v3 Composite's `mode` became an enum index (ADR-0016 / S5c)
     //   v4 graph sticky notes + per-node labels (ADR-0033 P5) — purely additive, read back with defaults
-    CHECK(kSessionSchemaVersion == 4);
+    //   v5 a directional Light3D's aim moved from pos_* to dir_* (ADR-0051 P1) — see
+    //      migrate_node_params, covered by test_persist_chain_migration
+    CHECK(kSessionSchemaVersion == 5);
 
     int fv = -1;
 

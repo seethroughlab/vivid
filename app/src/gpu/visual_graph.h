@@ -78,6 +78,11 @@ struct VisualNode {
     // the user staring at a black frame wondering what they broke.
     std::string error() const;
 
+    // Last runtime problem the operator reported from process_gpu via vivid_report_gpu_error,
+    // refreshed (or cleared) every frame it runs. Feeds error() above. ADR-0051 P4 wired this in:
+    // the ABI field existed and operators could set it, but nothing read it back.
+    std::string runtime_error;
+
     // Port-indexed input-edge access; out-of-range reads return -1 (unconnected).
     int  in(int port) const { return (port >= 0 && port < static_cast<int>(inputs.size())) ? inputs[port] : -1; }
     // Which OUTPUT port of the source node this input reads (default 0 for a single-output producer).
