@@ -195,7 +195,7 @@ void NodeGraph::set_visual_graph(vivid::VisualGraph* vg) {
     vg_ = vg;
     if (vg_ && reg_.mappings().empty()) {  // seed glow <- master level on the first Plasma
         const int ni = first_node_of("Plasma");
-        if (ni >= 0) reg_.connect("master.level", node_param_dest(vg_->nodes()[ni].id, "glow"));
+        if (ni >= 0) add_mapping("master.level", node_param_dest(vg_->nodes()[ni].id, "glow"), 1.f);  // via chokepoint → visible node
     }
 }
 
@@ -496,6 +496,17 @@ void NodeGraph::add_data_node(const std::string& title, const std::string& sourc
     note_edit_("Add Data Node");   // covers both the Tab chooser and the inspector menu
 }
 void NodeGraph::add_data_node(const std::string& title, int char_id) { add_data_node(title, source_id_for(char_id)); }
+void NodeGraph::ensure_source_node(const std::string& src) {
+    if (src.empty() || find_source_node(src) >= 0) return;   // idempotent — one node per source id
+    // Readable title from the source id: "master.low" -> "master \xC2\xB7 low", "track_1.gate" -> "track_1 \xC2\xB7 gate".
+    std::string title = src;
+    if (auto dot = src.find('.'); dot != std::string::npos)
+        title = src.substr(0, dot) + " \xC2\xB7 " + src.substr(dot + 1);
+    float y = by0_ + 150.f + data_.size() * 84.f;
+    if (y > by1_ - 72.f) y = by1_ - 72.f;
+    data_.push_back({ bx0_ + 20.f, y, 168.f, 72.f, title, src, 0.f, 90, {}, 0 });
+    ++data_gen_;   // ADR-0028: invalidate cached publish->data-node indices (a source may now have a node)
+}
 void NodeGraph::get_node(int i, float& x, float& y, std::string& source, std::string& title) const {
     if (i < 0 || i >= int(data_.size())) return;
     x = data_[i].x; y = data_[i].y; source = data_[i].source; title = data_[i].title;

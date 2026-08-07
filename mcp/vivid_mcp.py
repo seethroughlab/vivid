@@ -492,13 +492,17 @@ def duplicate_nodes(ids: list[int], dx: float = 24.0, dy: float = 24.0) -> dict:
 # ---------------- mapping (the bridge) ----------------
 @mcp.tool
 def connect_mapping(src: str, dst: str, amount: float = 1.0, curve: float = 0.0,
-                    invert: bool = False, lo: float = 0.0, hi: float = 1.0) -> dict:
+                    invert: bool = False, lo: float = 0.0, hi: float = 1.0,
+                    attack: float = 0.0, release: float = 0.0) -> dict:
     """Wire a source to a destination (replaces any existing wire into dst).
     src: 'master.transient' | 'track_2.low' | 'viz.warp' (a visual's value, for the return path).
     dst: 'node:<id>.<param>' (visual param) | 'param:<track>:<device>:<index>' (audio param).
-    Shaping: amount (gain), curve (-1 ease-out .. +1 ease-in), invert (polarity), [lo,hi] range."""
+    Shaping: amount (gain), curve (-1 ease-out .. +1 ease-in), invert (polarity), [lo,hi] range,
+    attack/release (envelope-follower time constants in seconds; a raw envelope is jumpy, so a fast
+    attack + slow release lets the param SNAP up on a hit then glide back). 0/0 = instantaneous."""
     return _post("connect_mapping", {"src": src, "dst": dst, "amount": amount,
-                                      "curve": curve, "invert": invert, "lo": lo, "hi": hi})
+                                      "curve": curve, "invert": invert, "lo": lo, "hi": hi,
+                                      "attack": attack, "release": release})
 
 
 @mcp.tool

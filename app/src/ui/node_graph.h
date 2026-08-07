@@ -119,6 +119,10 @@ public:
     void add_mapping(const std::string& src, const std::string& dst, float amt,
                      float curve = 0.f, bool invert = false, float lo = 0.f, float hi = 1.f,
                      float attack = 0.f, float release = 0.f) {
+        // ADR-0053 Phase A: make the coupling VISIBLE — every audio→visual mapping materializes a
+        // source node on the canvas (idempotent). Gated to visual-param dests so the reverse path
+        // (viz.* -> param:/gnode:) doesn't spawn spurious source cards.
+        if (dst.rfind("node:", 0) == 0) ensure_source_node(src);
         reg_.connect(src, dst, amt);
         if (auto* m = reg_.find(dst)) {
             m->curve = curve; m->invert = invert; m->out_lo = lo; m->out_hi = hi;
@@ -349,6 +353,10 @@ private:
 
     static void data_out(const DataNode& n, float& px, float& py);
     int  find_source_node(const std::string& src) const;
+    // ADR-0053 Phase A: create a visible bridge source node for `src` if none exists yet (idempotent,
+    // no undo note — safe on load + programmatic mapping). The single chokepoint that makes every
+    // mapping's source appear on the canvas. Title is derived from the source id.
+    void ensure_source_node(const std::string& src);
 
     void sync_op_pos();
     int  op_index_of_id(int id) const;   // ADR-0033 P1: stable op-node id -> current index, -1 if gone (O(n))
