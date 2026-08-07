@@ -47,6 +47,11 @@ void     session_set_load_progress(SessionLoadCb cb, void* user);
 Session* session_create(uint32_t sample_rate);
 void     session_destroy(Session*);
 
+// ADR-0052: start the track-parallel audio worker pool. Call ONCE from main() after the audio device
+// exists, passing the CoreAudio device's os_workgroup (+1 retained; may be null). Idempotent; honours
+// VIVID_AUDIO_WORKERS (0 = force serial). No-op on non-Apple platforms.
+void     session_set_audio_workgroup(Session* s, void* os_workgroup);
+
 int  session_track_count(Session*);
 int  session_scene_count(Session*);
 // Append a scene (grid row): grows every track's clip vector by one empty clip. Returns the
