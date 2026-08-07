@@ -1258,6 +1258,26 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> near_p   {"near",      0.1f,   0.001f, 10.0f};
     vivid::Param<float> far_p    {"far",     100.0f,    1.0f, 10000.0f};
 
+    // Auto-orbit (Phase 3 OrbitCamera helper): when orbit>0.5, the eye is placed on a circle around
+    // the target instead of using cam_*. Gives sin/cos orbital motion a single linear mapping can't —
+    // wire transport.bar_phase -> orbit_phase for a bar-synced camera orbit + parallax (legibility).
+    vivid::Param<float> orbit        {"orbit",        0.0f, 0.0f, 1.0f};
+    vivid::Param<float> orbit_phase  {"orbit_phase",  0.0f, 0.0f, 1.0f};   // 0..1 -> 0..2pi
+    vivid::Param<float> orbit_radius {"orbit_radius", 6.0f, 0.5f, 50.0f};
+    vivid::Param<float> orbit_height {"orbit_height", 2.0f, -50.0f, 50.0f};
+
+    // Camera eye: orbital override when enabled, else the raw cam_* params. Shared by every view build.
+    void compute_eye(float out[3]) const {
+        if (orbit.value > 0.5f) {
+            const float a = orbit_phase.value * 6.28318530718f;
+            out[0] = target_x.value + std::cos(a) * orbit_radius.value;
+            out[1] = orbit_height.value;
+            out[2] = target_z.value + std::sin(a) * orbit_radius.value;
+        } else {
+            out[0] = cam_x.value; out[1] = cam_y.value; out[2] = cam_z.value;
+        }
+    }
+
     // Background params
     vivid::Param<float> bg_r     {"bg_r",      0.0f,   0.0f, 1.0f};
     vivid::Param<float> bg_g     {"bg_g",      0.0f,   0.0f, 1.0f};
@@ -1289,6 +1309,10 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::param_group(fov, "Camera");
         vivid::param_group(near_p, "Camera");
         vivid::param_group(far_p, "Camera");
+        vivid::param_group(orbit, "Camera");
+        vivid::param_group(orbit_phase, "Camera");
+        vivid::param_group(orbit_radius, "Camera");
+        vivid::param_group(orbit_height, "Camera");
 
         vivid::param_group(bg_r, "Background");
         vivid::param_group(bg_g, "Background");
@@ -1323,6 +1347,10 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back(&fov);
         out.push_back(&near_p);
         out.push_back(&far_p);
+        out.push_back(&orbit);
+        out.push_back(&orbit_phase);
+        out.push_back(&orbit_radius);
+        out.push_back(&orbit_height);
         out.push_back(&bg_r);
         out.push_back(&bg_g);
         out.push_back(&bg_b);
@@ -1399,7 +1427,7 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
         }
 
         // Build camera matrices
-        float eye[3]    = { cam_x.value, cam_y.value, cam_z.value };
+        float eye[3];   compute_eye(eye);
         float target[3] = { target_x.value, target_y.value, target_z.value };
         float up[3]     = { 0.0f, 1.0f, 0.0f };
 
@@ -1460,7 +1488,7 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
             bool has_ibl = env && env->ibl_irradiance && env->ibl_prefiltered && env->ibl_brdf_lut;
             if (has_ibl && skybox_pipeline_ && env->ibl_prefiltered) {
                 mat4x4 view, proj, vp;
-                float eye_pos[3] = { cam_x.value, cam_y.value, cam_z.value };
+                float eye_pos[3];   compute_eye(eye_pos);
                 vec3 veye = {eye_pos[0], eye_pos[1], eye_pos[2]};
                 vec3 vtgt = {target_x.value, target_y.value, target_z.value};
                 vec3 vup  = {0.f, 1.f, 0.f};
