@@ -146,10 +146,21 @@ all correlations ≈ 0 but onset_response_rate high
 └── the graph IS reactive — it's event-driven. Trust onset_response_rate; correlations are the wrong lens.
 ```
 
+## Start from a recipe; the intent tools now apply legible defaults
+
+- **`list_reactive_recipes`** returns proven composition patterns (punchy-drums, swelling-pads,
+  note-bloom, beat-cut, spectral-color, camera-orbit) with their couplings, when to use them, the
+  expected `analyze_output(av)` signature, and how to build them. Read it before wiring.
+- **`connect_mapping_by_intent` and `map_audio_to_visual_param` now bake in legible defaults** — leave
+  `amount`/`attack`/`release` unset and you get a *visible* excursion + a role-appropriate envelope
+  (bass→scale gets a big monotonic swing; a kick gets a snappy pop; a hue gets a full sweep), not the
+  old invisible `amount=1.0`-with-no-smoothing. Only set them to override. The response echoes what was
+  applied. This is what the templates below assume — you rarely need to hand-tune amounts anymore.
+
 ## The authoring loop (do this, in order)
 
-1. **Decide what should react to what** using the band→role table — pick a *punctual* axis and a
-   *monotonic-large* axis before wiring.
+1. **Decide what should react to what** — check `list_reactive_recipes`, then use the band→role table
+   to pick a *punctual* axis and a *monotonic-large* axis before wiring.
 2. Build the scene graph (prefer note-driven spawns via `InstancesFromSignal`/`Emitter` for the
    punctual layer; a `Shape3D`/`Deformer`/`SDF3D` for the monotonic layer).
 3. Wire mappings with `connect_mapping` — snappy envelope for punctual, gentle for monotonic, `lo`

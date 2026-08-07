@@ -1,5 +1,6 @@
 #include "cli/control_handlers_internal.h"
 #include "cli/mapping_request.h"
+#include "cli/reactivity_defaults.h"   // legible per-role mapping defaults
 
 #include "ui/node_graph.h"   // NodeGraph::add_mapping / disconnect_dest
 #include "gpu/visual_graph.h"
@@ -115,12 +116,16 @@ void register_mappings_handlers(Handlers& handlers_) {
         }
 
         const std::string dst = "node:" + std::to_string(node_id) + "." + param;
-        const float amount = b.value("amount", 1.0f);
-        const float curve = b.value("curve", 0.0f);
+        // Legible defaults per the band->role convention (amount/attack/release), overridable per-field.
+        const MappingDefaults dd = reactivity_defaults(src, param);
+        const float amount = b.value("amount", dd.amount);
+        const float curve = b.value("curve", dd.curve);
         const bool invert = b.value("invert", false);
-        const float lo = b.value("lo", 0.0f);
-        const float hi = b.value("hi", 1.0f);
-        c.graph->add_mapping(src, dst, amount, curve, invert, lo, hi);
+        const float lo = b.value("lo", dd.lo);
+        const float hi = b.value("hi", dd.hi);
+        const float attack = b.value("attack", dd.attack);
+        const float release = b.value("release", dd.release);
+        c.graph->add_mapping(src, dst, amount, curve, invert, lo, hi, attack, release);
 
         json r = ok();
         r["src"] = src;
@@ -134,8 +139,12 @@ void register_mappings_handlers(Handlers& handlers_) {
         r["invert"] = invert;
         r["lo"] = lo;
         r["hi"] = hi;
+        r["attack"] = attack;
+        r["release"] = release;
         r["summary"] = source_info.value("label", src) + " drives " +
-                       std::string(c.graph->op_kind_name(idx)) + "." + param;
+                       std::string(c.graph->op_kind_name(idx)) + "." + param +
+                       " (amount " + std::to_string(amount) + ", attack " + std::to_string(attack) +
+                       "s, release " + std::to_string(release) + "s)";
         return r;
     };
     handlers_["disconnect_mapping"] = [](const ControlCtx& c, const json& b) {
