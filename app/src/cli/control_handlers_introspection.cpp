@@ -1,6 +1,7 @@
 #include "cli/control_handlers_internal.h"
 #include "cli/control_json.h"           // operator_to_json (operator catalog)
 #include "cli/operator_catalog.h"       // native_audio_ops — shared enumeration (ADR-0023 step 7)
+#include "cli/reactivity_defaults.h"    // legible per-role mapping defaults
 
 #include "audio/vst3_host.h"
 #include "cli/audio_analysis_tools.h"   // ADR-0024 Phase 8: analyze_pcm / copy_live_capture (proof checks)
@@ -1126,11 +1127,13 @@ void register_introspection_handlers(Handlers& handlers_) {
         for (auto& ch : intent) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
         json suggestions = json::array();
         auto add = [&](const std::string& source, const json& dest, float score, const std::string& reason) {
+            const MappingDefaults dd = reactivity_defaults(source, dest.value("param", std::string()));
             suggestions.push_back({ {"src", source}, {"src_label", source_label(c.session, source)},
                                     {"dst", dest.value("dest", std::string())},
                                     {"dst_label", dest_label(c, dest.value("dest", std::string()))},
                                     {"score", score}, {"reason", reason},
-                                    {"amount", 1.0}, {"curve", 0.0}, {"invert", false} });
+                                    {"amount", dd.amount}, {"curve", dd.curve}, {"invert", false},
+                                    {"lo", dd.lo}, {"hi", dd.hi}, {"attack", dd.attack}, {"release", dd.release} });
         };
         json visual_dests = visual_mapping_destinations(c);
         for (const auto& d : visual_dests) {
@@ -1154,6 +1157,74 @@ void register_introspection_handlers(Handlers& handlers_) {
         json r = ok();
         r["summary"] = std::to_string(suggestions.size()) + " conservative mapping suggestions";
         r["suggestions"] = suggestions;
+        return r;
+    };
+    // Reactive-recipe catalog: proven, legible audio->visual COMPOSITION patterns (the band->role
+    // convention as whole recipes, not single wires). Data-only guidance — apply each coupling with
+    // connect_mapping_by_intent / map_audio_to_visual_param, which now bake in the legible amount +
+    // envelope defaults these recipes assume. `intent` optionally filters by keyword.
+    handlers_["list_reactive_recipes"] = [](const ControlCtx&, const json& b) {
+        const std::string intent = lower_copy(b.value("intent", std::string()));
+        const json all = json::array({
+            { {"name", "punchy-drums"}, {"aka", "drum-driven pulse (Pattern A)"},
+              {"legibility", "punctual"},
+              {"when", "percussive material; you want hits a viewer can SEE"},
+              {"couplings", json::array({
+                  {{"source_intent", "kick"}, {"dest", "scale_x + scale_y + scale_z of one form"},
+                   {"why", "a note-on/transient triggers a visible scale pop on ALL axes (drive one axis = ellipse, not a pulse)"}} })},
+              {"expect", "onset_response_rate > 0.85 in analyze_output(av)"},
+              {"how", "one form per drum voice; connect_mapping_by_intent('kick','scale_x') then scale_y/scale_z. Snappy envelope is applied automatically."} },
+            { {"name", "swelling-pads"}, {"aka", "monotonic bass drive (Pattern B)"},
+              {"legibility", "monotonic-large"},
+              {"when", "sustained bass/pads/drones; you want the form to breathe with the low end"},
+              {"couplings", json::array({
+                  {{"source_intent", "bass"}, {"dest", "scale / inflate (all axes)"}, {"why", "bass -> obvious monotonic inflation"}},
+                  {{"source_intent", "loudness"}, {"dest", "emission / glow"}, {"why", "overall energy lifts brightness"}} })},
+              {"expect", "energy_motion_correlation > 0.5"},
+              {"how", "map_audio_to_visual_param(master.low -> scale on a Shape3D/Deformer). Big amount is applied automatically."} },
+            { {"name", "note-bloom"}, {"aka", "per-note spawn (Pattern E) — the signature look"},
+              {"legibility", "punctual"},
+              {"when", "melodic/arp/chordal parts; the most legible per-note reactivity Vivid has"},
+              {"couplings", json::array({
+                  {{"source_intent", "notes"}, {"dest", "Notes -> InstancesFromSignal"}, {"why", "each note-on spawns an instance that fades on note-off; chords bloom, arps trail"}} })},
+              {"expect", "visible spawns aligned to note-ons"},
+              {"how", "add Notes (from a track) -> InstancesFromSignal -> Instancer3D -> Render3D. Prefer this over modulating a static mesh."} },
+            { {"name", "beat-cut"}, {"aka", "bar-synced scene cuts (Pattern C)"},
+              {"legibility", "choreographed"},
+              {"when", "multi-scene performances; deterministic hits ON the beat/bar"},
+              {"couplings", json::array({
+                  {{"source_intent", "clock"}, {"dest", "Clock -> Switch3D"}, {"why", "cut between Scene3D inputs on the musical step"}},
+                  {{"source_intent", "downbeat"}, {"dest", "scale / flash"}, {"why", "transport.downbeat pulses a hit on the bar"}} })},
+              {"expect", "cuts/pulses land on bar/beat edges"},
+              {"how", "Clock -> Switch3D for cuts; connect_mapping_by_intent('downbeat','scale') for a bar pulse. Most demos ignore transport pulses — use them."} },
+            { {"name", "spectral-color"}, {"aka", "timbre colors the form (Pattern D)"},
+              {"legibility", "monotonic-large"},
+              {"when", "you want the color to track the sound's brightness/timbre"},
+              {"couplings", json::array({
+                  {{"source_intent", "bright"}, {"dest", "CosinePalette.phase or a hue param"}, {"why", "treble energy cycles warm hues"}},
+                  {{"source_intent", "bass"}, {"dest", "hue (inverted) / cool"}, {"why", "bass pulls toward cool"}} })},
+              {"expect", "energy_*_correlation on the color axis; check per-band correlations"},
+              {"how", "add a CosinePalette after Render3D; connect_mapping_by_intent('bright','phase'). Or AudioSpectrum -> InstancesFromLanes for a literal spectrum."} },
+            { {"name", "camera-orbit"}, {"aka", "bar-synced camera parallax"},
+              {"legibility", "choreographed"},
+              {"when", "a static scene reads flat; motion + parallax add life and legibility"},
+              {"couplings", json::array({
+                  {{"source_intent", "bar_phase"}, {"dest", "Render3D.orbit_phase (set orbit=1)"}, {"why", "bar_phase drives a full circular camera orbit a linear mapping can't"}} })},
+              {"expect", "the camera circles once per bar; forms gain depth/parallax"},
+              {"how", "set Render3D orbit=1, orbit_radius, then connect_mapping_by_intent('bar_phase','orbit_phase')."} },
+        });
+        json recipes = json::array();
+        for (const auto& rec : all) {
+            if (intent.empty()) { recipes.push_back(rec); continue; }
+            const std::string hay = lower_copy(rec.value("name", std::string()) + " " + rec.value("aka", std::string()) + " " +
+                                               rec.value("when", std::string()) + " " + rec.value("legibility", std::string()));
+            if (hay.find(intent) != std::string::npos) recipes.push_back(rec);
+        }
+        json r = ok();
+        r["recipes"] = recipes;
+        r["summary"] = std::to_string(recipes.size()) + " reactive recipe(s)" +
+                       (intent.empty() ? "" : " matching '" + intent + "'") +
+                       ". Apply couplings with connect_mapping_by_intent / map_audio_to_visual_param (legible defaults baked in); measure with analyze_output(mode=av).";
         return r;
     };
     // ADR-0024 Phase 2 straggler: wire a mapping from INTENT words on both sides. Resolves an audio
@@ -1188,12 +1259,25 @@ void register_introspection_handlers(Handlers& handlers_) {
         if (chosen.is_null()) return err(code::kNotFound, "no destination matched dest_intent '" + di + "' (try list_mapping_destinations)");
         const std::string dst = chosen.value("dest", std::string());
         if (dst.empty()) return err(code::kInternal, "resolved destination has no address");
-        c.graph->add_mapping(src, dst, b.value("amount", 1.0f), b.value("curve", 0.0f), b.value("invert", false), 0.0f, 1.0f);
+        // Legible defaults per the band->role convention (amount/attack/release), overridable per-field.
+        const MappingDefaults dd = reactivity_defaults(src, chosen.value("param", std::string()));
+        const float amount = b.value("amount", dd.amount);
+        const float curve = b.value("curve", dd.curve);
+        const bool invert = b.value("invert", false);
+        const float lo = b.value("lo", dd.lo);
+        const float hi = b.value("hi", dd.hi);
+        const float attack = b.value("attack", dd.attack);
+        const float release = b.value("release", dd.release);
+        c.graph->add_mapping(src, dst, amount, curve, invert, lo, hi, attack, release);
         json r = ok();
         r["src"] = src; r["src_label"] = source_label(c.session, src);
         r["dst"] = dst; r["dst_label"] = dest_label(c, dst);
         r["resolved_destination"] = chosen;
-        r["summary"] = "Mapped " + source_label(c.session, src) + " -> " + dest_label(c, dst);
+        r["amount"] = amount; r["curve"] = curve; r["invert"] = invert;
+        r["lo"] = lo; r["hi"] = hi; r["attack"] = attack; r["release"] = release;
+        r["summary"] = "Mapped " + source_label(c.session, src) + " -> " + dest_label(c, dst) +
+                       " (amount " + std::to_string(amount) + ", attack " + std::to_string(attack) +
+                       "s, release " + std::to_string(release) + "s)";
         return r;
     };
     // ADR-0024 Phase 3 straggler: set a param by INTENT. Resolves `intent` (a param name/keyword,

@@ -325,6 +325,18 @@ def suggest_mappings(intent: str = "", scene: int | None = None,
 
 
 @mcp.tool
+def list_reactive_recipes(intent: str = "") -> dict:
+    """Proven, LEGIBLE audio->visual composition recipes (the band->role convention as whole patterns:
+    punchy-drums, swelling-pads, note-bloom, beat-cut, spectral-color, camera-orbit). Each recipe gives
+    its couplings (source_intent -> dest), when to use it, the expected analyze_output(av) signature, and
+    how to build it. Apply the couplings with connect_mapping_by_intent / map_audio_to_visual_param —
+    those now bake in the legible amount + envelope defaults these recipes assume. Optional `intent`
+    filters by keyword (e.g. 'drums', 'color', 'camera', 'punctual'). Read this BEFORE wiring reactivity;
+    then measure with analyze_output(mode='av')."""
+    return _post("list_reactive_recipes", {"intent": intent})
+
+
+@mcp.tool
 def list_effects() -> dict:
     """Names of the curated FX plugins offered in the UI (for add_effect). For the FULL
     set of installed plugins use list_plugins."""
@@ -493,17 +505,25 @@ def connect_mapping(src: str, dst: str, amount: float = 1.0, curve: float = 0.0,
 def map_audio_to_visual_param(source: str = "track", characteristic: str = "",
                               node_id: int = -1, param: str = "",
                               track: int | None = None, track_id: int | None = None,
-                              track_name: str = "", amount: float = 1.0,
-                              curve: float = 0.0, invert: bool = False,
-                              lo: float = 0.0, hi: float = 1.0) -> dict:
+                              track_name: str = "", amount: float | None = None,
+                              curve: float | None = None, invert: bool = False,
+                              lo: float | None = None, hi: float | None = None,
+                              attack: float | None = None, release: float | None = None) -> dict:
     """First-class bridge helper: map an audio characteristic to a visual param without hand-building
     raw source/destination strings. source='track' uses one of track, track_id, or track_name plus a
     characteristic (level|transient|low|mid|high|note|velocity|gate). source='master' uses
     characteristic level|transient|low|mid|high. node_id and param identify the visual destination.
+
+    Leave amount/curve/lo/hi/attack/release UNSET to get LEGIBLE defaults from the band->role convention
+    (e.g. bass->scale gets a big visible excursion + snappy envelope, not the old invisible amount=1.0
+    with no smoothing). Only set them to override. The response echoes the applied amount/attack/release.
     Returns the canonical src/dst strings plus readable source/destination info."""
     payload = {"source": source, "characteristic": characteristic, "node_id": node_id,
-               "param": param, "amount": amount, "curve": curve, "invert": invert,
-               "lo": lo, "hi": hi}
+               "param": param, "invert": invert}
+    for k, v in (("amount", amount), ("curve", curve), ("lo", lo), ("hi", hi),
+                 ("attack", attack), ("release", release)):
+        if v is not None:
+            payload[k] = v
     if track is not None:
         payload["track"] = track
     if track_id is not None:
@@ -520,15 +540,25 @@ def disconnect_mapping(dst: str) -> dict:
 
 
 @mcp.tool
-def connect_mapping_by_intent(source_intent: str, dest_intent: str, amount: float = 1.0,
-                              curve: float = 0.0, invert: bool = False) -> dict:
+def connect_mapping_by_intent(source_intent: str, dest_intent: str, amount: float | None = None,
+                              curve: float | None = None, invert: bool = False,
+                              lo: float | None = None, hi: float | None = None,
+                              attack: float | None = None, release: float | None = None) -> dict:
     """Wire a mapping from intent words on both sides. source_intent picks an audio characteristic
     ('kick'/'punch'/'onset' -> master.transient; 'bass'/'sub' -> master.low; 'bright'/'hat' ->
     master.high; 'mid'/'vocal' -> master.mid; else master.level). dest_intent matches a visual/audio
-    param by keyword. Conservative best-match; use list_mapping_destinations + connect_mapping for
-    exact control. Returns the resolved src/dst and their labels."""
-    return _post("connect_mapping_by_intent", {"source_intent": source_intent, "dest_intent": dest_intent,
-                                               "amount": amount, "curve": curve, "invert": invert})
+    param by keyword.
+
+    Leave amount/curve/lo/hi/attack/release UNSET for LEGIBLE defaults from the band->role convention
+    (a visible excursion + role-appropriate envelope); only set them to override. Conservative best-match;
+    use list_mapping_destinations + connect_mapping for exact control. The response echoes the applied
+    amount/attack/release."""
+    payload = {"source_intent": source_intent, "dest_intent": dest_intent, "invert": invert}
+    for k, v in (("amount", amount), ("curve", curve), ("lo", lo), ("hi", hi),
+                 ("attack", attack), ("release", release)):
+        if v is not None:
+            payload[k] = v
+    return _post("connect_mapping_by_intent", payload)
 
 
 @mcp.tool
