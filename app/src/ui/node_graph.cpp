@@ -573,6 +573,25 @@ void NodeGraph::get_node(int i, float& x, float& y, std::string& source, std::st
     x = nodes_data_[i].x; y = nodes_data_[i].y; title = nodes_data_[i].title;
     source = nodes_data_[i].outs.empty() ? std::string() : nodes_data_[i].outs[0].source;  // first output (A3 persists all)
 }
+void NodeGraph::get_source_node_meta(int i, std::string& kind, int& track_id) const {
+    kind.clear(); track_id = -1;
+    if (i < 0 || i >= int(nodes_data_.size())) return;
+    switch (nodes_data_[i].kind) {
+        case SourceKind::Master: kind = "master"; break;
+        case SourceKind::Track:  kind = "track"; track_id = nodes_data_[i].track_id; break;
+        default:                 kind = "other"; break;
+    }
+}
+int NodeGraph::source_node_output_count(int i) const {
+    return (i < 0 || i >= int(nodes_data_.size())) ? 0 : int(nodes_data_[i].outs.size());
+}
+void NodeGraph::get_source_node_output(int i, int o, std::string& suffix, std::string& source) const {
+    suffix.clear(); source.clear();
+    if (i < 0 || i >= int(nodes_data_.size())) return;
+    const auto& outs = nodes_data_[i].outs;
+    if (o < 0 || o >= int(outs.size())) return;
+    suffix = outs[o].suffix; source = outs[o].source;
+}
 void NodeGraph::reset_nodes() {
     nodes_data_.clear(); reg_.clear_mappings(); ++data_gen_;   // ADR-0028: drop cached indices
     annos_.clear(); next_anno_id_ = 0;                         // ADR-0033 P5: notes reload from the session

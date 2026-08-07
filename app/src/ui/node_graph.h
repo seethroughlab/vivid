@@ -84,6 +84,12 @@ public:
     // Persistence + inspection.
     int  node_count() const { return static_cast<int>(nodes_data_.size()); }
     void get_node(int i, float& x, float& y, std::string& source, std::string& title) const;
+    // ADR-0053 A4: richer source-node introspection for get_session — the entity kind ("master"/"track"/
+    // "other"), the bound stable track id (-1 unless track), and every named output (suffix + full source
+    // id). Wired-ness is derived by the caller from the mappings list. Out-of-range = empty/0.
+    void get_source_node_meta(int i, std::string& kind, int& track_id) const;
+    int  source_node_output_count(int i) const;
+    void get_source_node_output(int i, int o, std::string& suffix, std::string& source) const;
     void get_shader(float& x, float& y) const { x = sx_; y = sy_; }
     void reset_nodes();
     void add_node_raw(const std::string& title, const std::string& source, float x, float y);

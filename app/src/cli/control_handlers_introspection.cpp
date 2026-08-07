@@ -1039,7 +1039,18 @@ void register_introspection_handlers(Handlers& handlers_) {
         json dnodes = json::array();
         for (int i = 0; i < g.node_count(); ++i) {
             float x = 0, y = 0; std::string source, title; g.get_node(i, x, y, source, title);
-            dnodes.push_back({ {"source", source}, {"title", title} });
+            std::string kind; int track_id = -1; g.get_source_node_meta(i, kind, track_id);
+            json outs = json::array();   // ADR-0053 A4: every named output + whether it drives a param
+            for (int o = 0; o < g.source_node_output_count(i); ++o) {
+                std::string suffix, osrc; g.get_source_node_output(i, o, suffix, osrc);
+                bool wired = false;
+                for (const auto& m : g.mappings()) if (m.source == osrc) { wired = true; break; }
+                outs.push_back({ {"suffix", suffix}, {"source", osrc}, {"wired", wired} });
+            }
+            json jn = { {"source", source}, {"title", title}, {"kind", kind},
+                        {"x", x}, {"y", y}, {"outputs", outs} };
+            if (track_id >= 0) jn["track_id"] = track_id;
+            dnodes.push_back(jn);
         }
         json annos = json::array();   // ADR-0033 P5: sticky notes
         for (int i = 0; i < g.annotation_count(); ++i) {

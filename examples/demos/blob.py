@@ -135,7 +135,9 @@ def build(v: Vivid, save: bool = True):
     v.connect(out, render, 0)
 
     # --- Reactivity: the arp wheel IS the notes (via the signal edge). The bass core is driven by the
-    #     bridge — the low band swells it on the kick, and each bass note flashes its emission. ---
+    #     bridge — the low band swells it on the kick, and each bass note flashes its emission. These
+    #     mappings now surface as explicit nodes on the visual canvas (ADR-0053): a Master node and a
+    #     Track node whose value outputs (low, gate, …) wire into the core's scale/emission params. ---
     bid = v.track_id(BASS)
     for ax in ("scale_x", "scale_y", "scale_z"):
         v.map("master.low", core, ax, amount=0.04, attack=0.008, release=0.22)     # kick swells the core (subtle)
