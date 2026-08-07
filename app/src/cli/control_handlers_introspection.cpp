@@ -465,6 +465,16 @@ void register_introspection_handlers(Handlers& handlers_) {
         json r = ok();
         r["frame_ms"] = vivid::perf::g_frame_ms.load(std::memory_order_relaxed);
         r["fps"]      = vivid::perf::g_fps.load(std::memory_order_relaxed);
+        // GPU-side timing (timestamp queries): gpu_ms distinguishes GPU-bound from CPU-bound — if
+        // gpu_ms << frame_ms the frame is CPU-bound. 0/absent when the adapter lacks timestamp support.
+        // present_uncapped is true when VIVID_PRESENT=immediate (vsync off) so fps shows the true ceiling.
+        const double gpu_ms = vivid::perf::g_gpu_ms.load(std::memory_order_relaxed);
+        r["gpu_ms"]          = gpu_ms;
+        r["gpu_timing"]      = gpu_ms > 0.0;
+        r["present_uncapped"] = vivid::perf::g_present_uncapped.load(std::memory_order_relaxed);
+        json regions = json::object();
+        for (auto& kv : vivid::perf::get_gpu_regions()) regions[kv.first] = kv.second;
+        r["gpu_regions"] = regions;   // {label: ms} e.g. {"visuals": .., "ui": ..}
         return r;
     };
     handlers_["status"] = [](const ControlCtx& c, const json&) {

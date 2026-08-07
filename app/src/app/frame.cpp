@@ -782,6 +782,7 @@ void run_frame_loop(App& app, Window& win) {
             vgraph.set_metronome(static_cast<float>(transport.bpm.load(std::memory_order_relaxed)),
                                  transport.beats_per_bar.load(std::memory_order_relaxed), beats);
             vgraph.run_chain(frame.encoder, tsec);
+            gpu.gpu_mark(frame.encoder, "visuals");   // GPU timing: end of the output render (vs. the editor UI that follows)
             win.preview.out_aspect = vgraph.rt_aspect();   // cache: drives the preview's height + hit-rects
             win.preview.clamp(win.visuals_panel());        // ...so a new aspect can resize it out of bounds
             // ADR-0014: WHERE the output is shown is also the Output node's business. Reconcile the
