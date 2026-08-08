@@ -10,6 +10,8 @@ builds on install with no app rebuild and no external libraries.
 | Operator | What it does |
 |---|---|
 | `InstanceNoise` | Lays out an `InstanceArray3D` on a value-noise field (single-look 3D layout). |
+| `InstanceGrid` | Lays out an `InstanceArray3D` on a regular grid (single-look 3D layout). |
+| `Deformer` | Displaces a `Scene3D` fragment by a procedural field (single-look 3D transform). |
 
 ## Vendored headers — keep in sync
 
@@ -28,7 +30,8 @@ install_operator_package  <abs path to this directory>     # MCP
 
 ## Why it's not in core
 
-ADR-0054: the core catalog is a lean spine. `InstanceNoise` is an unused single-look layout variant —
-a good example of recombination, not spine. Its vivid-3d siblings `InstanceGrid` / `Deformer` /
-`Particles3D` are *also* content candidates but currently back shipped demos (lattice / crystal /
-blob / storm), so they stay in core until those demos are migrated.
+ADR-0054: the core catalog is a lean spine. These are single-look 3D content ops — good examples of
+recombination, not spine. The demos that used `InstanceGrid` / `Deformer` (lattice / crystal) now
+CARRY this op in their own project folder (compiled on load_project), so the ops leave the default
+install without changing the demos. `Particles3D` stays in core for now — it backs the flagship blob
+showcase (+ storm / lattice), so it reads as load-bearing content rather than a niche example.

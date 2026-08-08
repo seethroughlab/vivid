@@ -1,0 +1,19 @@
+{
+  "name": "InstanceGrid",
+  "version": "0.1.0",
+  "operators": [
+    {
+      "name": "InstanceGrid",
+      "kind": "gpu_visual",
+      "source": "instance_grid.cpp"
+    }
+  ],
+  "dependencies": {
+    "vendor": [
+      {
+        "name": "vivid-3d-headers",
+        "include": "vendor"
+      }
+    ]
+  }
+}

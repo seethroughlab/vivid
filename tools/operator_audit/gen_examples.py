@@ -43,6 +43,8 @@ PKG_ROOT = os.path.join(REPO, "app", "operators", "packages")
 # saved project compiles the op on load. Core ops need no entry.
 PACKAGE_FOR = {
     "InstanceNoise": os.path.join(PKG_ROOT, "content-3d"),
+    "InstanceGrid":  os.path.join(PKG_ROOT, "content-3d"),
+    "Deformer":      os.path.join(PKG_ROOT, "content-3d"),
     "TimeMachine":   os.path.join(PKG_ROOT, "content-visual"),
     "CosinePalette": os.path.join(PKG_ROOT, "content-visual"),
 }
