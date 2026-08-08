@@ -133,7 +133,7 @@ endif()
 # on the include path alongside the ../src default from add_vivid_operator.
 foreach(_v3d render_3d scene_merge shape3d light3d
              instancer3d instances_from_lanes instances_from_signal instance_grid instance_noise deformer
-             particles3d sdf3d audio_spectrum lane_ramp lane_palette clock switch3d)
+             particles3d sdf3d audio_spectrum reactive_master reactive_track lane_ramp lane_palette clock switch3d)
     add_vivid_operator(vivid_${_v3d} packages/vivid-3d/${_v3d}.cpp)
     target_include_directories(vivid_${_v3d} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/packages/vivid-3d)
 endforeach()

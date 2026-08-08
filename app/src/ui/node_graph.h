@@ -82,8 +82,14 @@ public:
     void set_visual_graph(vivid::VisualGraph* vg);   // also seeds the default mapping
 
     // Persistence + inspection.
-    int  node_count() const { return static_cast<int>(data_.size()); }
+    int  node_count() const { return static_cast<int>(nodes_data_.size()); }
     void get_node(int i, float& x, float& y, std::string& source, std::string& title) const;
+    // ADR-0053 A4: richer source-node introspection for get_session — the entity kind ("master"/"track"/
+    // "other"), the bound stable track id (-1 unless track), and every named output (suffix + full source
+    // id). Wired-ness is derived by the caller from the mappings list. Out-of-range = empty/0.
+    void get_source_node_meta(int i, std::string& kind, int& track_id) const;
+    int  source_node_output_count(int i) const;
+    void get_source_node_output(int i, int o, std::string& suffix, std::string& source) const;
     void get_shader(float& x, float& y) const { x = sx_; y = sy_; }
     void reset_nodes();
     void add_node_raw(const std::string& title, const std::string& source, float x, float y);
@@ -119,19 +125,41 @@ public:
     void add_mapping(const std::string& src, const std::string& dst, float amt,
                      float curve = 0.f, bool invert = false, float lo = 0.f, float hi = 1.f,
                      float attack = 0.f, float release = 0.f) {
+        // ADR-0053 Phase B4 CUTOVER: an audio→visual mapping is now a typed control EDGE from a Reactive
+        // SOURCE op, not a hidden registry wire (+ Phase-A teal card). This one chokepoint converts every
+        // caller alike — connect_mapping, map_audio_to_visual_param, the source-card drag, AND legacy-file
+        // load (transparent migration). Fall through to the registry only for the reverse path
+        // (viz.*→param:) and non-audio node:* mappings (viz.*→node param), which keep the Phase-A card.
+        if (dst.rfind("node:", 0) == 0) {
+            if (add_audio_control_edge(src, dst, amt, curve, invert, lo, hi, attack, release)) return;
+            ensure_source_node(src);   // non-audio node:* dest keeps its visible source card + registry wire
+        }
         reg_.connect(src, dst, amt);
         if (auto* m = reg_.find(dst)) {
             m->curve = curve; m->invert = invert; m->out_lo = lo; m->out_hi = hi;
             m->attack = attack; m->release = release; m->primed = false;
         }
     }
+    // ADR-0053 Phase B4: dedup/create the Reactive SOURCE VisualGraph node for a bridge audio source, and
+    // convert a legacy (src,dst) audio→visual pair into that node + a control edge (false when src is not a
+    // migratable audio source or the dst param/node is gone — the caller then keeps the registry wire).
+    int  ensure_reactive_source_node(const std::string& op_type, int track_id);
+    bool add_audio_control_edge(const std::string& src, const std::string& dst, float amount, float curve,
+                                bool invert, float lo, float hi, float attack, float release);
+    // ADR-0053 Phase B4: drop Phase-A AUDIO (master/track) source cards no registry mapping references —
+    // their wire migrated to a control edge. Called after load-migration; keeps cards still backing a
+    // registry mapping and all non-audio ("Other"/viz.*) cards.
+    void prune_orphan_audio_source_nodes();
     // Advance mapping smoothing one frame (dt seconds). Call before apply_params().
     void advance_mappings(float dt) { reg_.advance(dt); }
     // Connect a bridge DATA node's source to op node `op_idx`'s param `local` (the same wire the drop path
     // makes). Records an undo note. Used by the param-reveal menu (Gesture B). False on invalid indices.
-    bool connect_data_to_param(int data_idx, int op_idx, int local);
-    // A track (stable id) was deleted: drop the mappings sourced from it.
-    int drop_track_sources(int id) { return reg_.drop_track_sources(id); }
+    bool connect_data_to_param(int data_idx, int op_idx, int local, int out_idx = 0);
+    // A track (stable id) was deleted: drop the registry mappings sourced from it, its Phase-A Track source
+    // card, AND (ADR-0053 B4/B5) its ReactiveTrack VisualGraph node — whose removal cascades to every
+    // control edge that read its value lanes, so no edge dangles at a dead track. Returns # registry
+    // mappings dropped.
+    int drop_track_sources(int id);
     // Mapping shaping edits (from the M overview).
     void set_mapping_amount(const std::string& dst, float a) { if (auto* m = reg_.find(dst)) m->amount = a; }
     void set_mapping_curve(const std::string& dst, float c)  { if (auto* m = reg_.find(dst)) m->curve = c; }
@@ -205,7 +233,14 @@ public:
     float op_param_value_at(int i, int local) const;     // resolved (base + modulation)
     const char* op_file_param_at(int i, int local) const;         // FILE/TEXT param string ("" if none)
     void  set_op_file_param_at(int i, int local, const std::string& v);
-    bool  op_param_wired_at(int i, int local) const;     // a data source drives it
+    bool  op_param_wired_at(int i, int local) const;     // a data source OR a control edge drives it
+    // ADR-0053 Phase B: control-edge persistence (op index i). Edges are saved with the target param by
+    // NAME (resolved to an index on load, robust to param reorder) + the source's stable id + lane + shape.
+    int   op_control_edge_count(int i) const;
+    bool  get_op_control_edge(int i, int e, std::string& param, int& src_node, int& src_lane,
+                              vivid::VisualControlShape& sh) const;
+    void  load_op_control_edge(int i, const std::string& param, int src_node, int src_lane,
+                               const vivid::VisualControlShape& sh);   // load path (no undo note)
     // Curated body params (pure UI curation): the ordered param indices SHOWN as rows on node `i`'s card.
     // = the node's pinned set UNION any wired param (a connection is always shown so a wire never dangles).
     // A fresh/uncurated node returns empty -> collapsed. Mirrors AudioNodeGraph::exposed_params.
@@ -276,14 +311,22 @@ public:
 
 private:
     static constexpr int kHistN = 64;   // data-node value history (rolling sparkline)
-    struct DataNode { float x, y, w, h; std::string title; std::string source; float value; int flash;
-                      float hist[kHistN]; int hist_head; };
-    std::vector<DataNode> data_;
+    // ADR-0053 Phase A2: audio sources are ENTITY nodes with multiple named value OUTPUTS. A "Master"
+    // node exposes level/transient/low/mid/high + transport phases; a "Track <id>" node exposes its 8
+    // characteristics. Each output row carries a right-edge port whose identity is a full bridge source
+    // string ("master.low", "track_1.gate"); wiring an output->param is still just a MappingRegistry wire.
+    enum class SourceKind { Master, Track, Other };
+    struct SourceOutput { std::string suffix; std::string source; float value = 0.f;
+                          float hist[kHistN] = {}; int hist_head = 0; };
+    struct SourceNode { float x = 0, y = 0, w = 0, h = 0; SourceKind kind = SourceKind::Other;
+                        int track_id = -1; std::string title; int flash = 0;
+                        std::vector<SourceOutput> outs; };
+    std::vector<SourceNode> nodes_data_;
     // ADR-0028 interning: one Pub per distinct published source. `cell` is a stable pointer into the
-    // registry's value map (see MappingRegistry::intern_source); `data_idx` caches the matching data
-    // node (for its live sparkline), re-resolved whenever `data_gen_` changes (the data-node set grew or
-    // was cleared — indices only ever append or clear, never shift, so an index stays valid otherwise).
-    struct Pub { float* cell; int data_idx; uint32_t data_gen; std::string id; };
+    // registry's value map (see MappingRegistry::intern_source); (node_idx,out_idx) caches the matching
+    // source-node OUTPUT (for its live sparkline), re-resolved whenever `data_gen_` changes (the source
+    // set grew/cleared — indices only ever append or clear, never shift, so they stay valid otherwise).
+    struct Pub { float* cell; int node_idx; int out_idx; uint32_t data_gen; std::string id; };
     std::vector<Pub> pubs_;
     // ADR-0033 P5: sticky-note store (mirrors the DataNode pattern). id is stable within a session;
     // annos never shift index on remove would break nothing here since callers address by id.
@@ -314,6 +357,7 @@ private:
     int    drag_idx_ = -1;     // dragged node (data for mode 1, op for mode 2)
     int    anno_drag_ = -1;    // ADR-0033 P5: annotation id being dragged (mode 7), -1 = none
     int    wire_from_ = -1;    // data node (mode 3) or op node (mode 4) the wire starts at
+    int    wire_from_out_ = -1;// ADR-0053 A2: which OUTPUT row of the source node the wire started at (mode 3)
     int    pmreq_node_ = -1;   // Gesture B: pending param-reveal-menu request (target op node index)
     int    pmreq_src_  = -1;   // Gesture B: the data node the dropped wire started from
     double pmreq_sx_ = 0, pmreq_sy_ = 0;   // Gesture B: the drop SCREEN position (where to open the menu)
@@ -347,8 +391,16 @@ private:
     vivid::EditGateway* edit_gateway_ = nullptr;      // ADR-0017 (optional; UI edit capture)
     void note_edit_(const char* label, const char* key = "");   // fold a graph edit into the gesture
 
-    static void data_out(const DataNode& n, float& px, float& py);
-    int  find_source_node(const std::string& src) const;
+    // ADR-0053 A2: the port position of source node `ni`'s output row `oi` (right edge, row-centre).
+    void source_out_port(int ni, int oi, float& px, float& py) const;
+    int  find_source_node(const std::string& src) const;             // node index whose ANY output == src, -1
+    bool find_source_output(const std::string& src, int& ni, int& oi) const;  // node+output for src; false if none
+    void size_source_node(SourceNode& n) const;                      // recompute w/h from outs.size()
+    // ADR-0053 Phase A: ensure a visible ENTITY source node exists for `src` (idempotent, no undo note —
+    // safe on load + programmatic mapping). Parses master.*/transport.* -> one "Master" node, track_<id>.*
+    // -> one "Track <id>" node (each with its full default output set), else a single-output "Other" node.
+    // The single chokepoint that makes every mapping's source appear on the canvas.
+    void ensure_source_node(const std::string& src);
 
     void sync_op_pos();
     int  op_index_of_id(int id) const;   // ADR-0033 P1: stable op-node id -> current index, -1 if gone (O(n))
@@ -358,13 +410,17 @@ private:
     bool op_in_port(int i, int port, float& px, float& py) const;  // texture input port `port`; false if out of range
     bool op_out_port(int i, float& px, float& py) const;  // false if op has no output (= output port 0)
     bool op_out_port(int i, int port, float& px, float& py) const;  // a specific OUTPUT port (multi-output)
+    // ADR-0053 Phase B: value-lane ordinal of op i's OUTPUT port `port` (-1 if not a value lane), and the
+    // inverse (screen position of the output stub carrying value `lane`) — the control-edge port bridge.
+    int  op_out_value_lane(int i, int port) const;
+    bool op_out_port_of_lane(int i, int lane, float& px, float& py) const;
     void set_op_input_port(int node, int port, int src);  // wire src -> node's texture input `port` (-1 clears)
     int  first_node_of(const std::string& op_type) const; // -1 if none
     // Per-node param port: position of node_idx's local param row. False if out of range.
     bool param_port(int node_idx, int local, float& px, float& py) const;
     bool nearest_param(double x, double y, double maxd, int& node_idx, int& local) const;
     int  nearest_op_in(double x, double y, double maxd, int& port) const; // node index (-1 none) + which input port
-    int  nearest_op_out(double x, double y, double maxd) const;// node index, -1
+    int  nearest_op_out(double x, double y, double maxd, int& port) const;// node index (-1 none) + which OUTPUT port
 };
 
 }  // namespace vivid::ui
