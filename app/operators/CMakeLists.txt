@@ -132,13 +132,14 @@ endif()
 # Vendored from ../vivid-3d onto the trunk ABI. Each op needs the package-local operator_api/
 # (gpu_3d.h, port_type_registry.h shim, instance_algorithms.h) + linmath.h, so the package dir goes
 # on the include path alongside the ../src default from add_vivid_operator.
-# instance_noise moved OUT of the lean core (ADR-0054) into the installable `packages/content-3d`
-# example package — an unused single-look content op. It carries a VENDORED copy of the vivid-3d
-# operator_api/ 3D headers (gpu_3d.h etc.) + linmath.h so it compiles on install via the package
-# compiler (which only sees operator_api + the package's own dirs). instance_grid/deformer/particles3d
-# stay for now — they back shipped demos (lattice/crystal/blob/storm).
+# instance_noise/instance_grid/deformer moved OUT of the lean core (ADR-0054) into the installable
+# `packages/content-3d` package (single-look 3D content ops). They carry a VENDORED copy of the
+# vivid-3d operator_api/ 3D headers (gpu_3d.h etc.) + linmath.h so they compile on install via the
+# package compiler (which only sees operator_api + the package's own dirs). The demos that used
+# instance_grid/deformer (lattice/crystal) now CARRY the package in their project folder (compiled on
+# load_project). particles3d stays for now — it backs the flagship blob showcase + storm/lattice.
 foreach(_v3d render_3d scene_merge shape3d light3d
-             instancer3d instances_from_lanes instances_from_signal instance_grid deformer
+             instancer3d instances_from_lanes instances_from_signal
              particles3d sdf3d audio_spectrum reactive_master reactive_track lane_ramp lane_palette clock switch3d)
     add_vivid_operator(vivid_${_v3d} packages/vivid-3d/${_v3d}.cpp)
     target_include_directories(vivid_${_v3d} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/packages/vivid-3d)

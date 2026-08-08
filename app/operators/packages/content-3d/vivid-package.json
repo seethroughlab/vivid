@@ -2,7 +2,9 @@
   "name": "content-3d",
   "version": "0.1.0",
   "operators": [
-    { "name": "InstanceNoise", "kind": "gpu_visual", "source": "instance_noise.cpp" }
+    { "name": "InstanceNoise", "kind": "gpu_visual", "source": "instance_noise.cpp" },
+    { "name": "InstanceGrid", "kind": "gpu_visual", "source": "instance_grid.cpp" },
+    { "name": "Deformer", "kind": "gpu_visual", "source": "deformer.cpp" }
   ],
   "dependencies": {
     "vendor": [

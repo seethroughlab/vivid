@@ -130,8 +130,18 @@ Concrete candidate list (all verified pure in `app/operators/CMakeLists.txt`):
 > (`lattice` / `crystal` / `blob` / `storm`), so moving them Model-A-style needs a *creative* demo
 > migration first — not done unilaterally.
 >
-> Still pending: the used core-visuals recipe/content ops (`Emitter`/`Instancer`/`Solids`/`ShapeGrid`/
-> `Lines`) and the demo-backed 3D ops above all require demo migration before they can move.
+> Slice 3 (implemented): **`InstanceGrid` + `Deformer` moved to `content-3d`.** Key correction to the
+> "demo-gated" framing above: auditing the **tracked** demos (`git`-committed: drift, generative-fields,
+> geometry, grid, signal, surge-lead) shows **none** of them use `InstanceGrid`/`Deformer`/`Particles3D`/
+> `InstancesFromSignal`/`Emitter`/`Instancer`/`Solids` — the demos that do (`crystal`/`lattice`/`blob`/
+> `storm`/…) are **untracked** in the repo. So moving these ops breaks nothing shipped and needs no demo
+> change. The carry-the-package migration *was* validated on the local crystal/lattice demos (crystal
+> 0.177→0.172, lattice 0.358→0.351 mean brightness — parity), and remains the approach for the two ops
+> that a *tracked* demo does use — **`ShapeGrid`** (geometry, surge-lead) and **`Lines`** (geometry, grid).
+> `Particles3D` also has no tracked-demo user; kept for now as flagship (untracked blob/storm) content.
+>
+> Still pending: `ShapeGrid`/`Lines` (carry-the-package in geometry/grid/surge-lead), and the pure
+> recipe ops `Emitter`/`Instancer`/`Solids`/`InstancesFromSignal` (movable with no demo change).
 
 The **native note-generator recipes** `Euclid`, `Chord`, `RandMelody` are recipes by ADR-0046, but
 they are compiled *into the binary* (`builtin_audio_ops.cpp`), not dylibs, and the audio-package route
