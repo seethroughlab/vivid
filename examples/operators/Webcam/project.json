@@ -1,0 +1,120 @@
+{
+  "audio_view": {
+    "ox": 12.0,
+    "oy": 390.0,
+    "scale": 1.0
+  },
+  "graph": {
+    "chain": [
+      {
+        "base": [
+          0.0,
+          0.0,
+          2.0,
+          1.0
+        ],
+        "id": 0,
+        "in": 1,
+        "ins": [
+          1
+        ],
+        "op_type": "Output",
+        "params": {
+          "aspect": 0.0,
+          "display": 0.0,
+          "fit": 0.0,
+          "height": 2.0,
+          "launch": 0.0,
+          "preview": 1.0
+        },
+        "x": 932.0,
+        "y": 143.5
+      },
+      {
+        "base": [
+          1.0,
+          0.0,
+          1.0,
+          2.0
+        ],
+        "id": 1,
+        "in": -1,
+        "op_type": "Webcam",
+        "params": {
+          "active": 1.0,
+          "device": 0.0,
+          "fps": 2.0,
+          "resolution": 1.0
+        },
+        "x": 732.0,
+        "y": 102.0
+      },
+      {
+        "base": [
+          0.0,
+          32.0,
+          0.800000011920929,
+          0.5
+        ],
+        "id": 2,
+        "in": -1,
+        "op_type": "Shape3D",
+        "params": {
+          "a": 1.0,
+          "b": 0.20000000298023224,
+          "detail": 32.0,
+          "emission": 0.0,
+          "g": 0.5,
+          "metallic": 0.0,
+          "pos_x": 0.0,
+          "pos_y": 0.0,
+          "pos_z": 0.0,
+          "r": 0.800000011920929,
+          "rot_x": 0.0,
+          "rot_y": 0.0,
+          "rot_z": 0.0,
+          "roughness": 0.5,
+          "scale_x": 1.0,
+          "scale_y": 1.0,
+          "scale_z": 1.0,
+          "shading": 0.0,
+          "shape": 0.0,
+          "toon_levels": 4.0,
+          "unlit": 0.0
+        },
+        "x": 732.0,
+        "y": 255.0
+      }
+    ],
+    "mappings": [],
+    "nodes": [],
+    "shader": [
+      900.0,
+      488.0
+    ],
+    "view": {
+      "ox": 0.0,
+      "oy": 0.0,
+      "scale": 1.0
+    }
+  },
+  "launch_quantum_bars": 1,
+  "master": {
+    "gain": 1.0
+  },
+  "pool": [],
+  "scene_names": [
+    "A",
+    "B",
+    "C"
+  ],
+  "scenes": 3,
+  "tracks": [],
+  "version": 5,
+  "window": {
+    "dock": 210.0,
+    "h": 1098,
+    "split": 512.0,
+    "w": 1613
+  }
+}
