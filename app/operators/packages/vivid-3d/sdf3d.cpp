@@ -36,8 +36,10 @@ struct SDFParamsUniform {
     float surface_threshold;
     float instance_count;    // ADR-0053 demo: # of note-metaball spheres smooth-unioned into the field
     float instance_k;        // smooth-union blend radius for those instance spheres
+    float shadow;            // soft SELF-shadow strength (0 = off); marches a shadow ray to light 0
+    float _pad2[3];
 };
-static_assert(sizeof(SDFParamsUniform) == 176, "SDFParamsUniform must be 176 bytes");
+static_assert(sizeof(SDFParamsUniform) == 192, "SDFParamsUniform must be 192 bytes");
 
 // Note-metaball instance spheres: up to 32 packed as vec4 (xyz = LOCAL-space centre, w = radius). Fed
 // from an InstanceArray3D input (e.g. a Notes signal), smooth-unioned into the SDF so the points MERGE
@@ -76,6 +78,10 @@ struct SDFParams {
     surface_threshold: f32,
     instance_count:    f32,
     instance_k:        f32,
+    shadow:            f32,
+    _p2:               f32,
+    _p3:               f32,
+    _p4:               f32,
 }
 
 // Light / LightsUniform come from the shared LIGHTS_3D_WGSL preamble (ADR-0051 P3) — this shader
@@ -248,6 +254,23 @@ fn calc_normal(p: vec3f) -> vec3f {
     ));
 }
 
+// Soft SELF-shadow (Inigo Quilez): march from a surface point toward the light; the closer the ray
+// grazes other geometry, the darker the point. All in the SDF's own field — the metaball lobes / merged
+// notes shadow each other, which the shadow-MAP path can't do for a raymarched custom pipeline. `rd` is
+// the toward-light direction in LOCAL space; `k` sets penumbra hardness.
+fn soft_shadow(ro: vec3f, rd: vec3f, k: f32) -> f32 {
+    var res: f32 = 1.0;
+    var t: f32 = 0.04;
+    for (var i: i32 = 0; i < 20; i++) {
+        let h = scene_sdf(ro + rd * t);
+        if (h < 0.001) { return 0.0; }
+        res = min(res, k * h / t);
+        t += clamp(h, 0.03, 0.5);
+        if (t > 12.0) { break; }
+    }
+    return clamp(res, 0.0, 1.0);
+}
+
 struct SDFFragOutput {
     @location(0) color: vec4f,
     @builtin(frag_depth) depth: f32,
@@ -370,8 +393,16 @@ fn fs_main(in: SDFVertexOutput) -> SDFFragOutput {
         let diffuse  = max(dot(N, L), 0.0);
         let specular = pow(max(dot(N, H), 0.0), shininess);
 
+        // Soft self-shadow from the KEY (light 0) only — one march per pixel, the big depth win; fill /
+        // rim lights deliberately don't cast (they lift shadows). Marched in local space toward the light.
+        var sh: f32 = 1.0;
+        if (i == 0u && params.shadow > 0.001) {
+            let L_local = normalize((params.inv_model * vec4f(L, 0.0)).xyz);
+            let shade = soft_shadow(local_hit + local_normal * 0.04, L_local, 12.0);
+            sh = mix(1.0, shade, params.shadow);
+        }
         color += light_color * (diffuse_color * diffuse + specular_color * specular)
-                 * intensity * attenuation;
+                 * intensity * attenuation * sh;
     }
 
     color += base_color * params.emission;
@@ -622,6 +653,11 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<bool>  instances_only  {"instances_only", false};
     vivid::Param<float> instance_smooth {"instance_smooth", 0.35f, 0.01f, 2.0f};
 
+    // Soft SELF-shadow strength (0 = off). Marches a shadow ray toward the key light (light 0) so the
+    // metaball's own lobes / merged instances shadow each other — depth a raymarched op can't get from
+    // the shadow-map path. Off by default, so existing SDF3D scenes are unchanged.
+    vivid::Param<float> shadow {"shadow", 0.0f, 0.0f, 1.0f};
+
     // Color
     vivid::Param<float> r {"r", 0.9f, 0.0f, 1.0f};
     vivid::Param<float> g {"g", 0.5f, 0.0f, 1.0f};
@@ -664,6 +700,7 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::param_group(smooth_k, "CSG");
         vivid::param_group(instances_only, "Instances");
         vivid::param_group(instance_smooth, "Instances");
+        vivid::param_group(shadow, "Instances");
 
         vivid::param_group(r, "Color");
         vivid::param_group(g, "Color");
@@ -704,6 +741,7 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back(&smooth_k);
         out.push_back(&instances_only);
         out.push_back(&instance_smooth);
+        out.push_back(&shadow);
         out.push_back(&r);
         out.push_back(&g);
         out.push_back(&b);
@@ -798,6 +836,7 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
         if (instances_only.value) params_data.shape_a_type = -1.0f;
         params_data.instance_count = static_cast<float>(inst_n);
         params_data.instance_k     = instance_smooth.value;
+        params_data.shadow         = shadow.value;
         params_data.shape_b_type = (shape_b.int_value() == 0) ? -1.0f
                                    : static_cast<float>(shape_b.int_value() - 1);
         params_data.operation    = static_cast<float>(operation.int_value());
