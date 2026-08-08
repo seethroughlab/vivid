@@ -95,7 +95,7 @@ def build(v: Vivid, save: bool = True):
     # Bloom, contrasting the cool central blobs. instance_smooth is the merge radius between notes.
     lead_draw = v.add_node("SDF3D")
     for k, val in dict(instances_only=1, instance_smooth=0.7, max_steps=64,
-                       r=1.0, g=0.72, b=0.3, roughness=0.35, metallic=0.2, emission=0.35).items():
+                       r=1.0, g=0.72, b=0.3, roughness=0.35, metallic=0.2, emission=0.35, shadow=0.6).items():
         v.set_node_param(lead_draw, k, float(val))
     v.connect(lead_draw, lead_inst, 0)       # instances input (port 0) ← the note points
 
@@ -109,7 +109,8 @@ def build(v: Vivid, save: bool = True):
     for k, val in dict(shape=0, size_x=1.4, size_y=1.4, size_z=1.4,                         # lobe A (a sphere)
                        operation=1, shape_b=1, size_bx=1.05, size_by=1.05, size_bz=1.05,    # lobe B, SMOOTH UNION
                        pos_bx=0.0, pos_by=-2.4, pos_bz=0.0, smooth_k=0.55, max_steps=96,     # B well below A → clearly TWO at rest
-                       r=0.16, g=0.32, b=0.78, roughness=0.42, metallic=0.12, emission=0.08,
+                       r=0.34, g=0.36, b=0.42, roughness=0.4, metallic=0.15, emission=0.05,  # DARK near-neutral → coloured light reads as colour, not a white clip
+                       shadow=0.7,                                                    # soft self-shadow: the two lobes shadow each other
                        scale=1.2).items():
         v.set_node_param(blob, k, float(val))
 
@@ -120,18 +121,33 @@ def build(v: Vivid, save: bool = True):
                        operation=1, shape_b=1, size_bx=0.7, size_by=0.7, size_bz=0.7,
                        pos_bx=0.0, pos_by=-1.5, pos_bz=0.0, smooth_k=0.45, max_steps=80,
                        pos_x=3.6, pos_y=2.4, pos_z=-0.5,
-                       r=0.12, g=0.55, b=0.72, roughness=0.4, metallic=0.15, emission=0.1,
+                       r=0.3, g=0.34, b=0.42, roughness=0.4, metallic=0.15, emission=0.06,  # dark near-neutral → coloured-light shaded
+                       shadow=0.7,
                        scale=0.8).items():
         v.set_node_param(blob2, k, float(val))
 
-    key = v.add_node("Light3D")
-    for k, val in dict(type=0, intensity=2.6, r=1.0, g=0.96, b=0.9,
-                       dir_x=-0.4, dir_y=-0.7, dir_z=-0.5).items():
+    # A saturated COLOURED lighting rig (ADR-0051: SDF metaballs now take the scene's real Light3D nodes,
+    # so these actually shade the blobs). Complementary key/fill from opposite sides paint the gooey
+    # surfaces two colours — a magenta-lit side melting into a cyan-lit side — with a violet BACK/RIM light
+    # edging the silhouettes and a deep-blue AMBIENT so the shadow side reads colour, not black.
+    # Key + fill are OPPOSED (one lights the left face, the other the right) so each side of a blob takes a
+    # single colour — magenta melting to cyan across the gooey surface — instead of both summing to white on
+    # the camera-facing front. Modest intensities + a dark albedo (below) keep the colour from clipping.
+    key = v.add_node("Light3D")          # KEY — magenta, shining rightward → lights the LEFT/top faces
+    for k, val in dict(type=0, intensity=2.6, r=1.0, g=0.3, b=0.6,
+                       dir_x=0.6, dir_y=-0.35, dir_z=-0.25).items():
         v.set_node_param(key, k, float(val))
-    fill = v.add_node("Light3D")
-    for k, val in dict(type=1, intensity=1.5, r=0.45, g=0.7, b=1.0,
-                       pos_x=-5.0, pos_y=3.0, pos_z=5.0, radius=26.0).items():
+    fill = v.add_node("Light3D")         # FILL — cyan, shining leftward → lights the RIGHT/bottom faces
+    for k, val in dict(type=0, intensity=2.2, r=0.2, g=0.8, b=1.0,
+                       dir_x=-0.6, dir_y=0.28, dir_z=-0.3).items():
         v.set_node_param(fill, k, float(val))
+    rim = v.add_node("Light3D")          # RIM — violet, from BEHIND (toward camera) → edges only, weak
+    for k, val in dict(type=0, intensity=1.3, r=0.75, g=0.45, b=1.0,
+                       dir_x=0.0, dir_y=-0.2, dir_z=0.96).items():
+        v.set_node_param(rim, k, float(val))
+    amb = v.add_node("Light3D")          # AMBIENT — deep blue, so the unlit side is colour, not black
+    for k, val in dict(type=3, intensity=0.35, r=0.14, g=0.17, b=0.38).items():
+        v.set_node_param(amb, k, float(val))
 
     # A PARTICLE NEBULA that INTERACTS with the melody and is DRIVEN by the audio (not a free-running field):
     #   - the arp note-instances are wired to the `attractors` port (it takes an InstanceArray3D — the same
@@ -149,16 +165,21 @@ def build(v: Vivid, save: bool = True):
         v.set_node_param(neb, k, float(val))
     v.connect(neb, lead_inst, 1)              # attractors ← the arp note-instances: the swarm CHASES the melody
 
-    # Two merges (SceneMerge is 4-in): merge1 = wheel + blob + the two lights; merge2 adds the nebula.
-    merge = v.add_node("SceneMerge")
-    v.connect(merge, lead_draw, 0)           # the wheel (instanced)
-    v.connect(merge, blob,      1)           # the churning core blob (Shape3D → Deformer)
-    v.connect(merge, key,       2)
-    v.connect(merge, fill,      3)
-    merge2 = v.add_node("SceneMerge")
-    v.connect(merge2, merge,  0)             # everything above …
-    v.connect(merge2, neb,    1)             # … + the particle nebula …
-    v.connect(merge2, blob2,  2)             # … + the second (mid-driven) metaball
+    # SceneMerge is 4-in, and there are 8 elements (4 geometry/particles + 4 lights) → a small merge tree:
+    # geometry into one, the four lights into another, then combine.
+    merge = v.add_node("SceneMerge")         # geometry + particles
+    v.connect(merge, lead_draw, 0)           # the note metaball field (the melody)
+    v.connect(merge, blob,      1)           # the central churning metaball
+    v.connect(merge, blob2,     2)           # the companion metaball
+    v.connect(merge, neb,       3)           # the particle nebula
+    merge_lights = v.add_node("SceneMerge")  # the four coloured lights
+    v.connect(merge_lights, key,  0)
+    v.connect(merge_lights, fill, 1)
+    v.connect(merge_lights, rim,  2)
+    v.connect(merge_lights, amb,  3)
+    merge2 = v.add_node("SceneMerge")        # combine geometry + lights
+    v.connect(merge2, merge,        0)
+    v.connect(merge2, merge_lights, 1)
 
     render = v.add_node("Render3D")
     # ORBIT camera for PARALLAX: the eye circles the scene (radius/height) instead of sitting static, so the
@@ -181,7 +202,7 @@ def build(v: Vivid, save: bool = True):
     # BLOOM (post) — the emissive core flashes, the bright beads, and the glowing motes bleed into a soft
     # halo. This is most of the "atmosphere" upgrade: matte 3D shapes → a luminous, alive scene.
     bloom = v.add_node("Bloom")
-    for k, val in dict(threshold=0.45, intensity=1.2, radius=2.4).items():
+    for k, val in dict(threshold=0.62, intensity=0.9, radius=2.4).items():
         v.set_node_param(bloom, k, float(val))
     v.connect(bloom, render, 0)
     v.connect(out, bloom, 0)
@@ -198,12 +219,12 @@ def build(v: Vivid, save: bool = True):
     v.map("transport.beat_pulse", blob, "scale", amount=0.04, attack=0.005, release=0.15)
     #   2) bass FLASH — each bass note briefly lights the metaball's emission: a STRIKE on a shaded mass
     #      (base emission is low), not a constant glow.
-    v.map(f"track_{bid}.gate", blob, "emission", amount=0.3, attack=0.004, release=0.18)
+    v.map(f"track_{bid}.gate", blob, "emission", amount=0.16, attack=0.004, release=0.18)  # subtle now the coloured lights carry it
     #   3) energy GLOW — sustained low energy swells the background's blue (the room breathing) WITHOUT
     #      over-lighting the centre mass (driving the lights blew it out to white).
     v.map("master.low", render, "bg_b", amount=0.08, attack=0.03, release=0.28)
     #   4) high SHIMMER — highs (hats + arp detail) brighten the note metaball field (→ more Bloom glow).
-    v.map("master.high", lead_draw, "emission", amount=0.4, attack=0.01, release=0.12)
+    v.map("master.high", lead_draw, "emission", amount=0.25, attack=0.01, release=0.12)
     #   5) blob MERGE + ORBIT — the bass rides lobe B UP into A (pos_by) while the mids swing it sideways
     #      (pos_bx), so B ORBITS A and slams in from a moving angle: the two blobs go two → one → two, from
     #      a different side each time. Bigger travel than before so it clearly reads as merging, not one mass.
@@ -212,7 +233,7 @@ def build(v: Vivid, save: bool = True):
     #   6) gloopy NECK — the beat swells smooth_k, so the connecting neck fattens/pinches on each kick.
     v.map("transport.beat_pulse", blob, "smooth_k", amount=0.32, attack=0.006, release=0.2)
     #   7) COLOUR by energy — the bass heats the mass from deep blue toward warm magenta as it merges.
-    v.map("master.low", blob, "r", amount=0.5, attack=0.03, release=0.3)
+    v.map("master.low", blob, "r", amount=0.22, attack=0.03, release=0.3)   # gentle warm shift; the lights do the colouring
     #   8) COMPANION metaball — the second (teal) mass pulses + merges on the MIDS, breathing to a different
     #      band than the bass-driven hero, so the two masses feel like separate living things.
     v.map("master.mid", blob2, "scale",  amount=0.05, attack=0.01, release=0.18)
