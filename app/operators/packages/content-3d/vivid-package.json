@@ -4,7 +4,9 @@
   "operators": [
     { "name": "InstanceNoise", "kind": "gpu_visual", "source": "instance_noise.cpp" },
     { "name": "InstanceGrid", "kind": "gpu_visual", "source": "instance_grid.cpp" },
-    { "name": "Deformer", "kind": "gpu_visual", "source": "deformer.cpp" }
+    { "name": "Deformer", "kind": "gpu_visual", "source": "deformer.cpp" },
+    { "name": "InstancesFromSignal", "kind": "gpu_visual", "source": "instances_from_signal.cpp" },
+    { "name": "Particles3D", "kind": "gpu_visual", "source": "particles3d.cpp" }
   ],
   "dependencies": {
     "vendor": [

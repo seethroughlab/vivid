@@ -138,10 +138,17 @@ Concrete candidate list (all verified pure in `app/operators/CMakeLists.txt`):
 > change. The carry-the-package migration *was* validated on the local crystal/lattice demos (crystal
 > 0.177→0.172, lattice 0.358→0.351 mean brightness — parity), and remains the approach for the two ops
 > that a *tracked* demo does use — **`ShapeGrid`** (geometry, surge-lead) and **`Lines`** (geometry, grid).
-> `Particles3D` also has no tracked-demo user; kept for now as flagship (untracked blob/storm) content.
 >
-> Still pending: `ShapeGrid`/`Lines` (carry-the-package in geometry/grid/surge-lead), and the pure
-> recipe ops `Emitter`/`Instancer`/`Solids`/`InstancesFromSignal` (movable with no demo change).
+> Slice 4 (implemented): the five ops with **no committed-demo user** moved out in one clean batch —
+> **`Emitter`/`Instancer`/`Solids`** → `content-visual` (pure `operator_api`, no vendoring) and
+> **`InstancesFromSignal`/`Particles3D`** → `content-3d` (reuse its vendored 3D headers). No demo change.
+> (Correction to Slice 3's aside: the untracked demos are **gitignored by design** — `examples/demos/`
+> `.gitignore` allowlists only the 6 committed demos; the rest are throwaway `.py`-generated projects,
+> and the showcase ships as hosted video. So `Particles3D` moving is not a flagship regression.) Both
+> packages verified: all their ops compile + register on install.
+>
+> Still pending: only `ShapeGrid`/`Lines` (carry-the-package in the committed geometry/grid/surge-lead
+> demos) — the last two candidates, and the only ones needing a demo migration.
 
 The **native note-generator recipes** `Euclid`, `Chord`, `RandMelody` are recipes by ADR-0046, but
 they are compiled *into the binary* (`builtin_audio_ops.cpp`), not dylibs, and the audio-package route
