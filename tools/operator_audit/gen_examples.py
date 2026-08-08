@@ -42,11 +42,16 @@ PKG_ROOT = os.path.join(REPO, "app", "operators", "packages")
 # Operators NOT in the lean core (ADR-0054) -> the package dir to carry into the example folder so the
 # saved project compiles the op on load. Core ops need no entry.
 PACKAGE_FOR = {
-    "InstanceNoise": os.path.join(PKG_ROOT, "content-3d"),
-    "InstanceGrid":  os.path.join(PKG_ROOT, "content-3d"),
-    "Deformer":      os.path.join(PKG_ROOT, "content-3d"),
-    "TimeMachine":   os.path.join(PKG_ROOT, "content-visual"),
-    "CosinePalette": os.path.join(PKG_ROOT, "content-visual"),
+    "InstanceNoise":       os.path.join(PKG_ROOT, "content-3d"),
+    "InstanceGrid":        os.path.join(PKG_ROOT, "content-3d"),
+    "Deformer":            os.path.join(PKG_ROOT, "content-3d"),
+    "InstancesFromSignal": os.path.join(PKG_ROOT, "content-3d"),
+    "Particles3D":         os.path.join(PKG_ROOT, "content-3d"),
+    "TimeMachine":         os.path.join(PKG_ROOT, "content-visual"),
+    "CosinePalette":       os.path.join(PKG_ROOT, "content-visual"),
+    "Emitter":             os.path.join(PKG_ROOT, "content-visual"),
+    "Instancer":           os.path.join(PKG_ROOT, "content-visual"),
+    "Solids":              os.path.join(PKG_ROOT, "content-visual"),
 }
 
 SKIP = {"Output"}     # the sink node, not a content op to demonstrate

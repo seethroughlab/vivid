@@ -8,9 +8,14 @@ it earns its place as an *example*, not a bundled default.
 |---|---|
 | `TimeMachine` | Frame-history echo/trails effect (temporal feedback look). |
 | `CosinePalette` | IQ-style cosine color palette — cycles hues from a phase input. |
+| `Emitter` | Recipe (ADR-0046): a `VividSignal` → aged particles, laid out + coloured + rendered in one node. |
+| `Instancer` | Recipe (ADR-0046): a `VividSignal` → instanced shapes, layout + material + render in one node. |
+| `Solids` | Recipe (ADR-0046): a `VividSignal` → solid 3D forms, layout + material + render in one node. |
 
 These are pure `operator_api` + WebGPU ops (no external libraries), compiled on install by the package
-compiler — no app rebuild.
+compiler — no app rebuild. `Emitter`/`Instancer`/`Solids` are ADR-0046 *recipes* (they bundle a whole
+workflow into one node); the composable path is `Signal → lane primitives → InstancesFromLanes →
+Instancer3D`.
 
 ## Install
 

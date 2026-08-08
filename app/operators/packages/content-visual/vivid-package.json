@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "operators": [
     { "name": "TimeMachine", "kind": "gpu_visual", "source": "time_machine.cpp" },
-    { "name": "CosinePalette", "kind": "gpu_visual", "source": "cosine_palette.cpp" }
+    { "name": "CosinePalette", "kind": "gpu_visual", "source": "cosine_palette.cpp" },
+    { "name": "Emitter", "kind": "gpu_visual", "source": "emitter.cpp" },
+    { "name": "Instancer", "kind": "gpu_visual", "source": "instancer.cpp" },
+    { "name": "Solids", "kind": "gpu_visual", "source": "solids.cpp" }
   ]
 }

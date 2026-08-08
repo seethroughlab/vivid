@@ -55,9 +55,9 @@ add_vivid_operator(vivid_shape_grid packages/core-visuals/shape_grid.cpp)
 add_vivid_operator(vivid_notes packages/core-visuals/notes_op.cpp)
 # Notes draws a live signal thumbnail via the shared 2D lane-thumb raster (header-only, in vivid-3d).
 target_include_directories(vivid_notes PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/packages/vivid-3d)
-add_vivid_operator(vivid_emitter packages/core-visuals/emitter.cpp)
-add_vivid_operator(vivid_instancer packages/core-visuals/instancer.cpp)
-add_vivid_operator(vivid_solids packages/core-visuals/solids.cpp)
+# Emitter/Instancer/Solids (ADR-0046 recipes) moved OUT of the lean core (ADR-0054) into the
+# installable `packages/content-visual` package — pure operator_api + webgpu, no vendoring. No
+# committed demo uses them (the dev-only .py-generated demos are gitignored).
 add_vivid_operator(vivid_lines packages/core-visuals/lines.cpp)
 add_vivid_operator(vivid_mesh packages/core-visuals/mesh.cpp)
 # Model: a glTF/GLB loader — needs nlohmann/json (stb_image + webgpu come free with add_vivid_operator).
@@ -138,9 +138,11 @@ endif()
 # package compiler (which only sees operator_api + the package's own dirs). The demos that used
 # instance_grid/deformer (lattice/crystal) now CARRY the package in their project folder (compiled on
 # load_project). particles3d stays for now — it backs the flagship blob showcase + storm/lattice.
+# instances_from_signal (ADR-0046 recipe) + particles3d (single-look content) moved OUT of core into
+# packages/content-3d (they reuse its vendored vivid-3d 3D headers). No committed demo uses them.
 foreach(_v3d render_3d scene_merge shape3d light3d
-             instancer3d instances_from_lanes instances_from_signal
-             particles3d sdf3d audio_spectrum reactive_master reactive_track lane_ramp lane_palette clock switch3d)
+             instancer3d instances_from_lanes
+             sdf3d audio_spectrum reactive_master reactive_track lane_ramp lane_palette clock switch3d)
     add_vivid_operator(vivid_${_v3d} packages/vivid-3d/${_v3d}.cpp)
     target_include_directories(vivid_${_v3d} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/packages/vivid-3d)
 endforeach()

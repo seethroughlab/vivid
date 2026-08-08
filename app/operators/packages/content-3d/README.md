@@ -12,6 +12,8 @@ builds on install with no app rebuild and no external libraries.
 | `InstanceNoise` | Lays out an `InstanceArray3D` on a value-noise field (single-look 3D layout). |
 | `InstanceGrid` | Lays out an `InstanceArray3D` on a regular grid (single-look 3D layout). |
 | `Deformer` | Displaces a `Scene3D` fragment by a procedural field (single-look 3D transform). |
+| `InstancesFromSignal` | Recipe (ADR-0046): a `VividSignal` → an `InstanceArray3D` (aging + layout + palette in one adapter). |
+| `Particles3D` | 3D particle simulation content op. |
 
 ## Vendored headers — keep in sync
 
