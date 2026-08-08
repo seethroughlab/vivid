@@ -117,8 +117,21 @@ Concrete candidate list (all verified pure in `app/operators/CMakeLists.txt`):
 > project references them** (no migration needed). `InstanceNoise` was in the intended first batch but
 > was **deferred**: it depends on vivid-3d's package-local `operator_api/gpu_3d.h` + `thumbnail_3d.h`,
 > so moving it standalone needs those 3D headers vendored (Stage 1) — best done as a vivid-3d-content
-> slice, not mixed into a core-visuals content package. The used ops (`Emitter`/`Instancer`/`Solids`/
-> `ShapeGrid`/`Lines`/`Particles3D`/…) still require demo migration before they can move.
+> slice, not mixed into a core-visuals content package.
+>
+> Slice 2 (implemented): **`InstanceNoise` moved to the installable `app/operators/packages/content-3d`
+> package** — the first move-out that exercises Stage 1 vendored includes. It needs vivid-3d's
+> package-local 3D header shim (`operator_api/gpu_3d.h`, `thumbnail_3d.h`, `instance_algorithms.h`,
+> `lane_thumb.h`, `port_type_registry.h`) + `linmath.h`, none of which live in the shared
+> `operator_api/`. The package **vendors copies** of them and declares `dependencies.vendor`, so the
+> package compiler adds `-I vendor` and it builds on install with no external libraries. Chosen because
+> `InstanceNoise` is **unused by any shipped project** — pure dead weight in core. Its vivid-3d siblings
+> `InstanceGrid` / `Deformer` / `Particles3D` **stay for now**: they back shipped demos
+> (`lattice` / `crystal` / `blob` / `storm`), so moving them Model-A-style needs a *creative* demo
+> migration first — not done unilaterally.
+>
+> Still pending: the used core-visuals recipe/content ops (`Emitter`/`Instancer`/`Solids`/`ShapeGrid`/
+> `Lines`) and the demo-backed 3D ops above all require demo migration before they can move.
 
 The **native note-generator recipes** `Euclid`, `Chord`, `RandMelody` are recipes by ADR-0046, but
 they are compiled *into the binary* (`builtin_audio_ops.cpp`), not dylibs, and the audio-package route
