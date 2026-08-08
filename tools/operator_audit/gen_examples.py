@@ -1,26 +1,32 @@
 #!/usr/bin/env python3
 """Generate minimal per-operator EXAMPLE projects from the audit scaffold (ADR-0021 + ADR-0054).
 
-PROTOTYPE. Reuses the ADR-0042 audit scaffold (`scaffolds.build_scaffold`) — which already builds a
-minimal renderable graph for any operator from its ports — and, instead of capturing a preview PNG,
-SAVES it as a browsable folder project under `examples/operators/<Op>/`. This turns the ephemeral
-audit fixtures into a real "here's operator X in isolation" set (the gap: today `examples/` holds only
-polished demo compositions, not per-operator demos).
+Reuses the ADR-0042 audit scaffold (`scaffolds.build_scaffold` — it already builds a minimal
+renderable graph for any operator from its ports) and, instead of capturing a preview PNG, SAVES it
+as a browsable folder project under `examples/operators/<Op>/`. This turns the ephemeral audit
+fixtures into a real "here's operator X in isolation" set (the gap: `examples/demos/projects/` holds
+only polished demo compositions, not per-operator demos).
 
-For an operator that is NOT in the lean core (shipped as an example package under ADR-0054), the op's
-package is COPIED into the example folder, so `load_project` compiles + registers it on open
-(project-local operators — `app/src/app/project_io.cpp:83`). The example therefore both DEMONSTRATES
-the op and CARRIES it — no dependency on the op being in the default install.
+Portability by design: examples are built from the scaffold's **canonical sources only** (Shape3D,
+etc.) — NO external asset paths (no test-card/glTF), so a saved project opens on any machine. An op
+that only renders once seeded with a texture / mesh / live signal renders blank here and is SKIPPED
+(logged as `needs-input`) — those get a seeded generator pass later.
+
+For an operator NOT in the lean core (ADR-0054), the op's package is COPIED into the example folder,
+so `load_project` compiles + registers it on open (project-local operators, `project_io.cpp:83`).
+The example both DEMONSTRATES the op and CARRIES it — no dependency on the default install.
 
 Prereq: launch the app by DIRECT binary path with a control port (a fresh, lean instance):
     VIVID_PORT=9877 app/build/vivid.app/Contents/MacOS/vivid &
 Then:
-    uv run tools/operator_audit/gen_examples.py                 # the prototype pair
-    uv run tools/operator_audit/gen_examples.py Render3D Bloom  # explicit ops
+    uv run tools/operator_audit/gen_examples.py            # every renderable visual op
+    uv run tools/operator_audit/gen_examples.py Render3D   # explicit op(s)
 """
 import os
 import sys
+import time
 import shutil
+import subprocess
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "examples", "demos"))
@@ -41,7 +47,28 @@ PACKAGE_FOR = {
     "CosinePalette": os.path.join(PKG_ROOT, "content-visual"),
 }
 
-DEFAULT_OPS = ["Render3D", "InstanceNoise"]   # the prototype pair: one core, one packaged content op
+SKIP = {"Output"}     # the sink node, not a content op to demonstrate
+SETTLE = 0.4          # seconds to let the graph render before the blank check
+
+# macOS pauses a fully-occluded window's render loop (App Nap) -> blank frames. Keep Vivid frontmost
+# (same workaround as capture_previews.py / audit.py).
+_FG = ['osascript', '-e',
+       'tell application "System Events" to set frontmost of (first process whose name is "vivid") to true']
+
+
+def foreground():
+    try:
+        subprocess.run(_FG, capture_output=True, timeout=5)
+    except Exception:
+        pass
+
+
+def rendered(a: dict) -> bool:
+    """Non-blank in the audit sense (mirrors audit.py / capture_previews.py::rendered)."""
+    return (not a.get("is_blank", True)
+            or a.get("brightness", 0.0) > 0.02
+            or a.get("contrast", 0.0) > 0.01
+            or a.get("color_spread", 0.0) > 0.02)
 
 
 def find_output(v) -> int:
@@ -51,76 +78,96 @@ def find_output(v) -> int:
     raise RuntimeError("no Output node in a fresh session")
 
 
-def op_meta(v, name):
-    for o in v.call("list_operators")["operators"]:
-        if o["name"] == name:
-            return o
-    return None
+def carry_package(pkg_dir: str, op_name: str, dst: str):
+    """Carry ONLY `op_name` from a (possibly multi-op) source package into the example folder as a
+    single-op project-local package: a minimal manifest + just that op's source + any vendor/ headers.
+    (A shared package like content-visual holds several ops; an example should carry only its own.)"""
+    import json
+    src_manifest = json.load(open(os.path.join(pkg_dir, "vivid-package.json")))
+    entry = next(o for o in src_manifest["operators"] if o["name"] == op_name)
+    # minimal single-op manifest (keep vendor deps — the vendored headers travel with it)
+    out = {"name": op_name, "version": src_manifest.get("version", "0.1.0"), "operators": [entry]}
+    if "dependencies" in src_manifest:
+        out["dependencies"] = src_manifest["dependencies"]
+    os.makedirs(dst, exist_ok=True)
+    json.dump(out, open(os.path.join(dst, "vivid-package.json"), "w"), indent=2)
+    # just this op's source
+    shutil.copy2(os.path.join(pkg_dir, entry["source"]), os.path.join(dst, entry["source"]))
+    # vendored headers (shared across the package's ops) if declared
+    for dep in src_manifest.get("dependencies", {}).get("vendor", []):
+        inc = dep.get("include")
+        if inc and os.path.isdir(os.path.join(pkg_dir, inc)):
+            shutil.copytree(os.path.join(pkg_dir, inc), os.path.join(dst, inc), dirs_exist_ok=True)
 
 
-def carry_package(pkg_dir: str, dst: str):
-    """Copy the op's package (manifest + sources + vendor/) into the example folder, minus build junk."""
-    for item in os.listdir(pkg_dir):
-        if item in ("build", "__pycache__", ".DS_Store"):
-            continue
-        s = os.path.join(pkg_dir, item)
-        d = os.path.join(dst, item)
-        if os.path.isdir(s):
-            shutil.copytree(s, d, dirs_exist_ok=True)
-        else:
-            shutil.copy2(s, d)
-
-
-def gen_one(v, name: str) -> str:
+def gen_one(v, op) -> str:
+    """Returns a status string prefixed with the outcome: saved / skip-* / error."""
+    name = op["name"]
     dst = os.path.join(EXAMPLES, name)
     pkg = PACKAGE_FOR.get(name)
 
-    # 1. Non-core op: install its package into THIS instance so we can add its node while building.
-    if pkg:
-        r = v.call("install_operator_package", path=pkg)
-        if not r.get("ok", True):
-            return f"{name}: install failed: {r}"
-
-    op = op_meta(v, name)
-    if op is None:
-        return f"{name}: NOT in catalog (core op missing, or package install failed)"
-
-    # 2. Build the minimal scaffold and wire its terminal into Output (mirrors capture_previews).
     v.call("new_project")
     out = find_output(v)
     try:
         _op_node, terminal = scaffolds.build_scaffold(v, op, scaffolds.Sources(v))
     except Exception as e:
-        return f"{name}: scaffold-error: {str(e)[:120]}"
+        return f"error   {name}: scaffold: {str(e)[:90]}"
     if terminal is None:
-        return f"{name}: skip (no GPU-renderable terminal — audio/unknown)"
+        return f"skip    {name}: no GPU terminal (audio/unknown)"
     try:
         v.connect(out, terminal, 0, 0)
     except Exception as e:
-        return f"{name}: wire-error: {str(e)[:120]}"
+        return f"error   {name}: wire: {str(e)[:90]}"
 
-    # 3. Save as a folder project (writes <dst>/project.json).
+    # Only keep examples that actually render self-contained (no seeded texture/mesh/signal).
+    time.sleep(SETTLE)
+    a = v.call("analyze_frame").get("analysis", {})
+    if not rendered(a):
+        foreground(); time.sleep(SETTLE + 0.2)
+        a = v.call("analyze_frame").get("analysis", {})
+    if not rendered(a):
+        return f"skip    {name}: needs-input (blank self-contained)"
+
     os.makedirs(dst, exist_ok=True)
     v.save_project(dst)
-
-    # 4. Non-core op: carry its package INTO the example folder so load_project compiles it.
     if pkg:
-        carry_package(pkg, dst)
+        carry_package(pkg, name, dst)
+    return f"saved   {name}{' (+pkg)' if pkg else ''}"
 
-    tag = " (+carried package)" if pkg else ""
-    return f"{name}: saved -> {os.path.relpath(dst, REPO)}{tag}"
+
+def visual_ops(v):
+    return [o for o in v.call("list_operators")["operators"] if o["name"] not in SKIP]
 
 
 def main(argv):
-    names = argv or DEFAULT_OPS
     v = Vivid(int(os.environ.get("VIVID_PORT", "9877")))
-    rc = 0
-    for n in names:
-        line = gen_one(v, n)
+
+    # Ensure moved-out ops are registered in THIS instance so we can build their graphs.
+    for _name, pkg in PACKAGE_FOR.items():
+        try:
+            v.call("install_operator_package", path=pkg)
+        except Exception as e:
+            print(f"warn    install {os.path.basename(pkg)}: {str(e)[:80]}")
+
+    catalog = {o["name"]: o for o in v.call("list_operators")["operators"]}
+    if argv:
+        ops = [catalog[n] for n in argv if n in catalog]
+        missing = [n for n in argv if n not in catalog]
+        for n in missing:
+            print(f"error   {n}: not in catalog")
+    else:
+        ops = [o for o in catalog.values() if o["name"] not in SKIP]
+
+    saved = skipped = errored = 0
+    for op in sorted(ops, key=lambda o: o["name"]):
+        line = gen_one(v, op)
         print(line)
-        if "error" in line or "NOT in catalog" in line:
-            rc = 1
-    return rc
+        tag = line.split()[0]
+        saved += tag == "saved"
+        skipped += tag == "skip"
+        errored += tag == "error"
+    print(f"\n== {saved} saved, {skipped} skipped, {errored} errored ==")
+    return 1 if errored else 0
 
 
 if __name__ == "__main__":
