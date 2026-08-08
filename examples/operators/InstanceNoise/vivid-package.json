@@ -1,0 +1,12 @@
+{
+  "name": "content-3d",
+  "version": "0.1.0",
+  "operators": [
+    { "name": "InstanceNoise", "kind": "gpu_visual", "source": "instance_noise.cpp" }
+  ],
+  "dependencies": {
+    "vendor": [
+      { "name": "vivid-3d-headers", "include": "vendor" }
+    ]
+  }
+}
