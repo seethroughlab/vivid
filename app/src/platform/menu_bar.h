@@ -25,7 +25,9 @@ struct MenuActions {
 };
 
 // A menu entry for the File > Open Example submenu: a display label + the project path to open.
-struct MenuItemEntry { std::string label; std::string path; };
+// `group` is "" for a top-level item, else the name of a submenu to nest it under (e.g. "operators"
+// -> an "Operators" submenu). Entries are expected pre-sorted by (group, label).
+struct MenuItemEntry { std::string label; std::string path; std::string group; };
 
 // Insert native "File" + "Edit" menus into the app's menu bar. macOS: File gets the standard
 // ⌘N/⌘O/⌘S/⇧⌘S key equivalents; Edit's Undo/Redo are label-only (no ⌘Z key-equivalent, so AppKit

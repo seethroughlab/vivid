@@ -383,7 +383,15 @@ int main(int argc, char** argv) {
         ma.save_project    = [&] { vivid::file_actions::save(window, win, app); };
         ma.save_project_as = [&] { vivid::file_actions::save_as(window, win, app); };
         ma.open_recent     = [&](const std::string& p) { if (ok_to_discard()) vivid::file_actions::open_recent(window, win, app, p); };
-        ma.open_example    = [&](const std::string& p) { if (ok_to_discard()) vivid::file_actions::open_recent(window, win, app, p); };
+        ma.open_example    = [&](const std::string& p) {
+            if (!ok_to_discard()) return;
+            // A per-operator example carries a project-local operator package (ADR-0054), which
+            // load_project compiles INTO the folder — impossible from a read-only app bundle. Stage
+            // a writable copy first (a no-op for package-less examples like the demos).
+            const std::string open = vivid::examples::stage_openable_example(p);
+            if (open.empty()) { VLOG_ERR(app, "could not stage example for open: %s", p.c_str()); return; }
+            vivid::file_actions::open_recent(window, win, app, open);
+        };
         // ADR-0017/G4: Edit > Undo/Redo. app.edit_gateway is created below (read at click time).
         ma.undo            = [&] { if (app.edit_gateway) app.edit_gateway->undo(); };
         ma.redo            = [&] { if (app.edit_gateway) app.edit_gateway->redo(); };
@@ -448,7 +456,7 @@ int main(int argc, char** argv) {
         vivid::platform::set_recent_projects(app.project.recent_project_paths);
         // File > Open Example — the bundled demos (ADR-0021/P2). Discovered once at startup.
         std::vector<vivid::platform::MenuItemEntry> examples;
-        for (const auto& e : vivid::examples::discover_examples()) examples.push_back({ e.name, e.path });
+        for (const auto& e : vivid::examples::discover_examples()) examples.push_back({ e.name, e.path, e.group });
         vivid::platform::set_example_projects(examples);
     }
     std::fprintf(stderr, "[vivid] audio: %s (%u Hz)\n",
