@@ -34,9 +34,17 @@ struct SDFParamsUniform {
     float inv_model[16];     // inverse model matrix (world -> SDF local space)
     float max_steps;
     float surface_threshold;
-    float _pad[2];
+    float instance_count;    // ADR-0053 demo: # of note-metaball spheres smooth-unioned into the field
+    float instance_k;        // smooth-union blend radius for those instance spheres
+    float shadow;            // soft SELF-shadow strength (0 = off); marches a shadow ray to light 0
+    float _pad2[3];
 };
-static_assert(sizeof(SDFParamsUniform) == 176, "SDFParamsUniform must be 176 bytes");
+static_assert(sizeof(SDFParamsUniform) == 192, "SDFParamsUniform must be 192 bytes");
+
+// Note-metaball instance spheres: up to 32 packed as vec4 (xyz = LOCAL-space centre, w = radius). Fed
+// from an InstanceArray3D input (e.g. a Notes signal), smooth-unioned into the SDF so the points MERGE
+// into one gooey field instead of drawing as separate instances.
+static constexpr uint32_t kMaxSDFInstances = 32;
 
 // ---------------------------------------------------------------------------
 // Lights uniform — ADR-0051 Phase 3: the shared vivid::gpu::LightsUniform, the CPU mirror of the
@@ -68,8 +76,12 @@ struct SDFParams {
     inv_model:         mat4x4f,
     max_steps:         f32,
     surface_threshold: f32,
-    _pad0:             f32,
-    _pad1:             f32,
+    instance_count:    f32,
+    instance_k:        f32,
+    shadow:            f32,
+    _p2:               f32,
+    _p3:               f32,
+    _p4:               f32,
 }
 
 // Light / LightsUniform come from the shared LIGHTS_3D_WGSL preamble (ADR-0051 P3) — this shader
@@ -78,6 +90,11 @@ struct SDFParams {
 @group(0) @binding(0) var<uniform> camera: CustomCamera3D;
 @group(0) @binding(1) var<uniform> params: SDFParams;
 @group(0) @binding(2) var<uniform> lighting: LightsUniform;
+struct MetaInstance {
+    pos_r: vec4f,   // xyz = local centre, w = radius
+    color: vec4f,   // per-instance rgba (from the InstanceArray3D — composable, not note-specific)
+}
+@group(0) @binding(3) var<storage, read> instances: array<MetaInstance, 32>;
 
 struct SDFVertexOutput {
     @builtin(position) position: vec4f,
@@ -164,22 +181,68 @@ fn smooth_intersect(d1: f32, d2: f32, k: f32) -> f32 {
 }
 
 fn scene_sdf(p: vec3f) -> f32 {
-    let d_a = eval_shape(params.shape_a_type, p, params.size_a.xyz);
-
-    if (params.shape_b_type < -0.5) {
-        return d_a;
+    // Base A (+ optional B via a CSG op). shape_a_type < -0.5 = no base shape → a pure instance field.
+    var d: f32 = 1e9;
+    if (params.shape_a_type > -0.5) {
+        let d_a = eval_shape(params.shape_a_type, p, params.size_a.xyz);
+        if (params.shape_b_type < -0.5) {
+            d = d_a;
+        } else {
+            let p_b = p - params.pos_b.xyz;
+            let d_b = eval_shape(params.shape_b_type, p_b, params.size_b.xyz);
+            let op = i32(params.operation + 0.5);
+            switch (op) {
+                case 1: { d = smooth_union(d_a, d_b, params.smooth_k); }
+                case 2: { d = smooth_subtract(d_a, d_b, params.smooth_k); }
+                case 3: { d = smooth_intersect(d_a, d_b, params.smooth_k); }
+                default: { d = d_a; }
+            }
+        }
     }
-
-    let p_b = p - params.pos_b.xyz;
-    let d_b = eval_shape(params.shape_b_type, p_b, params.size_b.xyz);
-
-    let op = i32(params.operation + 0.5);
-    switch (op) {
-        case 1: { return smooth_union(d_a, d_b, params.smooth_k); }
-        case 2: { return smooth_subtract(d_a, d_b, params.smooth_k); }
-        case 3: { return smooth_intersect(d_a, d_b, params.smooth_k); }
-        default: { return d_a; }
+    // Note-metaball instances: smooth-union a sphere per active element, so the points MERGE (gooey necks
+    // form where they cluster) instead of drawing separately. First union against d=1e9 returns the sphere.
+    let n = i32(params.instance_count + 0.5);
+    let k = max(params.instance_k, 0.001);
+    for (var i: i32 = 0; i < n; i++) {
+        let s = instances[i].pos_r;
+        d = smooth_union(d, sdf_sphere(p - s.xyz, s.w), k);
     }
+    return d;
+}
+
+// Blended surface COLOUR at p: replays the same smooth-union order as scene_sdf, mixing each instance's
+// own colour by the same blend weight — so where two coloured metaballs merge, their colours melt too.
+// Composable: the colours come from the InstanceArray3D, so this is per-INSTANCE, not note-specific.
+fn scene_color(p: vec3f) -> vec3f {
+    var d: f32 = 1e9;
+    var col: vec3f = params.color.rgb;
+    if (params.shape_a_type > -0.5) {
+        let d_a = eval_shape(params.shape_a_type, p, params.size_a.xyz);
+        if (params.shape_b_type < -0.5) {
+            d = d_a;
+        } else {
+            let p_b = p - params.pos_b.xyz;
+            let d_b = eval_shape(params.shape_b_type, p_b, params.size_b.xyz);
+            let op = i32(params.operation + 0.5);
+            switch (op) {
+                case 1: { d = smooth_union(d_a, d_b, params.smooth_k); }
+                case 2: { d = smooth_subtract(d_a, d_b, params.smooth_k); }
+                case 3: { d = smooth_intersect(d_a, d_b, params.smooth_k); }
+                default: { d = d_a; }
+            }
+        }
+    }
+    let n = i32(params.instance_count + 0.5);
+    let k = max(params.instance_k, 0.001);
+    for (var i: i32 = 0; i < n; i++) {
+        let s  = instances[i].pos_r;
+        let ic = instances[i].color.rgb;
+        let ds = sdf_sphere(p - s.xyz, s.w);
+        let h  = clamp(0.5 + 0.5 * (ds - d) / k, 0.0, 1.0);   // == smooth_union(d, ds, k)'s weight
+        col = mix(ic, col, h);                                // h=1 → keep accumulated, h=0 → this instance
+        d   = mix(ds, d, h) - k * h * (1.0 - h);
+    }
+    return col;
 }
 
 fn calc_normal(p: vec3f) -> vec3f {
@@ -189,6 +252,23 @@ fn calc_normal(p: vec3f) -> vec3f {
         scene_sdf(p + e.yxy) - scene_sdf(p - e.yxy),
         scene_sdf(p + e.yyx) - scene_sdf(p - e.yyx),
     ));
+}
+
+// Soft SELF-shadow (Inigo Quilez): march from a surface point toward the light; the closer the ray
+// grazes other geometry, the darker the point. All in the SDF's own field — the metaball lobes / merged
+// notes shadow each other, which the shadow-MAP path can't do for a raymarched custom pipeline. `rd` is
+// the toward-light direction in LOCAL space; `k` sets penumbra hardness.
+fn soft_shadow(ro: vec3f, rd: vec3f, k: f32) -> f32 {
+    var res: f32 = 1.0;
+    var t: f32 = 0.04;
+    for (var i: i32 = 0; i < 20; i++) {
+        let h = scene_sdf(ro + rd * t);
+        if (h < 0.001) { return 0.0; }
+        res = min(res, k * h / t);
+        t += clamp(h, 0.03, 0.5);
+        if (t > 12.0) { break; }
+    }
+    return clamp(res, 0.0, 1.0);
 }
 
 struct SDFFragOutput {
@@ -264,8 +344,12 @@ fn fs_main(in: SDFVertexOutput) -> SDFFragOutput {
     // For uniform scale, just normalize(inv_model^T * n)
     let world_normal = normalize((vec4f(local_normal, 0.0) * params.inv_model).xyz);
 
-    // Shading
-    let base_color = params.color.rgb;
+    // Shading — when instances contribute, the base colour is the per-instance blend at the hit point
+    // (so merged metaballs blend colour), else the op's own colour.
+    var base_color = params.color.rgb;
+    if (params.instance_count > 0.5) {
+        base_color = scene_color(local_hit);
+    }
     let alpha = params.color.a;
 
     var out: SDFFragOutput;
@@ -309,8 +393,16 @@ fn fs_main(in: SDFVertexOutput) -> SDFFragOutput {
         let diffuse  = max(dot(N, L), 0.0);
         let specular = pow(max(dot(N, H), 0.0), shininess);
 
+        // Soft self-shadow from the KEY (light 0) only — one march per pixel, the big depth win; fill /
+        // rim lights deliberately don't cast (they lift shadows). Marched in local space toward the light.
+        var sh: f32 = 1.0;
+        if (i == 0u && params.shadow > 0.001) {
+            let L_local = normalize((params.inv_model * vec4f(L, 0.0)).xyz);
+            let shade = soft_shadow(local_hit + local_normal * 0.04, L_local, 12.0);
+            sh = mix(1.0, shade, params.shadow);
+        }
         color += light_color * (diffuse_color * diffuse + specular_color * specular)
-                 * intensity * attenuation;
+                 * intensity * attenuation * sh;
     }
 
     color += base_color * params.emission;
@@ -556,6 +648,16 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> pos_bz    {"pos_bz",  0.0f, -10.0f, 10.0f};
     vivid::Param<float> smooth_k  {"smooth_k", 0.1f, 0.01f, 2.0f};
 
+    // Note-metaball instances (optional `instances` input): each point becomes a sphere smooth-unioned
+    // into the field, so they MERGE. instances_only hides the base A/B shape for a pure point field.
+    vivid::Param<bool>  instances_only  {"instances_only", false};
+    vivid::Param<float> instance_smooth {"instance_smooth", 0.35f, 0.01f, 2.0f};
+
+    // Soft SELF-shadow strength (0 = off). Marches a shadow ray toward the key light (light 0) so the
+    // metaball's own lobes / merged instances shadow each other — depth a raymarched op can't get from
+    // the shadow-map path. Off by default, so existing SDF3D scenes are unchanged.
+    vivid::Param<float> shadow {"shadow", 0.0f, 0.0f, 1.0f};
+
     // Color
     vivid::Param<float> r {"r", 0.9f, 0.0f, 1.0f};
     vivid::Param<float> g {"g", 0.5f, 0.0f, 1.0f};
@@ -596,6 +698,9 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::param_group(pos_by, "CSG");
         vivid::param_group(pos_bz, "CSG");
         vivid::param_group(smooth_k, "CSG");
+        vivid::param_group(instances_only, "Instances");
+        vivid::param_group(instance_smooth, "Instances");
+        vivid::param_group(shadow, "Instances");
 
         vivid::param_group(r, "Color");
         vivid::param_group(g, "Color");
@@ -634,6 +739,9 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back(&pos_by);
         out.push_back(&pos_bz);
         out.push_back(&smooth_k);
+        out.push_back(&instances_only);
+        out.push_back(&instance_smooth);
+        out.push_back(&shadow);
         out.push_back(&r);
         out.push_back(&g);
         out.push_back(&b);
@@ -654,6 +762,9 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        // Optional note-metaball points (custom_inputs[0]): an InstanceArray3D whose elements become
+        // smooth-unioned spheres in the field (see instances_only / instance_smooth).
+        out.push_back(VIVID_CUSTOM_REF_PORT("instances", VIVID_PORT_INPUT, vivid::gpu::InstanceArray3D));
         out.push_back(vivid::gpu::scene_port("scene", VIVID_PORT_OUTPUT));
     }
 
@@ -689,9 +800,43 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
             mat4x4_invert(inv_model, model);
         }
 
+        // Note-metaball instances (optional custom_inputs[0]): transform each point into SDF LOCAL space
+        // and pack a MetaInstance = { pos.xyz, radius, rgba } (8 floats) for the shader's smooth-union +
+        // per-instance colour blend. Always upload the full buffer so stale spheres are cleared to zero
+        // (count gates the shader loop). Colour comes straight from the InstanceArray3D — composable.
+        float sphere_data[kMaxSDFInstances * 8] = {0.f};
+        uint32_t inst_n = 0;
+        if (ctx->custom_input_count > 0 && ctx->custom_inputs && ctx->custom_inputs[0]) {
+            const auto* arr = static_cast<const vivid::gpu::InstanceArray3D*>(ctx->custom_inputs[0]);
+            if (arr && arr->data && arr->count > 0) {
+                uint32_t n = arr->count > kMaxSDFInstances ? kMaxSDFInstances : arr->count;
+                for (uint32_t i = 0; i < n; ++i) {
+                    vec4 w = { arr->data[i].position[0], arr->data[i].position[1],
+                               arr->data[i].position[2], 1.0f };
+                    vec4 l; mat4x4_mul_vec4(l, inv_model, w);
+                    sphere_data[i * 8 + 0] = l[0];
+                    sphere_data[i * 8 + 1] = l[1];
+                    sphere_data[i * 8 + 2] = l[2];
+                    const float rad = arr->data[i].scale[0] * 0.5f;   // instance size → sphere radius
+                    sphere_data[i * 8 + 3] = rad > 0.05f ? rad : 0.05f;
+                    sphere_data[i * 8 + 4] = arr->data[i].color[0];    // per-instance rgba
+                    sphere_data[i * 8 + 5] = arr->data[i].color[1];
+                    sphere_data[i * 8 + 6] = arr->data[i].color[2];
+                    sphere_data[i * 8 + 7] = arr->data[i].color[3];
+                }
+                inst_n = n;
+            }
+        }
+        wgpuQueueWriteBuffer(ctx->queue, sphere_buf_, 0, sphere_data, kMaxSDFInstances * 32);
+
         // Upload SDF params
         SDFParamsUniform params_data{};
         params_data.shape_a_type = static_cast<float>(shape.int_value());
+        // instances_only hides the base A/B shape (shape_a_type = -1) so the field is JUST the note points.
+        if (instances_only.value) params_data.shape_a_type = -1.0f;
+        params_data.instance_count = static_cast<float>(inst_n);
+        params_data.instance_k     = instance_smooth.value;
+        params_data.shadow         = shadow.value;
         params_data.shape_b_type = (shape_b.int_value() == 0) ? -1.0f
                                    : static_cast<float>(shape_b.int_value() - 1);
         params_data.operation    = static_cast<float>(operation.int_value());
@@ -783,6 +928,7 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::gpu::release(camera_ubo_);
         vivid::gpu::release(params_ubo_);
         vivid::gpu::release(lights_ubo_);
+        vivid::gpu::release(sphere_buf_);
         vivid::gpu::release(quad_vb_);
         vivid::gpu::release(quad_ib_);
         for (auto& p : proxy_) {
@@ -804,6 +950,7 @@ private:
     WGPUBuffer camera_ubo_ = nullptr;
     WGPUBuffer params_ubo_ = nullptr;
     WGPUBuffer lights_ubo_ = nullptr;
+    WGPUBuffer sphere_buf_ = nullptr;   // storage: note-metaball instance spheres (kMaxSDFInstances vec4)
     WGPUBuffer quad_vb_    = nullptr;
     WGPUBuffer quad_ib_    = nullptr;
 
@@ -836,9 +983,16 @@ private:
             ctx->device, sizeof(SDFParamsUniform), "SDF3D Params UBO");
         lights_ubo_ = vivid::gpu::create_uniform_buffer(
             ctx->device, sizeof(SDFLightsUniform), "SDF3D Lights UBO");
+        {   // storage buffer for the note-metaball instance spheres (kMaxSDFInstances * vec4)
+            WGPUBufferDescriptor bd{};
+            bd.label = vivid_sv("SDF3D Instances");
+            bd.size  = kMaxSDFInstances * 32;
+            bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
+            sphere_buf_ = wgpuDeviceCreateBuffer(ctx->device, &bd);
+        }
 
         // Bind group layout
-        WGPUBindGroupLayoutEntry entries[3]{};
+        WGPUBindGroupLayoutEntry entries[4]{};
         entries[0].binding = 0;
         entries[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
         entries[0].buffer.type = WGPUBufferBindingType_Uniform;
@@ -854,9 +1008,14 @@ private:
         entries[2].buffer.type = WGPUBufferBindingType_Uniform;
         entries[2].buffer.minBindingSize = sizeof(SDFLightsUniform);
 
+        entries[3].binding = 3;
+        entries[3].visibility = WGPUShaderStage_Fragment;
+        entries[3].buffer.type = WGPUBufferBindingType_ReadOnlyStorage;
+        entries[3].buffer.minBindingSize = kMaxSDFInstances * 32;
+
         WGPUBindGroupLayoutDescriptor bgl_desc{};
         bgl_desc.label = vivid_sv("SDF3D BGL");
-        bgl_desc.entryCount = 3;
+        bgl_desc.entryCount = 4;
         bgl_desc.entries = entries;
         bind_layout_ = wgpuDeviceCreateBindGroupLayout(ctx->device, &bgl_desc);
 
@@ -868,7 +1027,7 @@ private:
         pipe_layout_ = wgpuDeviceCreatePipelineLayout(ctx->device, &pl_desc);
 
         // Bind group
-        WGPUBindGroupEntry bg_entries[3]{};
+        WGPUBindGroupEntry bg_entries[4]{};
         bg_entries[0].binding = 0;
         bg_entries[0].buffer  = camera_ubo_;
         bg_entries[0].offset  = 0;
@@ -884,10 +1043,15 @@ private:
         bg_entries[2].offset  = 0;
         bg_entries[2].size    = sizeof(SDFLightsUniform);
 
+        bg_entries[3].binding = 3;
+        bg_entries[3].buffer  = sphere_buf_;
+        bg_entries[3].offset  = 0;
+        bg_entries[3].size    = kMaxSDFInstances * 32;
+
         WGPUBindGroupDescriptor bg_desc{};
         bg_desc.label = vivid_sv("SDF3D Bind Group");
         bg_desc.layout = bind_layout_;
-        bg_desc.entryCount = 3;
+        bg_desc.entryCount = 4;
         bg_desc.entries = bg_entries;
         bind_group_ = wgpuDeviceCreateBindGroup(ctx->device, &bg_desc);
 
