@@ -3,6 +3,7 @@
 #include "operator_api/gpu_3d.h"
 #include "operator_api/thumbnail_3d.h"
 #include "linmath.h"
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -44,21 +45,13 @@ static_assert(sizeof(SDFParamsUniform) == 176, "SDFParamsUniform must be 176 byt
 static constexpr uint32_t kMaxSDFInstances = 32;
 
 // ---------------------------------------------------------------------------
-// Lights uniform (matches Render3D's LightsUniform exactly)
+// Lights uniform — ADR-0051 Phase 3: the shared vivid::gpu::LightsUniform, the CPU mirror of the
+// LIGHTS_3D_WGSL preamble this shader now includes. The private copy that used to live here
+// claimed to match Render3D's "exactly" but had drifted to 208 bytes (no spot_params), which is
+// half of why a Light3D never reached SDF geometry.
 // ---------------------------------------------------------------------------
 
-struct SDFLightData {
-    float position_and_type[4];
-    float direction_and_intensity[4];
-    float color_and_radius[4];
-};
-
-struct SDFLightsUniform {
-    SDFLightData lights[4];   // 192 bytes
-    uint32_t light_count;     // 4 bytes
-    float ambient[3];         // 12 bytes
-};
-static_assert(sizeof(SDFLightsUniform) == 208, "SDFLightsUniform must be 208 bytes");
+using SDFLightsUniform = vivid::gpu::LightsUniform;
 
 // ---------------------------------------------------------------------------
 // WGSL shader
@@ -85,19 +78,8 @@ struct SDFParams {
     instance_k:        f32,
 }
 
-struct Light {
-    position_and_type: vec4f,
-    direction_and_intensity: vec4f,
-    color_and_radius: vec4f,
-}
-
-struct LightsUniform {
-    lights: array<Light, 4>,
-    light_count: u32,
-    ambient_r: f32,
-    ambient_g: f32,
-    ambient_b: f32,
-}
+// Light / LightsUniform come from the shared LIGHTS_3D_WGSL preamble (ADR-0051 P3) — this shader
+// used to declare its own, three-field version that could not represent a spot cone.
 
 @group(0) @binding(0) var<uniform> camera: CustomCamera3D;
 @group(0) @binding(1) var<uniform> params: SDFParams;
@@ -614,6 +596,8 @@ static constexpr float kTAU = 6.28318530717958647692f;
 struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "SDF3D";
     static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
+    static constexpr const char* kSummary = "Ray-marched signed-distance geometry: smooth blended primitives with no mesh.";
+    static constexpr std::array<const char*, 3> kKeywords = {"3d", "sdf", "raymarch"};
     static constexpr bool kTimeDependent = false;
 
     // Shape A
@@ -843,7 +827,10 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
         params_data.surface_threshold = threshold.value;
         wgpuQueueWriteBuffer(ctx->queue, params_ubo_, 0, &params_data, sizeof(params_data));
 
-        // Upload default directional light
+        // ADR-0051 P3: a FALLBACK light, not the light. Render3D writes the scene's real lights
+        // into this same buffer via `custom_lights_ubo` after every operator has run, so this only
+        // shows through when the SDF is rendered by something that does not supply lights. Matches
+        // Render3D's own no-light fallback, so the unlit-by-anything look is unchanged.
         SDFLightsUniform lights{};
         lights.light_count = 1;
         lights.ambient[0] = 0.15f;
@@ -873,6 +860,7 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
         fragment_.pipeline         = pipeline_;
         fragment_.material_binds   = bind_group_;
         fragment_.custom_camera_ubo = camera_ubo_;
+        fragment_.custom_lights_ubo = lights_ubo_;   // ADR-0051 P3: let Render3D light this SDF
         fragment_.depth_write      = true;
 
         fragment_.color[0] = r.value;
@@ -944,6 +932,7 @@ private:
     bool lazy_init(const VividGpuContext* ctx) {
         // Compile shader
         std::string src = std::string(vivid::gpu::CUSTOM_CAMERA_3D_WGSL)
+                        + std::string(vivid::gpu::LIGHTS_3D_WGSL)   // ADR-0051 P3: the shared one
                         + kSDF3DShader;
         shader_ = vivid::gpu::create_wgsl_shader(ctx->device, src.c_str(), "SDF3D Shader");
         if (!shader_) return false;

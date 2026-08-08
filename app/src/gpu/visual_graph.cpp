@@ -95,6 +95,8 @@ std::string VisualNode::error() const {
     // keeps rendering, so the picture alone would say nothing is wrong). When another op kind
     // grows a runtime error, this is where it goes — the UI asks the NODE, not the library.
     if (const auto* sh = dynamic_cast<const ShaderFileOp*>(inst.op.get())) return sh->error();
+    // Any operator can report one per frame via vivid_report_gpu_error (ADR-0051 P4 wired this up).
+    if (!runtime_error.empty()) return runtime_error;
     return {};
 }
 
@@ -597,6 +599,12 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
         if (auto* g = dynamic_cast<GpuProcessable*>(n.inst.op.get())) {
             CrashGuard cg(n.inst.type_name.c_str());   // ADR-0018: attribute a crash to this operator
             g->process_gpu(&ctx);
+            // ADR-0019 via ADR-0051 P4: an operator can report a runtime problem that the picture
+            // alone would not reveal (Render3D silently dropping lights past its ceiling was the
+            // motivating case). `ctx` is value-initialised per node, so the flag is always fresh.
+            // The message must outlive process_gpu (the operator owns the storage), so copy it.
+            n.runtime_error = (ctx.operator_errored && ctx.operator_error_msg)
+                            ? std::string(ctx.operator_error_msg) : std::string();
         }
     }
     apply_output_smoothing(enc, feed, time);   // UX Ph4 F1: temporally low-pass the output when reduce-motion is on
