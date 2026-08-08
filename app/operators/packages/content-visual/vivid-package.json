@@ -1,0 +1,8 @@
+{
+  "name": "content-visual",
+  "version": "0.1.0",
+  "operators": [
+    { "name": "TimeMachine", "kind": "gpu_visual", "source": "time_machine.cpp" },
+    { "name": "CosinePalette", "kind": "gpu_visual", "source": "cosine_palette.cpp" }
+  ]
+}

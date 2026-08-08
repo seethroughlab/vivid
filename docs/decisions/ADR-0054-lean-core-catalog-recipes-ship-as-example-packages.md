@@ -110,6 +110,16 @@ Concrete candidate list (all verified pure in `app/operators/CMakeLists.txt`):
 | `TimeMachine` | core-visuals | legibility-polish content op (ADR-0050 pack) | `examples/content-visual` |
 | `CosinePalette` | core-visuals | legibility-polish content op | `examples/content-visual` |
 
+> **Move-out progress.** Slice 1 (implemented): **`TimeMachine` + `CosinePalette` moved to the
+> installable `app/operators/packages/content-visual` package** and dropped from the bundled build —
+> the first ops *truly* removed from the default install (Model A). Both are pure `operator_api` +
+> WebGPU, so they compile on install with no vendoring. Chosen first because **zero shipped example
+> project references them** (no migration needed). `InstanceNoise` was in the intended first batch but
+> was **deferred**: it depends on vivid-3d's package-local `operator_api/gpu_3d.h` + `thumbnail_3d.h`,
+> so moving it standalone needs those 3D headers vendored (Stage 1) — best done as a vivid-3d-content
+> slice, not mixed into a core-visuals content package. The used ops (`Emitter`/`Instancer`/`Solids`/
+> `ShapeGrid`/`Lines`/`Particles3D`/…) still require demo migration before they can move.
+
 The **native note-generator recipes** `Euclid`, `Chord`, `RandMelody` are recipes by ADR-0046, but
 they are compiled *into the binary* (`builtin_audio_ops.cpp`), not dylibs, and the audio-package route
 is less exercised. They are **recipe-by-policy** and a *later* move-out candidate — see Follow-ups —

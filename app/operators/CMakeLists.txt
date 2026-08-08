@@ -72,8 +72,9 @@ add_vivid_operator(vivid_mesh_render packages/core-visuals/mesh_render_op.cpp)
 add_vivid_operator(vivid_mesh_displace packages/core-visuals/mesh_displace.cpp)
 add_vivid_operator(vivid_feedback packages/core-visuals/feedback.cpp)
 add_vivid_operator(vivid_bloom packages/core-visuals/bloom.cpp)
-add_vivid_operator(vivid_time_machine packages/core-visuals/time_machine.cpp)
-add_vivid_operator(vivid_cosine_palette packages/core-visuals/cosine_palette.cpp)
+# TimeMachine + CosinePalette moved OUT of the lean core (ADR-0054) into the installable
+# `packages/content-visual` example package — single-look content ops, not spine. They are no longer
+# bundled into PlugIns; install the package to get them.
 # Video: a SELF-DECODING movie source op. On macOS it owns the AVFoundation + HAP decoder layer
 # (packages/core-visuals/movie/) and the vendored HAP lib (deps/hap/hap.c + snappy); the classic-
 # ported .mm files use ARC, avf_decoder.mm uses manual retain/release. Off-macOS it degrades to a

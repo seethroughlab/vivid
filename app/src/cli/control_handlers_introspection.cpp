@@ -1238,10 +1238,10 @@ void register_introspection_handlers(Handlers& handlers_) {
               {"legibility", "monotonic-large"},
               {"when", "you want the color to track the sound's brightness/timbre"},
               {"couplings", json::array({
-                  {{"source_intent", "bright"}, {"dest", "CosinePalette.phase or a hue param"}, {"why", "treble energy cycles warm hues"}},
+                  {{"source_intent", "bright"}, {"dest", "a hue param (or CosinePalette.phase)"}, {"why", "treble energy cycles warm hues"}},
                   {{"source_intent", "bass"}, {"dest", "hue (inverted) / cool"}, {"why", "bass pulls toward cool"}} })},
               {"expect", "energy_*_correlation on the color axis; check per-band correlations"},
-              {"how", "add a CosinePalette after Render3D; connect_mapping_by_intent('bright','phase'). Or AudioSpectrum -> InstancesFromLanes for a literal spectrum."} },
+              {"how", "connect_mapping_by_intent('bright','phase') onto a hue param; AudioSpectrum -> InstancesFromLanes gives a literal spectrum (both core). CosinePalette (add after Render3D) lives in the installable content-visual package."} },
             { {"name", "camera-orbit"}, {"aka", "bar-synced camera parallax"},
               {"legibility", "choreographed"},
               {"when", "a static scene reads flat; motion + parallax add life and legibility"},
