@@ -26,6 +26,7 @@ vivid_add_test(test_visual_control)     # ADR-0053 Phase B: control-edge resolve
 vivid_add_test(test_reactive_bus)       # ADR-0053 Phase B: reactive-signal bus round-trip (master + stable-id tracks)
 target_sources(test_reactive_bus PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/reactive_bus.cpp)
+vivid_add_test(test_reactive_signals)   # ADR-0053 Phase B5: reactive signal grammar == bridge suffix grammar (migration lane contract)
 vivid_add_test(test_undo_manager)   # ADR-0017/G1 undo history cursor (pure)
 target_sources(test_undo_manager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/undo_manager.cpp)

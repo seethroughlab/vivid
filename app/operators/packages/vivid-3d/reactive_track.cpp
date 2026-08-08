@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/reactive_bus.h"   // host: vivid_track_signals (resolved at dlopen)
+#include "operator_api/reactive_signals.h"   // canonical signal names (== value-lane ordinal == bridge suffix)
 #include "operator_api/value_view.h"     // FLOAT-MANY (count-1) lane outputs
 #include "operator_api/lane_thumb.h"     // 2D bar-chart node thumbnail
 #include <algorithm>
@@ -22,12 +23,6 @@ struct ReactiveTrack : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr bool kTimeDependent = true;   // reads live audio every frame
 
-    // Canonical signal order — MUST match VIVID_REACTIVE_TRACK_SIGNALS / reactive_bus.h. The output
-    // port ordinal is the src_lane a control edge references, so this order is a stable contract.
-    static constexpr const char* kSignals[VIVID_REACTIVE_TRACK_SIGNALS] = {
-        "level", "transient", "low", "mid", "high", "note", "velocity", "gate"
-    };
-
     vivid::Param<int> track_id{"track_id", 0, 0, 4095};   // STABLE id of the track this node follows
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
@@ -35,7 +30,7 @@ struct ReactiveTrack : vivid::OperatorBase, vivid::GpuProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        for (const char* name : kSignals) {
+        for (const char* name : vivid::reactive::kTrackSignals) {
             VividPortDescriptor p{};
             p.name = name; p.type = VIVID_PORT_SCALAR;
             p.direction = VIVID_PORT_OUTPUT; p.multiplicity = VIVID_MULTIPLICITY_MANY;

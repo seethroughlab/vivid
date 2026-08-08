@@ -8,6 +8,7 @@
 #include "cli/image_analysis_tools.h"  // ADR-0050: load_image (PNG -> RGBA8) for chooser previews
 #include "platform/platform.h"         // executable_path() -> Resources/reference
 #include "app/bridge_source.h"         // ADR-0053 A2: master/track/transport source-id grammar
+#include "operator_api/reactive_signals.h"  // ADR-0053 B4/B5: canonical reactive signal grammar (migration parser)
 #include <cmath>
 #include <algorithm>
 #include <cctype>
@@ -557,29 +558,28 @@ void NodeGraph::add_data_node(const std::string&, const std::string& source) {
 }
 void NodeGraph::add_data_node(const std::string& title, int char_id) { add_data_node(title, source_id_for(char_id)); }
 // ADR-0053 Phase B4: parse a bridge audio source id -> the Reactive op that emits it + the value-lane
-// ordinal of its signal. False for non-audio sources (viz.*, node_*, *.fft.*), which keep the registry
-// reverse path. The reactive op's SIGNAL ORDER == the bridge suffix order, so lane = suffix index
-// (master 0..4, then transport 5..8; track 0..7) — keep in lockstep with reactive_master/track.cpp.
-static int reactive_suffix_index(const std::string& suf, const char* const* tbl, int n) {
-    for (int k = 0; k < n; ++k) if (suf == tbl[k]) return k;
+// ordinal of its signal, using the canonical signal grammar (operator_api/reactive_signals.h — the ONE
+// table the ops emit and this parser reads). False for non-audio sources (viz.*, node_*, *.fft.*), which
+// keep the registry reverse path. master.* maps to lanes [0,5); transport.* to [5,9); track_N.* to [0,8).
+static int reactive_find_signal(const std::string& suf, const char* const* tbl, int lo, int hi) {
+    for (int k = lo; k < hi; ++k) if (suf == tbl[k]) return k;
     return -1;
 }
 static bool parse_reactive_source(const std::string& src, std::string& op_type, int& track_id, int& lane) {
-    namespace B = vivid::bridge;
+    using namespace vivid::reactive;
     if (src.rfind("master.", 0) == 0) {
-        const int k = reactive_suffix_index(src.substr(7), B::kTrackKindSuffixes, 5);   // master exposes kinds 0..4
+        const int k = reactive_find_signal(src.substr(7), kMasterSignals, 0, kMasterScalarCount);
         if (k < 0) return false;   // e.g. master.fft.3 — not a migratable scalar signal
         op_type = "ReactiveMaster"; track_id = -1; lane = k; return true;
     }
     if (src.rfind("transport.", 0) == 0) {
-        const int k = reactive_suffix_index(src.substr(10), B::kTransportKindSuffixes, B::kNumTransportKinds);
+        const int k = reactive_find_signal(src.substr(10), kMasterSignals, kMasterScalarCount, VIVID_REACTIVE_MASTER_SIGNALS);
         if (k < 0) return false;
-        op_type = "ReactiveMaster"; track_id = -1; lane = 5 + k;   // transport lanes follow the 5 master signals
-        return true;
+        op_type = "ReactiveMaster"; track_id = -1; lane = k; return true;
     }
     int tid; std::string rest;
     if (vivid::parse_track_source(src, tid, rest) && rest.size() > 1 && rest[0] == '.') {
-        const int k = reactive_suffix_index(rest.substr(1), B::kTrackKindSuffixes, B::kNumTrackKinds);
+        const int k = reactive_find_signal(rest.substr(1), kTrackSignals, 0, VIVID_REACTIVE_TRACK_SIGNALS);
         if (k < 0) return false;   // e.g. track_2.fft.3
         op_type = "ReactiveTrack"; track_id = tid; lane = k; return true;
     }
@@ -641,6 +641,29 @@ bool NodeGraph::add_audio_control_edge(const std::string& src, const std::string
     sh.attack = attack; sh.release = release;
     vg_->set_param_control(cidx, local, src_id, lane, sh);
     return true;
+}
+
+int NodeGraph::drop_track_sources(int id) {
+    const int dropped = reg_.drop_track_sources(id);   // registry reverse-path mappings sourced from this track
+    for (size_t i = 0; i < nodes_data_.size(); ++i)    // legacy Phase-A Track source card, if any
+        if (nodes_data_[i].kind == SourceKind::Track && nodes_data_[i].track_id == id) {
+            nodes_data_.erase(nodes_data_.begin() + i); ++data_gen_; break;
+        }
+    // ADR-0053 B4/B5: the track's reactivity is now a ReactiveTrack VisualGraph node bound to its stable
+    // id. Remove it — VisualGraph::remove_node cascades to drop every control edge reading its lanes, so a
+    // deleted track leaves no dangling edges.
+    if (vg_)
+        for (int i = 0; i < int(vg_->nodes().size()); ++i) {
+            if (vg_->nodes()[i].op_type != "ReactiveTrack") continue;
+            bool match = false;
+            for (int l = 0; l < node_pcount(vg_, i); ++l)
+                if (std::string("track_id") == node_plabel(vg_, i, l)) {
+                    match = (int(std::lround(op_param_base_at(i, l))) == id);
+                    break;
+                }
+            if (match) { vg_->remove_node(i); sync_op_pos(); break; }
+        }
+    return dropped;
 }
 
 void NodeGraph::prune_orphan_audio_source_nodes() {

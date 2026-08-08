@@ -155,15 +155,11 @@ public:
     // Connect a bridge DATA node's source to op node `op_idx`'s param `local` (the same wire the drop path
     // makes). Records an undo note. Used by the param-reveal menu (Gesture B). False on invalid indices.
     bool connect_data_to_param(int data_idx, int op_idx, int local, int out_idx = 0);
-    // A track (stable id) was deleted: drop the mappings sourced from it AND its Track source node.
-    int drop_track_sources(int id) {
-        const int dropped = reg_.drop_track_sources(id);
-        for (size_t i = 0; i < nodes_data_.size(); ++i)
-            if (nodes_data_[i].kind == SourceKind::Track && nodes_data_[i].track_id == id) {
-                nodes_data_.erase(nodes_data_.begin() + i); ++data_gen_; break;
-            }
-        return dropped;
-    }
+    // A track (stable id) was deleted: drop the registry mappings sourced from it, its Phase-A Track source
+    // card, AND (ADR-0053 B4/B5) its ReactiveTrack VisualGraph node — whose removal cascades to every
+    // control edge that read its value lanes, so no edge dangles at a dead track. Returns # registry
+    // mappings dropped.
+    int drop_track_sources(int id);
     // Mapping shaping edits (from the M overview).
     void set_mapping_amount(const std::string& dst, float a) { if (auto* m = reg_.find(dst)) m->amount = a; }
     void set_mapping_curve(const std::string& dst, float c)  { if (auto* m = reg_.find(dst)) m->curve = c; }
