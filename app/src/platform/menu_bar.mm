@@ -209,13 +209,32 @@ void set_example_projects(const std::vector<MenuItemEntry>& examples) {
             [g_exampleMenu addItem:none]; [none release];
             return;
         }
+        // Entries arrive pre-sorted by (group, label): ungrouped items go on the Open Example menu
+        // directly; each non-empty group gets its own submenu (title = group, capitalized).
+        NSMutableDictionary<NSString*, NSMenu*>* groups = [NSMutableDictionary dictionary];
         for (const auto& e : examples) {
             NSString* title = [NSString stringWithUTF8String:e.label.c_str()];
             NSString* full  = [NSString stringWithUTF8String:e.path.c_str()];
             NSMenuItem* it = [[NSMenuItem alloc] initWithTitle:title action:@selector(openExample:) keyEquivalent:@""];
             [it setTarget:g_target];
             [it setRepresentedObject:full];
-            [g_exampleMenu addItem:it]; [it release];
+            if (e.group.empty()) {
+                [g_exampleMenu addItem:it];
+            } else {
+                NSString* gkey = [NSString stringWithUTF8String:e.group.c_str()];
+                NSMenu* sub = groups[gkey];
+                if (!sub) {
+                    sub = [[NSMenu alloc] initWithTitle:gkey];
+                    [sub setAutoenablesItems:NO];
+                    groups[gkey] = sub;
+                    NSMenuItem* subItem = [[NSMenuItem alloc] initWithTitle:[gkey capitalizedString]
+                                                                     action:nil keyEquivalent:@""];
+                    [subItem setSubmenu:sub];
+                    [g_exampleMenu addItem:subItem]; [subItem release]; [sub release];
+                }
+                [sub addItem:it];
+            }
+            [it release];
         }
     }
 }
