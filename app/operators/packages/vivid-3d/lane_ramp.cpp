@@ -2,6 +2,7 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/value_view.h"
 #include "operator_api/lane_thumb.h"
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -20,6 +21,8 @@
 struct LaneRamp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName         = "LaneRamp";
     static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
+    static constexpr const char* kSummary = "Emits a lane per step as a ramp — a positional gradient across a band set.";
+    static constexpr std::array<const char*, 3> kKeywords = {"lanes", "ramp", "gradient"};
     static constexpr bool kTimeDependent       = false;
     static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 

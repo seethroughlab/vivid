@@ -2,6 +2,7 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_3d.h"
 #include "operator_api/thumbnail_3d.h"
+#include <array>
 #include <algorithm>
 #include <cstdio>
 
@@ -18,6 +19,8 @@
 struct SceneMerge : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "SceneMerge";
     static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_TRANSFORM;   // ADR-0046
+    static constexpr const char* kSummary = "Combines several scene branches into one, so geometry and lights render together.";
+    static constexpr std::array<const char*, 3> kKeywords = {"3d", "scene", "merge"};
     static constexpr bool kTimeDependent = false;
 
     void collect_params(std::vector<vivid::ParamBase*>&) override {}

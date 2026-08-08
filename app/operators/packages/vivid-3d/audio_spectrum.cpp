@@ -3,6 +3,7 @@
 #include "operator_api/spectrum_bus.h"   // host: vivid_master_spectrum (resolved at dlopen)
 #include "operator_api/value_view.h"     // FLOAT-MANY lane output
 #include "operator_api/lane_thumb.h"     // 2D bar-chart node thumbnail
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -24,6 +25,8 @@
 struct AudioSpectrum : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName         = "AudioSpectrum";
     static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
+    static constexpr const char* kSummary = "Live FFT of the master bus as per-band lanes — the source for a 3D equaliser.";
+    static constexpr std::array<const char*, 3> kKeywords = {"audio", "spectrum", "fft"};
     static constexpr bool kTimeDependent       = true;   // reads live audio every frame
     static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 
