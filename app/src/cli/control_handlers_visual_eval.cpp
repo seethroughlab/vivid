@@ -24,6 +24,7 @@ double steady_seconds() {
 bool build_montage_png(const ControlCtx& c, int cells, double window,
                        std::vector<uint8_t>& png, std::string& ctx, json& e) {
     const double now = steady_seconds();
+    c.app->reactivity.arm(now);   // keep the ring sampling for the montage while judging
     std::vector<uint8_t> rgba; uint32_t w = 0, h = 0;
     if (!c.app->reactivity.capture_montage(cells, window, now, rgba, w, h)) {
         e = err(code::kBadArg, "no frames captured yet — is the app playing? (the ring fills while running)");

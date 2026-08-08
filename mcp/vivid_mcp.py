@@ -984,6 +984,23 @@ def analyze_output(mode: str = "frame", window_seconds: float = 3.0, node_id: st
 
 
 @mcp.tool
+def set_perception_enabled(enabled: bool = True) -> dict:
+    """Master switch for the visual-perception ring. The ring does a per-frame GPU readback WHILE
+    measuring (analyze_output/analyze_visual_motion/judge arm it for a few seconds), which costs
+    framerate. Disable it so those calls can't drop the live framerate while someone is watching;
+    re-enable to measure again. Disabled: analyze_output(av|audio) returns no data. Default enabled
+    (and idle-free — it only samples while a perception tool is actively in use)."""
+    return _post("set_perception_enabled", {"enabled": enabled})
+
+
+@mcp.tool
+def perception_status() -> dict:
+    """Report the perception ring's state: {enabled, samples}. samples>0 means the ring currently holds
+    history (it was measured recently)."""
+    return _post("perception_status")
+
+
+@mcp.tool
 def get_audio_graph(track: int) -> dict:
     """Read a track's audio signal graph — the authoritative topology the RT engine runs
     (nodes + edges), distinct from the linear device list (list_audio_ops). Returns
