@@ -7,6 +7,8 @@
 #include "gpu/loaded_operator.h" // UI-4b: reach an op's dylib editor via dynamic_cast
 #include "cli/image_analysis_tools.h"  // ADR-0050: load_image (PNG -> RGBA8) for chooser previews
 #include "platform/platform.h"         // executable_path() -> Resources/reference
+#include "app/bridge_source.h"         // ADR-0053 A2: master/track/transport source-id grammar
+#include "operator_api/reactive_signals.h"  // ADR-0053 B4/B5: canonical reactive signal grammar (migration parser)
 #include <cmath>
 #include <algorithm>
 #include <cctype>
@@ -121,8 +123,12 @@ static const vivid::ParamBase* node_pb(const vivid::VisualGraph* vg, int i, int 
     return (local >= 0 && local < int(pp.size())) ? pp[local] : nullptr;
 }
 
+// ADR-0053 A2: source-card layout — a header plus one thin row per named output (with its own port).
+namespace { constexpr float kSrcHeaderH = 24.f; constexpr float kSrcRowH = 18.f; constexpr float kSrcCardW = 176.f; }
+
 NodeGraph::NodeGraph() {
-    data_.push_back({ 560.f, 540.f, 168.f, 72.f, "Output \xC2\xB7 Level", "master.level", 0.f, 0, {}, 0 });
+    ensure_source_node("master.level");   // seed a "Master" entity node so a fresh session shows the bus
+    if (!nodes_data_.empty()) { nodes_data_[0].x = 560.f; nodes_data_[0].y = 300.f; }
     // out-of-box reactivity is seeded in set_visual_graph (needs the default chain's ids).
 }
 
@@ -195,18 +201,32 @@ void NodeGraph::set_visual_graph(vivid::VisualGraph* vg) {
     vg_ = vg;
     if (vg_ && reg_.mappings().empty()) {  // seed glow <- master level on the first Plasma
         const int ni = first_node_of("Plasma");
-        if (ni >= 0) reg_.connect("master.level", node_param_dest(vg_->nodes()[ni].id, "glow"));
+        if (ni >= 0) add_mapping("master.level", node_param_dest(vg_->nodes()[ni].id, "glow"), 1.f);  // via chokepoint → visible node
     }
 }
 
 int NodeGraph::find_source_node(const std::string& src) const {
-    for (int i = 0; i < int(data_.size()); ++i)
-        if (data_[i].source == src) return i;
-    return -1;
+    int ni, oi; return find_source_output(src, ni, oi) ? ni : -1;
+}
+bool NodeGraph::find_source_output(const std::string& src, int& ni, int& oi) const {
+    for (int i = 0; i < int(nodes_data_.size()); ++i)
+        for (int j = 0; j < int(nodes_data_[i].outs.size()); ++j)
+            if (nodes_data_[i].outs[j].source == src) { ni = i; oi = j; return true; }
+    return false;
+}
+void NodeGraph::size_source_node(SourceNode& n) const {
+    n.w = kSrcCardW;
+    n.h = kSrcHeaderH + std::max<size_t>(1, n.outs.size()) * kSrcRowH + 8.f;
+}
+void NodeGraph::source_out_port(int ni, int oi, float& px, float& py) const {
+    const SourceNode& n = nodes_data_[ni];
+    px = n.x + n.w;
+    py = n.y + kSrcHeaderH + (static_cast<float>(oi) + 0.5f) * kSrcRowH;
 }
 bool NodeGraph::source_consumed(const std::string& prefix) const {
     for (const auto& m : reg_.mappings()) if (m.source.rfind(prefix, 0) == 0) return true;   // wired to a param
-    for (const auto& d : data_)           if (d.source.rfind(prefix, 0) == 0) return true;   // spawned as a data node
+    for (const auto& nd : nodes_data_)                                                        // spawned as a node
+        for (const auto& o : nd.outs) if (o.source.rfind(prefix, 0) == 0) return true;
     return false;
 }
 
@@ -290,9 +310,9 @@ void NodeGraph::layout_nodes() {
         for (int node : cols[c])
             op_pos_[node] = { left + c * colSp, cy[node] - ch[node] * 0.5f + shift };
 
-    // 4. Park data (audio-source) nodes in a left gutter column.
+    // 4. Park source (audio-entity) nodes in a left gutter column.
     float dy = by0_ + 30.f;
-    for (auto& d : data_) { d.x = bx0_ + 8.f; d.y = dy; dy += d.h + 12.f; }
+    for (auto& d : nodes_data_) { d.x = bx0_ + 8.f; d.y = dy; dy += d.h + 12.f; }
 }
 // Total left-edge input rows: one per texture input port + one per param.
 static constexpr float kCardW  = 156.f;
@@ -352,6 +372,35 @@ bool NodeGraph::op_out_port(int i, int port, float& px, float& py) const {
     return true;
 }
 bool NodeGraph::op_out_port(int i, float& px, float& py) const { return op_out_port(i, 0, px, py); }
+// ADR-0053 Phase B: the VALUE-LANE ordinal of op i's OUTPUT port `port` (an all-outputs ordinal, as
+// op_out_port uses), or -1 if that output isn't a value lane (SCALAR+MANY). A control edge reads a
+// value lane, so this both gates the drag (only value-lane outputs start a control wire) and converts
+// the dragged output port into the ParamControlEdge::src_lane.
+int NodeGraph::op_out_value_lane(int i, int port) const {
+    if (!vg_ || i < 0 || i >= int(vg_->nodes().size())) return -1;
+    int lane = 0, ord = 0;
+    for (const auto& pd : vg_->nodes()[i].inst.ports) {
+        if (pd.direction != VIVID_PORT_OUTPUT) continue;
+        const bool vlane = pd.type == VIVID_PORT_SCALAR && pd.multiplicity == VIVID_MULTIPLICITY_MANY;
+        if (ord == port) return vlane ? lane : -1;
+        if (vlane) ++lane;
+        ++ord;
+    }
+    return -1;
+}
+// The inverse: the screen position of op i's OUTPUT port carrying value lane `lane`. Used to draw a
+// control-edge wire back to its source stub. False if the node has no such value lane.
+bool NodeGraph::op_out_port_of_lane(int i, int lane, float& px, float& py) const {
+    if (!vg_ || i < 0 || i >= int(vg_->nodes().size())) return false;
+    int vlane = 0, ord = 0;
+    for (const auto& pd : vg_->nodes()[i].inst.ports) {
+        if (pd.direction != VIVID_PORT_OUTPUT) continue;
+        const bool v = pd.type == VIVID_PORT_SCALAR && pd.multiplicity == VIVID_MULTIPLICITY_MANY;
+        if (v) { if (vlane == lane) return op_out_port(i, ord, px, py); ++vlane; }
+        ++ord;
+    }
+    return false;
+}
 int NodeGraph::first_node_of(const std::string& op_type) const {
     if (!vg_) return -1;
     for (int i = 0; i < int(vg_->nodes().size()); ++i) if (vg_->nodes()[i].op_type == op_type) return i;
@@ -400,12 +449,13 @@ int NodeGraph::nearest_op_in(double x, double y, double maxd, int& port) const {
 void NodeGraph::set_op_input_port(int node, int port, int src) {
     if (vg_) vg_->set_input(node, port, src);   // any port (N-input)
 }
-int NodeGraph::nearest_op_out(double x, double y, double maxd) const {
-    int best = -1; double bd = maxd;
-    if (vg_) for (int i = 0; i < int(vg_->nodes().size()); ++i) {
-        float px, py; if (!op_out_port(i, px, py)) continue;
-        double d = std::hypot(x - px, y - py); if (d < bd) { bd = d; best = i; }
-    }
+int NodeGraph::nearest_op_out(double x, double y, double maxd, int& port) const {
+    int best = -1; double bd = maxd; port = 0;
+    if (vg_) for (int i = 0; i < int(vg_->nodes().size()); ++i)
+        for (int p = 0, no = op_out_count(vg_, i); p < no; ++p) {   // hit-test EVERY output stub (multi-output)
+            float px, py; if (!op_out_port(i, p, px, py)) continue;
+            double d = std::hypot(x - px, y - py); if (d < bd) { bd = d; best = i; port = p; }
+        }
     return best;
 }
 
@@ -422,10 +472,12 @@ void NodeGraph::set_frame(float x0, float y0, float x1, float y1) {
 }
 
 void NodeGraph::set_source_by_id(const std::string& source, float v) {
-    for (auto& n : data_) if (n.source == source) {
-        n.value = v;
-        n.hist[n.hist_head] = v;                       // push into the rolling history
-        n.hist_head = (n.hist_head + 1) % kHistN;
+    int ni, oi;
+    if (find_source_output(source, ni, oi)) {
+        SourceOutput& o = nodes_data_[ni].outs[oi];
+        o.value = v;
+        o.hist[o.hist_head] = v;                        // push into the rolling history
+        o.hist_head = (o.hist_head + 1) % kHistN;
     }
     reg_.set_source(source, v);
 }
@@ -435,7 +487,7 @@ int NodeGraph::source_handle(const std::string& source) {
     auto it = handle_by_id_.find(source);
     if (it != handle_by_id_.end()) return it->second;
     const int h = static_cast<int>(pubs_.size());
-    pubs_.push_back({ reg_.intern_source(source), -1, data_gen_ - 1, source });  // stale gen -> resolve on 1st publish
+    pubs_.push_back({ reg_.intern_source(source), -1, -1, data_gen_ - 1, source });  // stale gen -> resolve on 1st publish
     handle_by_id_.emplace(source, h);
     return h;
 }
@@ -445,12 +497,16 @@ void NodeGraph::publish(int handle, float v) {
     if (handle < 0 || handle >= static_cast<int>(pubs_.size())) return;
     Pub& p = pubs_[handle];
     *p.cell = v;
-    if (p.data_gen != data_gen_) { p.data_idx = find_source_node(p.id); p.data_gen = data_gen_; }
-    if (p.data_idx >= 0) {
-        DataNode& n = data_[p.data_idx];
-        n.value = v;
-        n.hist[n.hist_head] = v;
-        n.hist_head = (n.hist_head + 1) % kHistN;
+    if (p.data_gen != data_gen_) {
+        if (!find_source_output(p.id, p.node_idx, p.out_idx)) { p.node_idx = p.out_idx = -1; }
+        p.data_gen = data_gen_;
+    }
+    if (p.node_idx >= 0 && p.node_idx < int(nodes_data_.size()) &&
+        p.out_idx >= 0 && p.out_idx < int(nodes_data_[p.node_idx].outs.size())) {
+        SourceOutput& o = nodes_data_[p.node_idx].outs[p.out_idx];
+        o.value = v;
+        o.hist[o.hist_head] = v;
+        o.hist_head = (o.hist_head + 1) % kHistN;
     }
 }
 // Consumption gate by handle: does any mapping/data-node reference this (interned) source's id as a
@@ -475,6 +531,10 @@ void NodeGraph::apply_params() {
             // the old behavior, but an int/enum param (an aspect preset, an octave count) is no
             // longer silently pinned to 1.
             const float lo = pb->min_value, hi = pb->max_value;
+            // ADR-0053 Phase B single-owner invariant: a live control edge OWNS this param — leave it at
+            // base here (run_chain resolves the edge on top), so the registry and edges never fight over
+            // the same slot while both models coexist (until the B4 cutover).
+            if (n.control_edge_for(l)) { n.params[l] = std::clamp(n.base[l], lo, hi); continue; }
             const float mod = reg_.dest_value(node_param_dest(n.id, pb->name));
             n.params[l] = std::clamp(n.base[l] + mod * (hi - lo), lo, hi);   // manual base + live modulation
         }
@@ -488,21 +548,214 @@ void NodeGraph::apply_params() {
         reg_.set_source(std::string("viz.") + kShaderUniformNames[u], v);
     }
 }
-void NodeGraph::add_data_node(const std::string& title, const std::string& source) {
-    float y = by0_ + 150.f + data_.size() * 84.f;
-    if (y > by1_ - 72.f) y = by1_ - 72.f;
-    data_.push_back({ bx0_ + 20.f, y, 168.f, 72.f, title, source, 0.f, 90, {}, 0 });
-    ++data_gen_;   // ADR-0028: invalidate cached publish->data-node indices (a source may now have a node)
+// Interactive spawn (Tab chooser / dock): ensure the entity node for `source` exists, then flash it +
+// note the edit. The `title` hint is ignored — the entity title is derived (Master / Track <id>).
+void NodeGraph::add_data_node(const std::string&, const std::string& source) {
+    const bool existed = (find_source_node(source) >= 0);
+    ensure_source_node(source);
+    if (!existed) { int ni, oi; if (find_source_output(source, ni, oi)) nodes_data_[ni].flash = 90; }
     note_edit_("Add Data Node");   // covers both the Tab chooser and the inspector menu
 }
 void NodeGraph::add_data_node(const std::string& title, int char_id) { add_data_node(title, source_id_for(char_id)); }
+// ADR-0053 Phase B4: parse a bridge audio source id -> the Reactive op that emits it + the value-lane
+// ordinal of its signal, using the canonical signal grammar (operator_api/reactive_signals.h — the ONE
+// table the ops emit and this parser reads). False for non-audio sources (viz.*, node_*, *.fft.*), which
+// keep the registry reverse path. master.* maps to lanes [0,5); transport.* to [5,9); track_N.* to [0,8).
+static int reactive_find_signal(const std::string& suf, const char* const* tbl, int lo, int hi) {
+    for (int k = lo; k < hi; ++k) if (suf == tbl[k]) return k;
+    return -1;
+}
+static bool parse_reactive_source(const std::string& src, std::string& op_type, int& track_id, int& lane) {
+    using namespace vivid::reactive;
+    if (src.rfind("master.", 0) == 0) {
+        const int k = reactive_find_signal(src.substr(7), kMasterSignals, 0, kMasterScalarCount);
+        if (k < 0) return false;   // e.g. master.fft.3 — not a migratable scalar signal
+        op_type = "ReactiveMaster"; track_id = -1; lane = k; return true;
+    }
+    if (src.rfind("transport.", 0) == 0) {
+        const int k = reactive_find_signal(src.substr(10), kMasterSignals, kMasterScalarCount, VIVID_REACTIVE_MASTER_SIGNALS);
+        if (k < 0) return false;
+        op_type = "ReactiveMaster"; track_id = -1; lane = k; return true;
+    }
+    int tid; std::string rest;
+    if (vivid::parse_track_source(src, tid, rest) && rest.size() > 1 && rest[0] == '.') {
+        const int k = reactive_find_signal(rest.substr(1), kTrackSignals, 0, VIVID_REACTIVE_TRACK_SIGNALS);
+        if (k < 0) return false;   // e.g. track_2.fft.3
+        op_type = "ReactiveTrack"; track_id = tid; lane = k; return true;
+    }
+    return false;
+}
+
+int NodeGraph::ensure_reactive_source_node(const std::string& op_type, int track_id) {
+    if (!vg_) return -1;
+    // Dedup: reuse an existing Reactive op of this type (matching the bound track_id for ReactiveTrack).
+    for (int i = 0; i < int(vg_->nodes().size()); ++i) {
+        const vivid::VisualNode& n = vg_->nodes()[i];
+        if (n.op_type != op_type) continue;
+        if (op_type != "ReactiveTrack") return n.id;
+        for (int l = 0; l < node_pcount(vg_, i); ++l)
+            if (std::string("track_id") == node_plabel(vg_, i, l)) {
+                if (int(std::lround(op_param_base_at(i, l))) == track_id) return n.id;
+                break;
+            }
+    }
+    // Create it. A single atomic add (safe inside the load rebuild; on a huge LIVE graph this shares the
+    // known incremental-add-node fragility — authoring typically happens on small graphs). Parked in a
+    // left gutter column so a Reactive source doesn't stack on the visual chain.
+    const int idx = vg_->add_node(op_type);
+    if (idx < 0) return -1;
+    if (op_type == "ReactiveTrack")
+        for (int l = 0; l < node_pcount(vg_, idx); ++l)
+            if (std::string("track_id") == node_plabel(vg_, idx, l)) { set_op_param_base_at(idx, l, float(track_id)); break; }
+    sync_op_pos();
+    if (idx >= 0 && idx < int(op_pos_.size())) {
+        int rank = 0;
+        for (int i = 0; i < idx; ++i)
+            if (vg_->nodes()[i].op_type == "ReactiveMaster" || vg_->nodes()[i].op_type == "ReactiveTrack") ++rank;
+        op_pos_[idx] = { bx0_ + 8.f, by0_ + 30.f + rank * 96.f };
+    }
+    return vg_->nodes()[idx].id;
+}
+
+bool NodeGraph::add_audio_control_edge(const std::string& src, const std::string& dst,
+                                       float amount, float curve, bool invert, float lo, float hi,
+                                       float attack, float release) {
+    if (!vg_) return false;
+    std::string op_type; int track_id = -1, lane = -1;
+    if (!parse_reactive_source(src, op_type, track_id, lane)) return false;   // not a migratable audio source
+    if (dst.rfind("node:", 0) != 0) return false;
+    const size_t dot = dst.find('.', 5);
+    if (dot == std::string::npos) return false;   // dst must be node:<id>.<paramName> (not node:<id>:<index>)
+    const int consumer_id = std::atoi(dst.substr(5, dot - 5).c_str());
+    const std::string param = dst.substr(dot + 1);
+    const int cidx = op_index_of_id(consumer_id);
+    if (cidx < 0) return false;
+    int local = -1;
+    for (int l = 0; l < node_pcount(vg_, cidx); ++l)
+        if (param == node_plabel(vg_, cidx, l)) { local = l; break; }
+    if (local < 0) return false;   // param gone — caller keeps the registry wire (still resolvable)
+    const int src_id = ensure_reactive_source_node(op_type, track_id);
+    if (src_id < 0) return false;
+    vivid::VisualControlShape sh;
+    sh.amount = amount; sh.curve = curve; sh.invert = invert; sh.out_lo = lo; sh.out_hi = hi;
+    sh.attack = attack; sh.release = release;
+    vg_->set_param_control(cidx, local, src_id, lane, sh);
+    return true;
+}
+
+int NodeGraph::drop_track_sources(int id) {
+    const int dropped = reg_.drop_track_sources(id);   // registry reverse-path mappings sourced from this track
+    for (size_t i = 0; i < nodes_data_.size(); ++i)    // legacy Phase-A Track source card, if any
+        if (nodes_data_[i].kind == SourceKind::Track && nodes_data_[i].track_id == id) {
+            nodes_data_.erase(nodes_data_.begin() + i); ++data_gen_; break;
+        }
+    // ADR-0053 B4/B5: the track's reactivity is now a ReactiveTrack VisualGraph node bound to its stable
+    // id. Remove it — VisualGraph::remove_node cascades to drop every control edge reading its lanes, so a
+    // deleted track leaves no dangling edges.
+    if (vg_)
+        for (int i = 0; i < int(vg_->nodes().size()); ++i) {
+            if (vg_->nodes()[i].op_type != "ReactiveTrack") continue;
+            bool match = false;
+            for (int l = 0; l < node_pcount(vg_, i); ++l)
+                if (std::string("track_id") == node_plabel(vg_, i, l)) {
+                    match = (int(std::lround(op_param_base_at(i, l))) == id);
+                    break;
+                }
+            if (match) { vg_->remove_node(i); sync_op_pos(); break; }
+        }
+    return dropped;
+}
+
+void NodeGraph::prune_orphan_audio_source_nodes() {
+    bool changed = false;
+    for (size_t i = 0; i < nodes_data_.size(); ) {
+        const SourceNode& n = nodes_data_[i];
+        const bool audio = (n.kind == SourceKind::Master || n.kind == SourceKind::Track);
+        bool referenced = false;
+        if (audio)
+            for (const auto& o : n.outs) {
+                for (const auto& m : reg_.mappings()) if (m.source == o.source) { referenced = true; break; }
+                if (referenced) break;
+            }
+        if (audio && !referenced) { nodes_data_.erase(nodes_data_.begin() + i); changed = true; }
+        else ++i;
+    }
+    if (changed) ++data_gen_;   // ADR-0028: source set shrank — invalidate cached publish->output indices
+}
+
+void NodeGraph::ensure_source_node(const std::string& src) {
+    if (src.empty() || find_source_node(src) >= 0) return;   // idempotent — the source already has an output
+
+    // Which ENTITY does this source belong to? master.* + transport.* -> the one Master node; track_<id>.*
+    // -> that track's node; anything else (viz.*, node_*) -> a single-output "Other" node.
+    SourceKind kind = SourceKind::Other; int track_id = -1; std::string title = src;
+    std::vector<std::string> defaults;   // full source ids this entity exposes by default
+    int trest_idx; std::string trest;
+    if (src.rfind("master.", 0) == 0 || src.rfind("transport.", 0) == 0) {
+        kind = SourceKind::Master; title = "Master";
+        for (int k = 0; k < 5; ++k) defaults.push_back(bridge::master_source(bridge::kTrackKindSuffixes[k]));  // level..high
+        for (int k = 0; k < bridge::kNumTransportKinds; ++k) defaults.push_back(bridge::transport_source(bridge::kTransportKindSuffixes[k]));
+    } else if (vivid::parse_track_source(src, trest_idx, trest)) {
+        kind = SourceKind::Track; track_id = trest_idx; title = "Track " + std::to_string(track_id);
+        for (int k = 0; k < bridge::kNumTrackKinds; ++k) defaults.push_back(bridge::track_source(track_id, bridge::kTrackKindSuffixes[k]));
+    } else {
+        defaults.push_back(src);   // Other: a single output verbatim (e.g. viz.warp)
+    }
+
+    // Reuse the entity node if it already exists (a sibling output was wired first); else create it.
+    int ni = -1;
+    for (int i = 0; i < int(nodes_data_.size()); ++i)
+        if (nodes_data_[i].kind == kind && (kind != SourceKind::Track || nodes_data_[i].track_id == track_id) &&
+            (kind != SourceKind::Other || (!nodes_data_[i].outs.empty() && nodes_data_[i].outs[0].source == src))) { ni = i; break; }
+    if (ni < 0) {
+        float y = by0_ + 30.f + nodes_data_.size() * 96.f;
+        if (y > by1_ - 40.f) y = by1_ - 40.f;
+        SourceNode n; n.kind = kind; n.track_id = track_id; n.title = title; n.x = bx0_ + 8.f; n.y = y;
+        nodes_data_.push_back(std::move(n));
+        ni = int(nodes_data_.size()) - 1;
+    }
+    SourceNode& node = nodes_data_[ni];
+    // Populate default outputs (once), then guarantee `src` is present (e.g. a non-default master.fft.3).
+    if (node.outs.empty())
+        for (const auto& s : defaults) {
+            const auto dot = s.find('.');
+            node.outs.push_back({ dot == std::string::npos ? s : s.substr(dot + 1), s, 0.f, {}, 0 });
+        }
+    bool has = false; for (const auto& o : node.outs) if (o.source == src) { has = true; break; }
+    if (!has) {
+        const auto dot = src.find('.');
+        node.outs.push_back({ dot == std::string::npos ? src : src.substr(dot + 1), src, 0.f, {}, 0 });
+    }
+    size_source_node(node);
+    ++data_gen_;   // ADR-0028: invalidate cached publish->output indices (a source may now have an output)
+}
 void NodeGraph::get_node(int i, float& x, float& y, std::string& source, std::string& title) const {
-    if (i < 0 || i >= int(data_.size())) return;
-    x = data_[i].x; y = data_[i].y; source = data_[i].source; title = data_[i].title;
+    if (i < 0 || i >= int(nodes_data_.size())) return;
+    x = nodes_data_[i].x; y = nodes_data_[i].y; title = nodes_data_[i].title;
+    source = nodes_data_[i].outs.empty() ? std::string() : nodes_data_[i].outs[0].source;  // first output (A3 persists all)
+}
+void NodeGraph::get_source_node_meta(int i, std::string& kind, int& track_id) const {
+    kind.clear(); track_id = -1;
+    if (i < 0 || i >= int(nodes_data_.size())) return;
+    switch (nodes_data_[i].kind) {
+        case SourceKind::Master: kind = "master"; break;
+        case SourceKind::Track:  kind = "track"; track_id = nodes_data_[i].track_id; break;
+        default:                 kind = "other"; break;
+    }
+}
+int NodeGraph::source_node_output_count(int i) const {
+    return (i < 0 || i >= int(nodes_data_.size())) ? 0 : int(nodes_data_[i].outs.size());
+}
+void NodeGraph::get_source_node_output(int i, int o, std::string& suffix, std::string& source) const {
+    suffix.clear(); source.clear();
+    if (i < 0 || i >= int(nodes_data_.size())) return;
+    const auto& outs = nodes_data_[i].outs;
+    if (o < 0 || o >= int(outs.size())) return;
+    suffix = outs[o].suffix; source = outs[o].source;
 }
 void NodeGraph::reset_nodes() {
-    data_.clear(); reg_.clear_mappings(); ++data_gen_;   // ADR-0028: drop cached indices
-    annos_.clear(); next_anno_id_ = 0;                   // ADR-0033 P5: notes reload from the session
+    nodes_data_.clear(); reg_.clear_mappings(); ++data_gen_;   // ADR-0028: drop cached indices
+    annos_.clear(); next_anno_id_ = 0;                         // ADR-0033 P5: notes reload from the session
 }
 
 // ADR-0033 P5: per-node label (proxies to the VisualNode's persisted `label`).
@@ -824,7 +1077,37 @@ void NodeGraph::op_draw_editor(int i, VividEditorContext* ctx) const {
 }
 bool NodeGraph::op_param_wired_at(int i, int local) const {
     if (!op_node_valid(vg_, i)) return false;
-    return reg_.source_of(node_param_dest(vg_->nodes()[i].id, node_plabel(vg_, i, local))) != nullptr;
+    if (reg_.source_of(node_param_dest(vg_->nodes()[i].id, node_plabel(vg_, i, local))) != nullptr) return true;
+    // ADR-0053 Phase B: a typed control edge also drives (and therefore exposes) its param — so its row,
+    // port, and wire render, and the param stays a visible drop target after the edge is made.
+    return vg_->nodes()[i].control_edge_for(local) != nullptr;
+}
+
+// ADR-0053 Phase B: control-edge persistence accessors. Save exports the target param by NAME (resolved
+// back to an index on load, robust to a param reorder across versions) + the source's stable id + the
+// value-lane ordinal + the shape. The reactive SOURCE nodes themselves persist as ordinary chain nodes.
+int NodeGraph::op_control_edge_count(int i) const {
+    return op_node_valid(vg_, i) ? int(vg_->nodes()[i].control_edges.size()) : 0;
+}
+bool NodeGraph::get_op_control_edge(int i, int e, std::string& param, int& src_node, int& src_lane,
+                                    vivid::VisualControlShape& sh) const {
+    if (!op_node_valid(vg_, i)) return false;
+    const auto& ces = vg_->nodes()[i].control_edges;
+    if (e < 0 || e >= int(ces.size())) return false;
+    const auto& ce = ces[e];
+    const char* pn = (ce.param_index >= 0 && ce.param_index < node_pcount(vg_, i))
+                   ? node_plabel(vg_, i, ce.param_index) : "";
+    param = pn ? pn : ""; src_node = ce.src_node; src_lane = ce.src_lane; sh = ce.shape;
+    return true;
+}
+void NodeGraph::load_op_control_edge(int i, const std::string& param, int src_node, int src_lane,
+                                     const vivid::VisualControlShape& sh) {
+    if (!vg_ || !op_node_valid(vg_, i) || param.empty()) return;
+    int local = -1;
+    for (int l = 0; l < node_pcount(vg_, i); ++l)
+        if (param == node_plabel(vg_, i, l)) { local = l; break; }
+    if (local < 0) return;   // the target param is gone (op type changed) — drop the edge, like a dead texture edge
+    vg_->set_param_control(i, local, src_node, src_lane, sh);
 }
 
 // Curated body params: the param indices shown as rows on node i, in index order. A param appears iff it
@@ -875,11 +1158,12 @@ bool NodeGraph::take_param_menu_request(int& node_idx, int& src_data_node, doubl
     pmreq_node_ = pmreq_src_ = -1;
     return true;
 }
-bool NodeGraph::connect_data_to_param(int data_idx, int op_idx, int local) {
-    if (!vg_ || data_idx < 0 || data_idx >= int(data_.size())) return false;
+bool NodeGraph::connect_data_to_param(int data_idx, int op_idx, int local, int out_idx) {
+    if (!vg_ || data_idx < 0 || data_idx >= int(nodes_data_.size())) return false;
+    const auto& outs = nodes_data_[data_idx].outs;
+    if (out_idx < 0 || out_idx >= int(outs.size())) return false;
     if (!op_node_valid(vg_, op_idx) || local < 0 || local >= node_pcount(vg_, op_idx)) return false;
-    reg_.connect(data_[data_idx].source,
-                 node_param_dest(vg_->nodes()[op_idx].id, node_plabel(vg_, op_idx, local)));
+    add_mapping(outs[out_idx].source, node_param_dest(vg_->nodes()[op_idx].id, node_plabel(vg_, op_idx, local)), 1.f);
     note_edit_("Connect Mapping");
     return true;
 }
@@ -955,16 +1239,16 @@ bool NodeGraph::swap_op_type(int i, const std::string& type) {
     if (ok) { sel_op_ = i; note_edit_("Swap Operator"); }
     return ok;
 }
-void NodeGraph::add_node_raw(const std::string& title, const std::string& source, float x, float y) {
-    data_.push_back({ x, y, 168.f, 72.f, title, source, 0.f, 0, {}, 0 });
-    ++data_gen_;   // ADR-0028: invalidate cached publish->data-node indices
+void NodeGraph::add_node_raw(const std::string&, const std::string& source, float x, float y) {
+    if (source.empty()) return;
+    ensure_source_node(source);   // materialize the entity node (all default outputs)
+    int ni, oi; if (find_source_output(source, ni, oi)) { nodes_data_[ni].x = x; nodes_data_[ni].y = y; }
 }
 // Legacy load path: a saved session that stored the packed integer char_id (pre string-source migration).
 void NodeGraph::add_node_raw(const std::string& title, int char_id, float x, float y) {
     add_node_raw(title, source_id_for(char_id), x, y);
 }
 
-void NodeGraph::data_out(const DataNode& n, float& px, float& py) { px = n.x + n.w; py = n.y + n.h * 0.5f; }
 
 // ADR-0023 Layer 1: enumerate the operator nodes as the shared card-chrome shape. This is exactly the
 // per-node data draw()'s op-card loop feeds to canvas_.card() (rect/accent/selection/health/title/error);
@@ -1107,25 +1391,36 @@ void NodeGraph::draw(Renderer2D& r) {
                 node_wire(r, ox, oy, ix, iy, 0.50f, 0.60f, 0.68f);  // classic grayish-blue
         }
     }
-    // param wires (data node -> per-node param port)
+    // param wires (source-node OUTPUT -> per-node param port)
     for (int i = 0; i < n; ++i) {
         const int pc = node_pcount(vg_, i);
         for (int l = 0; l < pc; ++l) {
             const std::string* src = reg_.source_of(node_param_dest(vg_->nodes()[i].id, node_plabel(vg_, i, l)));
             if (!src) continue;
-            const int dn = find_source_node(*src);
-            float px, py; if (dn < 0 || !param_port(i, l, px, py)) continue;
-            float ox, oy; data_out(data_[dn], ox, oy);
+            int sni, soi; if (!find_source_output(*src, sni, soi)) continue;
+            float px, py; if (!param_port(i, l, px, py)) continue;
+            float ox, oy; source_out_port(sni, soi, ox, oy);
             node_wire(r, ox, oy, px, py, 0.45f, 0.78f, 0.85f);
         }
     }
+    // ADR-0053 Phase B: typed control-edge wires (a source op's value-lane OUTPUT -> a consumer param
+    // port), drawn in a distinct WARM GOLD so they read apart from texture edges (grey-blue) and the
+    // legacy registry param-wires (teal). The source is a real graph node addressed by stable id.
+    for (int i = 0; i < n; ++i)
+        for (const auto& ce : vg_->nodes()[i].control_edges) {
+            const int si = op_index_of_id(ce.src_node);
+            if (si < 0) continue;
+            float ox, oy, px, py;
+            if (op_out_port_of_lane(si, ce.src_lane, ox, oy) && param_port(i, ce.param_index, px, py))
+                node_wire(r, ox, oy, px, py, 0.95f, 0.72f, 0.30f);
+        }
     // drag preview (ADR-0023 Layer 2: the ghost wire comes from the canvas)
-    if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < n + int(data_.size())) {
-        float ox, oy; if (wire_from_ < int(data_.size())) { data_out(data_[wire_from_], ox, oy);
-            const float c[3] = { 0.55f, 0.85f, 0.80f }; canvas_.ghost_wire(r, ox, oy, float(cx_), float(cy_), c); }
+    if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < int(nodes_data_.size()) && wire_from_out_ >= 0) {
+        float ox, oy; source_out_port(wire_from_, wire_from_out_, ox, oy);
+        const float c[3] = { 0.55f, 0.85f, 0.80f }; canvas_.ghost_wire(r, ox, oy, float(cx_), float(cy_), c);
     }
     if (drag_mode_ == 4 && wire_from_ >= 0) {
-        float ox, oy; if (op_out_port(wire_from_, ox, oy)) {
+        float ox, oy; if (op_out_port(wire_from_, wire_from_out_ >= 0 ? wire_from_out_ : 0, ox, oy)) {
             const float c[3] = { 0.5f, 0.65f, 0.9f }; canvas_.ghost_wire(r, ox, oy, float(cx_), float(cy_), c); }
     }
 
@@ -1142,7 +1437,8 @@ void NodeGraph::draw(Renderer2D& r) {
         for (int l = 0; l < pc; ++l) {
             float px, py; if (!param_port(i, l, px, py)) continue;
             const char* name = node_plabel(vg_, i, l);
-            const bool on = reg_.source_of(node_param_dest(vg_->nodes()[i].id, name)) != nullptr;
+            const bool on = reg_.source_of(node_param_dest(vg_->nodes()[i].id, name)) != nullptr
+                            || vg_->nodes()[i].control_edge_for(l) != nullptr;   // ADR-0053 B2: edge lights the port too
             node_port(r, px, py, 4.f, on ? 0.31f : 0.34f, on ? 0.80f : 0.40f, on ? 0.75f : 0.45f);
             if (a_param > 0.01f)
                 r.draw_text(px + 10.f, py - 5.f, name,
@@ -1150,24 +1446,32 @@ void NodeGraph::draw(Renderer2D& r) {
         }
     }
 
-    // data nodes (matching card style)
-    for (auto& nd : data_) {
+    // ADR-0053 A2: audio-source ENTITY nodes — a header + one row per named value output, each with a
+    // compact sparkline and its own right-edge port. Wiring a row -> a param is a MappingRegistry wire.
+    const float a_out = canvas_.text_alpha(0.66f);
+    for (auto& nd : nodes_data_) {
         if (nd.flash > 0) { r.draw_rect(nd.x - 3.f, nd.y - 3.f, nd.w + 6.f, nd.h + 6.f, 0.31f, 0.80f, 0.75f, 1.0f); nd.flash--; }
         canvas_.card(r, { nd.x, nd.y, nd.w, nd.h }, sty.teal, false, false);   // data source (teal, never broken)
-        r.draw_text(nd.x + 12.f, nd.y + 6.f, nd.title.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
-        // live value history (rolling bar sparkline) in a recessed panel
-        const float gx = nd.x + 12.f, gy = nd.y + 30.f, gw = nd.w - 24.f, gh = 26.f;
-        node_preview_panel(r, gx, gy, gw, gh);   // shared recessed well
-        const float colw = gw / kHistN;
-        for (int j = 0; j < kHistN; ++j) {
-            const float v = std::clamp(nd.hist[(nd.hist_head + j) % kHistN], 0.f, 1.f);  // oldest..newest
-            const float bh = v * (gh - 2.f);
-            r.draw_rect(gx + colw * j, gy + gh - bh - 1.f, std::max(1.f, colw - 0.4f), bh, 0.28f, 0.74f, 0.70f, 0.95f);
+        r.draw_text(nd.x + 12.f, nd.y + 5.f, nd.title.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
+        for (int oi = 0; oi < int(nd.outs.size()); ++oi) {
+            SourceOutput& o = nd.outs[oi];
+            const float rowY = nd.y + kSrcHeaderH + oi * kSrcRowH;
+            bool wired = false;
+            for (const auto& m : reg_.mappings()) if (m.source == o.source) { wired = true; break; }
+            if (a_out > 0.01f)
+                r.draw_text(nd.x + 12.f, rowY + 3.f, o.suffix.c_str(),
+                            wired ? 0.72f : 0.52f, wired ? 0.82f : 0.56f, wired ? 0.78f : 0.6f, a_out, sty.fs_label);
+            // compact sparkline on the row's right half
+            const float gx = nd.x + nd.w * 0.46f, gy = rowY + 2.f, gw = nd.w * 0.46f, gh = kSrcRowH - 5.f;
+            const float colw = gw / kHistN;
+            for (int j = 0; j < kHistN; ++j) {
+                const float v = std::clamp(o.hist[(o.hist_head + j) % kHistN], 0.f, 1.f);  // oldest..newest
+                const float bh = v * gh;
+                r.draw_rect(gx + colw * j, gy + gh - bh, std::max(1.f, colw - 0.3f), bh, 0.28f, 0.74f, 0.70f, 0.9f);
+            }
+            float px, py; source_out_port(int(&nd - &nodes_data_[0]), oi, px, py);
+            node_port(r, px, py, 4.f, 0.31f, 0.80f, 0.75f);
         }
-        // current-value readout bar under the panel
-        r.draw_rect(gx, nd.y + 62.f, gw * std::clamp(nd.value, 0.f, 1.f), 4.f, 0.31f, 0.80f, 0.75f, 1.0f);
-        float px, py; data_out(nd, px, py);
-        node_port(r, px, py, 5.f, 0.31f, 0.80f, 0.75f);
     }
 
     // ADR-0033 P1: the marquee rubber-band, drawn in world space so it tracks the cards under zoom/pan.
@@ -1275,9 +1579,14 @@ void NodeGraph::chooser_spawn(const Chooser::Entry& e) {
         if (ni >= 0 && ni < int(op_pos_.size()))      // ...then place it where the chooser was opened
             op_pos_[ni] = { chooser_.spawn_x() - kCardW * 0.5f, chooser_.spawn_y() - 15.f };
         note_edit_("Add Node");
-    } else if (e.spawn.kind == SpawnKind::BridgeNode) {   // a bridge data node (add_data_node notes the edit)
-        add_data_node(e.label, e.spawn.source.empty() ? source_id_for(e.spawn.char_id) : e.spawn.source);
-        if (!data_.empty()) { data_.back().x = chooser_.spawn_x() - 84.f; data_.back().y = chooser_.spawn_y() - 36.f; }
+    } else if (e.spawn.kind == SpawnKind::BridgeNode) {   // a bridge source node (add_data_node notes the edit)
+        const std::string src = e.spawn.source.empty() ? source_id_for(e.spawn.char_id) : e.spawn.source;
+        const bool existed = (find_source_node(src) >= 0);
+        add_data_node(e.label, src);
+        int ni, oi;   // only reposition a NEWLY-created entity (don't move an existing Master/Track node)
+        if (!existed && find_source_output(src, ni, oi)) {
+            nodes_data_[ni].x = chooser_.spawn_x() - 84.f; nodes_data_[ni].y = chooser_.spawn_y() - 36.f;
+        }
     }
 }
 
@@ -1338,18 +1647,21 @@ bool NodeGraph::on_down(double x, double y, bool shift, bool super) {
     int pni, pl;
     if (nearest_param(wx, wy, pr, pni, pl)) {
         reg_.disconnect(node_param_dest(vg_->nodes()[pni].id, node_plabel(vg_, pni, pl)));
+        if (vg_) vg_->clear_param_control(pni, pl);   // ADR-0053 B2: also drop a typed control edge into this param
         note_edit_("Disconnect Mapping");
         return true;
     }
 
-    // start a wire from a data-node output port
-    for (int i = 0; i < int(data_.size()); ++i) {
-        float px, py; data_out(data_[i], px, py);
-        if (std::hypot(wx - px, wy - py) < hr) { drag_mode_ = 3; wire_from_ = i; return true; }
-    }
-    // start a wire from an op output port
-    int oo = nearest_op_out(wx, wy, hr);
-    if (oo >= 0) { drag_mode_ = 4; wire_from_ = oo; return true; }
+    // start a wire from a source-node OUTPUT ROW port (ADR-0053 A2: one port per named output)
+    for (int i = 0; i < int(nodes_data_.size()); ++i)
+        for (int o = 0; o < int(nodes_data_[i].outs.size()); ++o) {
+            float px, py; source_out_port(i, o, px, py);
+            if (std::hypot(wx - px, wy - py) < hr) { drag_mode_ = 3; wire_from_ = i; wire_from_out_ = o; return true; }
+        }
+    // start a wire from an op output port (capture WHICH output — a multi-lane producer like
+    // ReactiveMaster / LanePalette has several; the drop target decides texture edge vs control edge)
+    int ooPort = 0; int oo = nearest_op_out(wx, wy, hr, ooPort);
+    if (oo >= 0) { drag_mode_ = 4; wire_from_ = oo; wire_from_out_ = ooPort; return true; }
 
     // op-node x button / body drag
     for (int i = 0; i < n; ++i) {
@@ -1379,10 +1691,10 @@ bool NodeGraph::on_down(double x, double y, bool shift, bool super) {
     // hard-coded 4-item "ADD OP" strip couldn't even reach the newer ops. Re-layout moved to the
     // visuals column's corner chrome, handled in app/input.cpp.)
 
-    // data-node body drag
-    for (int i = 0; i < int(data_.size()); ++i)
-        if (hit({ data_[i].x, data_[i].y, data_[i].w, data_[i].h }, wx, wy)) {
-            drag_mode_ = 1; drag_idx_ = i; dx_ = wx - data_[i].x; dy_ = wy - data_[i].y; return true;
+    // source-node body drag
+    for (int i = 0; i < int(nodes_data_.size()); ++i)
+        if (hit({ nodes_data_[i].x, nodes_data_[i].y, nodes_data_[i].w, nodes_data_[i].h }, wx, wy)) {
+            drag_mode_ = 1; drag_idx_ = i; dx_ = wx - nodes_data_[i].x; dy_ = wy - nodes_data_[i].y; return true;
         }
     // empty canvas within the network pane. ADR-0033 P1: ⇧-drag rubber-bands a marquee (⌘ makes it
     // additive); a plain drag pans the view (screen coords), preserving the existing gesture.
@@ -1400,8 +1712,8 @@ bool NodeGraph::on_down(double x, double y, bool shift, bool super) {
 void NodeGraph::on_move(double x, double y) {
     double wx, wy; to_world(x, y, wx, wy);
     cx_ = wx; cy_ = wy;  // world cursor (drag-preview wires draw under the transform)
-    if (drag_mode_ == 1 && drag_idx_ >= 0 && drag_idx_ < int(data_.size())) {
-        data_[drag_idx_].x = float(wx - dx_); data_[drag_idx_].y = float(wy - dy_);
+    if (drag_mode_ == 1 && drag_idx_ >= 0 && drag_idx_ < int(nodes_data_.size())) {
+        nodes_data_[drag_idx_].x = float(wx - dx_); nodes_data_[drag_idx_].y = float(wy - dy_);
         note_edit_("Move Node", "move-node");
     } else if (drag_mode_ == 2 && drag_idx_ >= 0 && drag_idx_ < int(op_pos_.size())) {
         // ADR-0033 P1 group-drag: the grabbed node follows the cursor; every other selected node
@@ -1437,24 +1749,41 @@ void NodeGraph::zoom_at(double sx, double sy, float factor) {
 
 void NodeGraph::on_up(double x, double y) {
     double wx, wy; to_world(x, y, wx, wy);
-    if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < int(data_.size()) && vg_) {
+    if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < int(nodes_data_.size()) && wire_from_out_ >= 0 && vg_) {
         int pni, pl;
         if (nearest_param(wx, wy, 18.0 / canvas_.view().scale, pni, pl)) {
-            connect_data_to_param(wire_from_, pni, pl);
+            connect_data_to_param(wire_from_, pni, pl, wire_from_out_);
         } else {
             // Gesture B: no VISIBLE param row under the drop — but if it landed on a node body, park a
             // request so the app opens the reveal+connect menu (reach a hidden/collapsed param).
+            // NOTE (A2): the reveal-menu path currently wires output 0 of the source node; the direct
+            // drag-to-visible-param path above carries the exact output row.
             const int tgt = op_at_world(wx, wy);
             if (tgt >= 0 && !vg_->nodes()[tgt].is_output() && node_pcount(vg_, tgt) > 0) {
                 pmreq_node_ = tgt; pmreq_src_ = wire_from_; pmreq_sx_ = x; pmreq_sy_ = y;
             }
         }
     } else if (drag_mode_ == 4 && wire_from_ >= 0) {
-        int tport = 0; int target = nearest_op_in(wx, wy, 18.0 / canvas_.view().scale, tport);
+        const double R = 18.0 / canvas_.view().scale;
+        int tport = 0; int target = nearest_op_in(wx, wy, R, tport);
         // ADR-0047: refuse a wire whose stream types don't match (the drag sources output port 0, as
         // set_op_input_port does) — the wire just doesn't form, mirroring a rejected audio note edge.
         if (target >= 0 && vg_ && vg_->can_connect(target, tport, wire_from_, 0)) {
             set_op_input_port(target, tport, wire_from_); note_edit_("Connect");
+        } else {
+            // ADR-0053 B2: dropped on a PARAM port instead of a texture input → a typed CONTROL EDGE, if
+            // the dragged output is a value lane (only value lanes can drive a param; a texture output
+            // resolves to lane -1 and forms nothing). The source is referenced by stable id so the edge
+            // survives reorder/removal.
+            int pni, pl;
+            if (vg_ && nearest_param(wx, wy, R, pni, pl)) {
+                const int lane = op_out_value_lane(wire_from_, wire_from_out_ >= 0 ? wire_from_out_ : 0);
+                if (lane >= 0 && pni != wire_from_) {
+                    vivid::VisualControlShape sh;   // default: full-range unipolar, no smoothing (tune in the M panel)
+                    vg_->set_param_control(pni, pl, vg_->nodes()[wire_from_].id, lane, sh);
+                    note_edit_("Connect Control");
+                }
+            }
         }
     } else if (drag_mode_ == 6) {   // ADR-0033 P1: resolve the marquee against every op card
         std::vector<SelItem> items;
@@ -1469,7 +1798,7 @@ void NodeGraph::on_up(double x, double y) {
             marq_add_);
         resync_sel_op_();
     }
-    drag_mode_ = 0; drag_idx_ = -1; wire_from_ = -1; grp_start_.clear(); anno_drag_ = -1;
+    drag_mode_ = 0; drag_idx_ = -1; wire_from_ = -1; wire_from_out_ = -1; grp_start_.clear(); anno_drag_ = -1;
 }
 
 }  // namespace vivid::ui

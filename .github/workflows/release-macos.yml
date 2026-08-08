@@ -81,6 +81,11 @@ jobs:
       - name: Stop track (clip-stop contract)
         run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_stop_track.py
 
+      # ADR-0053 Phase B: control-edge integration — a ReactiveMaster added live to a 30-node graph
+      # doesn't crash, and deleting a track removes its ReactiveTrack node + cascades its control edges.
+      - name: Reactive control edges (large-graph add + track-drop)
+        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_reactive_edges.py
+
       # Import the Developer ID cert into a dedicated temporary keychain so codesign can reach the
       # private key non-interactively (a locked/service-context login keychain gives
       # errSecInternalComponent on a self-hosted runner). Cleaned up below regardless of outcome.

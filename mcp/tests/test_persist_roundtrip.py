@@ -76,8 +76,18 @@ def build_project() -> None:
     bl = ok("add_node", {"op": "Blur"})["id"]
     ok("connect_nodes", {"node_id": bl, "input_id": nf, "port": 0})   # NoiseField -> Blur
     ok("connect_nodes", {"node_id": 0, "input_id": bl, "port": 0})    # Blur -> Output
-    # An audio->visual mapping (a first-class session object; exercises the mapping restore path).
+    # An audio->visual mapping with a non-param dst (node:<id>:<index>) — stays a registry object, so it
+    # exercises the reverse-path mapping restore. (ADR-0053 B4: a REAL node:<id>.<param> audio mapping now
+    # migrates to a control edge instead — covered separately below.)
     ok("connect_mapping", {"src": "master.level", "dst": f"node:{bl}:0", "amount": 0.8, "curve": 0.2})
+    # ADR-0053 Phase B4: a real audio->visual mapping to a NAMED param becomes a typed control EDGE from a
+    # Reactive SOURCE op (connect_mapping is now sugar over it). Exercises the edge + reactive-node restore
+    # path. Query the blur's first param name so the dst is valid regardless of the op's schema.
+    blur = next(n for n in ok("get_graph")["nodes"] if n["id"] == bl)
+    pname = blur["params"][0]["name"]
+    ok("connect_mapping", {"src": "master.low", "dst": f"node:{bl}.{pname}",
+                           "amount": 0.6, "curve": 0.1, "lo": 0.1, "hi": 0.9,
+                           "attack": 0.02, "release": 0.2})
     # ADR-0033 P5: a per-node label + a sticky note (both persist in the "graph" block; schema v4).
     ok("set_node_name", {"node_id": bl, "name": "Soft Blur"})
     ok("add_annotation", {"x": 720.0, "y": 300.0, "text": "master.level drives the blur"})
@@ -138,6 +148,9 @@ def main() -> int:
             "visual op chain (>=2)": len(g.get("chain", [])) >= 2,
             "wired edges": any(n.get("in", -1) >= 0 for n in g.get("chain", [])),
             "a mapping": len(g.get("mappings", [])) >= 1,
+            "a control edge": any(n.get("control_edges") for n in g.get("chain", [])),  # ADR-0053 B4
+            "a reactive source op": any(n.get("op_type", "").startswith("Reactive")     # ADR-0053 B4
+                                        for n in g.get("chain", [])),
             "a node label": any(n.get("name") for n in g.get("chain", [])),   # ADR-0033 P5
             "an annotation": len(g.get("annotations", [])) >= 1,             # ADR-0033 P5
             "a bypassed node": '"bypassed"' in json.dumps(before),           # ADR-0033 P3
