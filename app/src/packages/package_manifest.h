@@ -13,8 +13,13 @@
 //   {
 //     "name": "example-visuals",
 //     "version": "0.1.0",
-//     "operators": [ { "name": "Gradient", "kind": "gpu_visual", "source": "gradient.cpp" } ]
+//     "operators": [ { "name": "Gradient", "kind": "gpu_visual", "source": "gradient.cpp" } ],
+//     "dependencies": {                                   // optional (ADR-0054 Stage 1)
+//       "vendor": [ { "name": "nlohmann_json", "include": "deps/json/include" } ]
+//     }
 //   }
+// `dependencies.vendor[].include` is a package-relative dir of vendored headers, added to every
+// operator's compile as `-I` (portable — headers ship inside the package). `name` is a label only.
 namespace vivid {
 
 struct PackageOperator {
@@ -26,6 +31,13 @@ struct PackageOperator {
                              // the others don't). The op's descriptor capability flags remain the
                              // runtime authority; `kind` is manifest metadata, not enforced against them.
     bool        gpu = true;  // link wgpu at build time. Derived from `kind` unless set explicitly.
+
+    // Vendored external-header include dirs, resolved to ABSOLUTE paths at parse time from the
+    // package-level `dependencies.vendor` block. Each becomes a `-I` on the package compiler's
+    // clang++ line (see package_compiler.cpp), letting a per-project op `#include` a header library
+    // it vendors inside the package (e.g. nlohmann/json). Package-level in the manifest, but carried
+    // per-operator so the list flows through install_package AND hot_reload_manager unchanged.
+    std::vector<std::string> include_dirs;
 };
 
 struct PackageManifest {
