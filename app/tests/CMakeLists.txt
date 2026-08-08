@@ -329,6 +329,27 @@ target_compile_definitions(test_package_compile PRIVATE
     VIVID_PKG_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../src"
     VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")
 
+# ADR-0054 Stage 1: a package op that #includes a VENDORED header declared in dependencies.vendor
+# compiles + loads (proves the vendor -I reaches the compile line); + the escape-guard rejects `../..`.
+vivid_add_test(test_package_vendor_include)
+target_sources(test_package_vendor_include PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_manifest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_compiler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_loader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/loaded_operator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_scan.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
+target_link_libraries(test_package_vendor_include PRIVATE ${CMAKE_DL_LIBS} nlohmann_json::nlohmann_json)
+target_compile_definitions(test_package_vendor_include PRIVATE
+    PKG_VENDOR_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pkg_vendor"
+    PKG_VENDOR_ESCAPE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pkg_vendor_escape"
+    VIVID_PKG_CXX="${CMAKE_CXX_COMPILER}"
+    VIVID_PKG_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../src"
+    VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")
+
 # Audio operator packages end-to-end: compile the example-audio package (audio_effect +
 # instrument), load both, and RUN them through the native audio runtime (proves the loaded-dylib
 # adapter forwards process_audio + the capability flags come from the dylib).

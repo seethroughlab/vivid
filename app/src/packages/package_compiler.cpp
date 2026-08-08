@@ -150,6 +150,8 @@ PackageCompileResult PackageCompiler::compile_operator(const std::string& packag
     if (std::string(VIVID_PKG_ARCH).size()) { argv.push_back("-arch"); argv.push_back(VIVID_PKG_ARCH); }
     add_inc(argv, tc.inc_src);                 // operator_api/ headers
     add_inc(argv, package_dir);                // package-local headers
+    for (const auto& d : op.include_dirs)      // ADR-0054 Stage 1: vendored-header dirs (dependencies.vendor)
+        add_inc(argv, d);
     if (op.gpu) {
         add_inc(argv, tc.inc_wgpu);
         if (!tc.lib_wgpu.empty()) {
