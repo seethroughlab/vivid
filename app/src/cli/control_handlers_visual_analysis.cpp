@@ -193,6 +193,7 @@ void register_visual_analysis_handlers(Handlers& handlers_) {
     handlers_["analyze_visual_motion"] = [](const ControlCtx& c, const json& b) {
         if (!c.app) return err(code::kBadArg, "no app context");
         const double window = b.value("duration_seconds", 2.0);
+        c.app->reactivity.arm(steady_seconds());   // keep the ring sampling while perception is in use
         const json m = c.app->reactivity.motion(window, steady_seconds());
         json r = ok();
         r.update(m);
@@ -213,6 +214,7 @@ void register_visual_analysis_handlers(Handlers& handlers_) {
         }
         const json a = analyze_rgba(px.data(), w, h);
         const double window = b.value("duration_seconds", 2.0);
+        if (c.app) c.app->reactivity.arm(steady_seconds());
         json r = ok();
         r["frame"] = a;
         r["motion"] = c.app ? c.app->reactivity.motion(window, steady_seconds())
@@ -236,6 +238,7 @@ void register_visual_analysis_handlers(Handlers& handlers_) {
         if (!c.app) return err(code::kBadArg, "no app context");
         const std::string mode = b.value("mode", std::string("frame"));
         const double now = steady_seconds();
+        c.app->reactivity.arm(now);   // arm the ring so it samples while you're measuring (0 cost otherwise)
         json r = ok();
         r["mode"] = mode;
         if (mode == "frame") {
@@ -250,6 +253,12 @@ void register_visual_analysis_handlers(Handlers& handlers_) {
                 : ("brightness=" + std::to_string(a.value("brightness", 0.0)) +
                    ", contrast=" + std::to_string(a.value("contrast", 0.0)) +
                    ", activity=" + std::to_string(a.value("activity", 0.0)));
+            return r;
+        }
+        if ((mode == "av" || mode == "audio") && !c.app->reactivity.enabled()) {
+            r["summary"] = "perception is DISABLED — call set_perception_enabled(true) to sample the "
+                           "reactivity ring (it's off so it can't cost framerate while you watch)";
+            r["disabled"] = true;
             return r;
         }
         const double window = b.value("window_seconds", 3.0);
@@ -274,6 +283,25 @@ void register_visual_analysis_handlers(Handlers& handlers_) {
             return r;
         }
         return err(code::kBadArg, "unknown mode '" + mode + "' (expected frame|audio|av)");
+    };
+    // Master switch for the perception ring. Disable it so an agent's analyze_output/judge calls can't
+    // arm the ring and drop the live framerate while you watch; re-enable to measure again.
+    handlers_["set_perception_enabled"] = [](const ControlCtx& c, const json& b) {
+        if (!c.app) return err(code::kBadArg, "no app context");
+        const bool on = b.value("enabled", true);
+        c.app->reactivity.set_enabled(on);
+        json r = ok();
+        r["enabled"] = on;
+        r["summary"] = on ? "perception ENABLED (ring samples on-demand while measuring)"
+                          : "perception DISABLED (zero readback cost; analyze_output(av|audio) returns no data until re-enabled)";
+        return r;
+    };
+    handlers_["perception_status"] = [](const ControlCtx& c, const json&) {
+        if (!c.app) return err(code::kBadArg, "no app context");
+        json r = ok();
+        r["enabled"] = c.app->reactivity.enabled();
+        r["samples"] = c.app->reactivity.samples();
+        return r;
     };
 }
 

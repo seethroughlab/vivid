@@ -492,13 +492,17 @@ def duplicate_nodes(ids: list[int], dx: float = 24.0, dy: float = 24.0) -> dict:
 # ---------------- mapping (the bridge) ----------------
 @mcp.tool
 def connect_mapping(src: str, dst: str, amount: float = 1.0, curve: float = 0.0,
-                    invert: bool = False, lo: float = 0.0, hi: float = 1.0) -> dict:
+                    invert: bool = False, lo: float = 0.0, hi: float = 1.0,
+                    attack: float = 0.0, release: float = 0.0) -> dict:
     """Wire a source to a destination (replaces any existing wire into dst).
     src: 'master.transient' | 'track_2.low' | 'viz.warp' (a visual's value, for the return path).
     dst: 'node:<id>.<param>' (visual param) | 'param:<track>:<device>:<index>' (audio param).
-    Shaping: amount (gain), curve (-1 ease-out .. +1 ease-in), invert (polarity), [lo,hi] range."""
+    Shaping: amount (gain), curve (-1 ease-out .. +1 ease-in), invert (polarity), [lo,hi] range,
+    attack/release (envelope-follower time constants in seconds; a raw envelope is jumpy, so a fast
+    attack + slow release lets the param SNAP up on a hit then glide back). 0/0 = instantaneous."""
     return _post("connect_mapping", {"src": src, "dst": dst, "amount": amount,
-                                      "curve": curve, "invert": invert, "lo": lo, "hi": hi})
+                                      "curve": curve, "invert": invert, "lo": lo, "hi": hi,
+                                      "attack": attack, "release": release})
 
 
 @mcp.tool
@@ -537,6 +541,33 @@ def map_audio_to_visual_param(source: str = "track", characteristic: str = "",
 def disconnect_mapping(dst: str) -> dict:
     """Remove the mapping driving this destination."""
     return _post("disconnect_mapping", {"dst": dst})
+
+
+@mcp.tool
+def connect_control_to_param(node_id: int, param: str, src_node_id: int,
+                             signal: str = "", src_lane: int = -1,
+                             amount: float = 1.0, curve: float = 0.0, invert: bool = False,
+                             lo: float = 0.0, hi: float = 1.0,
+                             attack: float = 0.0, release: float = 0.0) -> dict:
+    """ADR-0053 Phase B: wire a SOURCE node's value-lane output into a visual op PARAMETER as a
+    first-class graph control edge (the typed replacement for the hidden string mapping). node_id/param
+    name the consumer; src_node_id is the source node (e.g. a ReactiveMaster / ReactiveTrack); identify
+    the source lane by output-port NAME (signal, e.g. 'low' / 'beat_pulse') or by ordinal (src_lane).
+    Shaping matches connect_mapping: amount (gain), curve, invert, [lo,hi] range, attack/release (s)."""
+    payload = {"node_id": node_id, "param": param, "src_node_id": src_node_id,
+               "amount": amount, "curve": curve, "invert": invert, "lo": lo, "hi": hi,
+               "attack": attack, "release": release}
+    if signal:
+        payload["signal"] = signal
+    if src_lane >= 0:
+        payload["src_lane"] = src_lane
+    return _post("connect_control_to_param", payload)
+
+
+@mcp.tool
+def disconnect_control(node_id: int, param: str) -> dict:
+    """Remove the control edge driving this visual param (ADR-0053 Phase B)."""
+    return _post("disconnect_control", {"node_id": node_id, "param": param})
 
 
 @mcp.tool
@@ -950,6 +981,23 @@ def analyze_output(mode: str = "frame", window_seconds: float = 3.0, node_id: st
     if node_id:
         payload["node_id"] = node_id
     return _post("analyze_output", payload)
+
+
+@mcp.tool
+def set_perception_enabled(enabled: bool = True) -> dict:
+    """Master switch for the visual-perception ring. The ring does a per-frame GPU readback WHILE
+    measuring (analyze_output/analyze_visual_motion/judge arm it for a few seconds), which costs
+    framerate. Disable it so those calls can't drop the live framerate while someone is watching;
+    re-enable to measure again. Disabled: analyze_output(av|audio) returns no data. Default enabled
+    (and idle-free — it only samples while a perception tool is actively in use)."""
+    return _post("set_perception_enabled", {"enabled": enabled})
+
+
+@mcp.tool
+def perception_status() -> dict:
+    """Report the perception ring's state: {enabled, samples}. samples>0 means the ring currently holds
+    history (it was measured recently)."""
+    return _post("perception_status")
 
 
 @mcp.tool

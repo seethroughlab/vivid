@@ -4,11 +4,25 @@
 #include "gpu/render_target.h"
 #include "gpu/op_runtime.h"
 #include "gpu/output_format.h"   // FitMode + the output size presets (owned by the Output node)
+#include "control_shape.h"       // ADR-0053 Phase B: VisualControlShape + visual_control_resolve
 #include <string>
 #include <vector>
 #include <cstdint>
 
 namespace vivid {
+
+// ADR-0053 Phase B: a typed CONTROL EDGE driving one visual-op parameter from a source node's value
+// lane — the graph-resident replacement for a hidden MappingRegistry wire. Owned by the CONSUMER node
+// (the one whose param is modulated), mirroring how a texture edge is owned by its consumer's inputs[].
+// The source is referenced by STABLE id (survives reorder/removal) + which of its value-lane OUTPUT
+// ordinals to read (e.g. ReactiveMaster's "low" = ordinal 2). run_chain resolves it just before handing
+// the op its params; apply_params leaves an edged param at base so the edge is the single owner.
+struct ParamControlEdge {
+    int param_index = -1;    // which param of the CONSUMER node this edge drives
+    int src_node    = -1;    // stable id of the SOURCE node (VisualNode::id)
+    int src_lane    = 0;     // which value-lane OUTPUT ordinal of the source to read
+    VisualControlShape shape;
+};
 
 // A node in the rewireable visuals chain. Each node hosts an operator instance
 // (the lifted ABI); `op_type` is its registry name — the ONLY identity a node has.
@@ -47,6 +61,10 @@ struct VisualNode {
     // whose header changed). Indices move when a reload adds, removes or reorders a param, so a
     // name is the only thing worth carrying over. Consumed by make_instance(), then cleared.
     std::vector<std::pair<std::string, float>> stash;
+    // ADR-0053 Phase B: control edges driving this node's params from source-node value lanes. At most
+    // one per param (single-owner); an author-set edge shadows any legacy registry mapping into the
+    // same param. Resolved in run_chain; persisted per node (B3). Empty for a node with no modulation.
+    std::vector<ParamControlEdge> control_edges;
 
     // The one op the host itself must recognize: the chain's sink. A host CONTRACT, not
     // classification, which is why this name appears here and no others do. (Video used to be the
@@ -78,6 +96,11 @@ struct VisualNode {
     // the user staring at a black frame wondering what they broke.
     std::string error() const;
 
+    // Last runtime problem the operator reported from process_gpu via vivid_report_gpu_error,
+    // refreshed (or cleared) every frame it runs. Feeds error() above. ADR-0051 P4 wired this in:
+    // the ABI field existed and operators could set it, but nothing read it back.
+    std::string runtime_error;
+
     // Port-indexed input-edge access; out-of-range reads return -1 (unconnected).
     int  in(int port) const { return (port >= 0 && port < static_cast<int>(inputs.size())) ? inputs[port] : -1; }
     // Which OUTPUT port of the source node this input reads (default 0 for a single-output producer).
@@ -88,6 +111,13 @@ struct VisualNode {
         if (port >= static_cast<int>(in_ports.size())) in_ports.resize(port + 1, 0);
         inputs[port] = src;
         in_ports[port] = src_port;
+    }
+
+    // ADR-0053 Phase B: the control edge driving param `param_index`, or nullptr if unmodulated.
+    // The single-owner query both apply_params (skip the registry) and run_chain (resolve) consult.
+    const ParamControlEdge* control_edge_for(int param_index) const {
+        for (const auto& ce : control_edges) if (ce.param_index == param_index) return &ce;
+        return nullptr;
     }
 };
 
@@ -125,6 +155,12 @@ public:
     // when either descriptor is unavailable (older ops with no port metadata). Used by the interactive +
     // CLI wire paths; set_input itself stays UNVALIDATED so persistence/load replay never rejects an old edge.
     bool can_connect(int node, int port, int src, int src_port) const;
+    // ADR-0053 Phase B: wire source node `src_node_id`'s value-lane output `src_lane` into `node`'s
+    // param `param_index` (replacing any existing edge into that param). No-op on an invalid node.
+    // Mirrors set_input for the control channel; the shape carries the edge's amount/curve/range/etc.
+    void set_param_control(int node, int param_index, int src_node_id, int src_lane,
+                           const VisualControlShape& shape);
+    void clear_param_control(int node, int param_index);   // remove any control edge into that param
     int  output_index() const;                 // index of the ACTIVE Output node, or -1
     // Is the active Output node fed by a real producer? False = an intentionally-empty canvas
     // ("empty by design", benign); true = something feeds Output (its result may still be blank,

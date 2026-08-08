@@ -498,6 +498,18 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
         for (int p = 0; p < g.op_param_count_at(i); ++p)
             if (g.is_param_pinned(i, p)) pinned.push_back(g.op_param_label_at(i, p));
         if (!pinned.empty()) jn["pinned"] = pinned;
+        // ADR-0053 Phase B: typed control edges into this node's params (source value lane -> param).
+        // Saved by param NAME + source stable id + lane + shape; absent when the node has no modulation.
+        json cedges = json::array();
+        for (int e = 0; e < g.op_control_edge_count(i); ++e) {
+            std::string param; int sn = -1, sl = 0; vivid::VisualControlShape sh;
+            if (!g.get_op_control_edge(i, e, param, sn, sl, sh) || param.empty()) continue;
+            cedges.push_back({ {"param", param}, {"src_node", sn}, {"src_lane", sl},
+                               {"amount", sh.amount}, {"curve", sh.curve}, {"invert", sh.invert},
+                               {"lo", sh.out_lo}, {"hi", sh.out_hi},
+                               {"attack", sh.attack}, {"release", sh.release} });
+        }
+        if (!cedges.empty()) jn["control_edges"] = cedges;
         // Ph4 P1-02: a missing op has no live params, so the loops above wrote empty; splice back the
         // values we preserved at load so a save of a degraded project doesn't drop the user's work.
         if (g.op_missing_at(i)) {
@@ -954,11 +966,16 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                     }
                 if (ch[i].contains("params") && ch[i]["params"].is_object()) {
                     const std::string op_type = ch[i].value("op_type", std::string());
+                    // A whole-node migration can MOVE a value between params (ADR-0051's Light3D
+                    // aim), which the per-param pass below cannot. Run it on a copy — `ch` is const
+                    // and callers hand us documents they still own.
+                    json params = ch[i]["params"];
+                    migrate_node_params(file_ver, op_type, params);
                     for (int l = 0; l < g.op_param_count_at(i); ++l) {
                         const char* name = g.op_param_label_at(i, l);
-                        if (!ch[i]["params"].contains(name)) continue;
+                        if (!params.contains(name)) continue;
                         const float v = migrate_param_value(file_ver, op_type, name,
-                                                            ch[i]["params"][name].get<float>());
+                                                            params[name].get<float>());
                         g.set_op_param_base_at(i, l, v);
                     }
                 }
@@ -968,6 +985,19 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                         if (!ch[i].contains("params"))
                             g.set_op_param_base_at(i, l, jb[l].get<float>());
                 }
+                // ADR-0053 Phase B: restore typed control edges. All chain nodes already exist (first
+                // loop), so the source stable id resolves; load_op_control_edge maps the saved param NAME
+                // back to an index and drops the edge if that param/op is gone (like a dead texture edge).
+                if (ch[i].contains("control_edges") && ch[i]["control_edges"].is_array())
+                    for (const auto& je : ch[i]["control_edges"]) {
+                        vivid::VisualControlShape sh;
+                        sh.amount  = je.value("amount", 1.f);  sh.curve   = je.value("curve", 0.f);
+                        sh.invert  = je.value("invert", false); sh.out_lo = je.value("lo", 0.f);
+                        sh.out_hi  = je.value("hi", 1.f);       sh.attack = je.value("attack", 0.f);
+                        sh.release = je.value("release", 0.f);
+                        g.load_op_control_edge(i, je.value("param", std::string()),
+                                               je.value("src_node", -1), je.value("src_lane", 0), sh);
+                    }
                 // Ph4 P1-02: the op type isn't registered, so the params/file_params/pinned above had
                 // nowhere to land. Stash them verbatim on the node so a later save round-trips them
                 // (and a reload after the package is installed restores them by name).
@@ -1003,6 +1033,10 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                               jm.value("amt", 1.0f), jm.value("curve", 0.0f), jm.value("inv", false),
                               jm.value("lo", 0.0f), jm.value("hi", 1.0f),
                               jm.value("attack", 0.0f), jm.value("release", 0.0f));
+        // ADR-0053 Phase B4: a legacy audio→visual mapping just migrated to a Reactive SOURCE op + control
+        // edge (via add_mapping), leaving its persisted Phase-A teal source card orphaned. Drop those; a
+        // card still backing a registry mapping (a non-migratable / reverse-path source) is kept.
+        g.prune_orphan_audio_source_nodes();
     }
     return true;
 }

@@ -465,6 +465,16 @@ void register_introspection_handlers(Handlers& handlers_) {
         json r = ok();
         r["frame_ms"] = vivid::perf::g_frame_ms.load(std::memory_order_relaxed);
         r["fps"]      = vivid::perf::g_fps.load(std::memory_order_relaxed);
+        // GPU-side timing (timestamp queries): gpu_ms distinguishes GPU-bound from CPU-bound — if
+        // gpu_ms << frame_ms the frame is CPU-bound. 0/absent when the adapter lacks timestamp support.
+        // present_uncapped is true when VIVID_PRESENT=immediate (vsync off) so fps shows the true ceiling.
+        const double gpu_ms = vivid::perf::g_gpu_ms.load(std::memory_order_relaxed);
+        r["gpu_ms"]          = gpu_ms;
+        r["gpu_timing"]      = gpu_ms > 0.0;
+        r["present_uncapped"] = vivid::perf::g_present_uncapped.load(std::memory_order_relaxed);
+        json regions = json::object();
+        for (auto& kv : vivid::perf::get_gpu_regions()) regions[kv.first] = kv.second;
+        r["gpu_regions"] = regions;   // {label: ms} e.g. {"visuals": .., "ui": ..}
         return r;
     };
     handlers_["status"] = [](const ControlCtx& c, const json&) {
@@ -1021,15 +1031,42 @@ void register_introspection_handlers(Handlers& handlers_) {
             for (int l = 0; l < g.op_param_count_at(i); ++l)
                 params.push_back({ {"name", g.op_param_label_at(i, l)}, {"base", g.op_param_base_at(i, l)},
                                    {"value", g.op_param_value_at(i, l)}, {"wired", g.op_param_wired_at(i, l)} });
-            nodes.push_back({ {"id", id}, {"op", g.op_kind_name(i)}, {"name", g.op_name_at(i)},  // ADR-0033 P5 label
-                              {"input", in},
-                              {"inputs", g.op_inputs_at(i)},   // all texture input edges (port order)
-                              {"x", x}, {"y", y}, {"params", params} });
+            // ADR-0053 Phase B: typed control edges driving this node's params (a source node's value lane
+            // -> a param). Emitted only when present, so unmodulated nodes stay uncluttered.
+            json cedges = json::array();
+            if (c.vgraph && i < static_cast<int>(c.vgraph->nodes().size()))
+                for (const auto& ce : c.vgraph->nodes()[i].control_edges) {
+                    const char* pn = (ce.param_index >= 0 && ce.param_index < g.op_param_count_at(i))
+                                   ? g.op_param_label_at(i, ce.param_index) : "";
+                    cedges.push_back({ {"param", pn ? pn : ""}, {"param_index", ce.param_index},
+                                       {"src_node_id", ce.src_node}, {"src_lane", ce.src_lane},
+                                       {"amount", ce.shape.amount}, {"curve", ce.shape.curve},
+                                       {"invert", ce.shape.invert}, {"lo", ce.shape.out_lo},
+                                       {"hi", ce.shape.out_hi}, {"attack", ce.shape.attack},
+                                       {"release", ce.shape.release} });
+                }
+            json node = { {"id", id}, {"op", g.op_kind_name(i)}, {"name", g.op_name_at(i)},  // ADR-0033 P5 label
+                          {"input", in},
+                          {"inputs", g.op_inputs_at(i)},   // all texture input edges (port order)
+                          {"x", x}, {"y", y}, {"params", params} };
+            if (!cedges.empty()) node["control_edges"] = cedges;
+            nodes.push_back(node);
         }
         json dnodes = json::array();
         for (int i = 0; i < g.node_count(); ++i) {
             float x = 0, y = 0; std::string source, title; g.get_node(i, x, y, source, title);
-            dnodes.push_back({ {"source", source}, {"title", title} });
+            std::string kind; int track_id = -1; g.get_source_node_meta(i, kind, track_id);
+            json outs = json::array();   // ADR-0053 A4: every named output + whether it drives a param
+            for (int o = 0; o < g.source_node_output_count(i); ++o) {
+                std::string suffix, osrc; g.get_source_node_output(i, o, suffix, osrc);
+                bool wired = false;
+                for (const auto& m : g.mappings()) if (m.source == osrc) { wired = true; break; }
+                outs.push_back({ {"suffix", suffix}, {"source", osrc}, {"wired", wired} });
+            }
+            json jn = { {"source", source}, {"title", title}, {"kind", kind},
+                        {"x", x}, {"y", y}, {"outputs", outs} };
+            if (track_id >= 0) jn["track_id"] = track_id;
+            dnodes.push_back(jn);
         }
         json annos = json::array();   // ADR-0033 P5: sticky notes
         for (int i = 0; i < g.annotation_count(); ++i) {

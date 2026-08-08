@@ -2,6 +2,7 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_3d.h"
 #include "operator_api/thumbnail_3d.h"
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -34,6 +35,8 @@
 struct Instancer3D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Instancer3D";
     static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_TRANSFORM;   // ADR-0046
+    static constexpr const char* kSummary = "Stamps one shape across a set of instance transforms in a single draw.";
+    static constexpr std::array<const char*, 3> kKeywords = {"3d", "instances", "draw"};
     static constexpr bool kTimeDependent = false;
     static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_KERNEL;
 

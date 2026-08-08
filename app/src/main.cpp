@@ -68,6 +68,10 @@
 #include <string>
 #include <algorithm>
 #include "miniaudio.h"
+#if defined(__APPLE__)
+#include <AudioToolbox/AudioToolbox.h>   // ADR-0052: fetch the CoreAudio device os_workgroup for the audio worker pool
+#include <os/workgroup.h>
+#endif
 
 namespace { using namespace vivid::ui; }  // layout constants (ui/layout.h)
 
@@ -332,6 +336,24 @@ int main(int argc, char** argv) {
         // ADR-0045 Tier 2a: warm the plugin-watchdog config (reads env once) on THIS thread, before the
         // RT audio thread starts — so the RT thread never triggers the getenv-backed lazy init.
         (void)vivid::audio::watchdog_config();
+#if defined(__APPLE__)
+        // ADR-0052: hand the track-parallel audio worker pool the CoreAudio device's os_workgroup so
+        // its RT worker threads share the audio I/O thread's scheduling deadline. miniaudio exposes the
+        // playback AudioUnit; the workgroup property returns a +1-retained handle the pool takes over.
+        {
+            os_workgroup_t wg = nullptr;
+            if (device.pContext && device.pContext->backend == ma_backend_coreaudio) {
+                AudioUnit au = static_cast<AudioUnit>(device.coreaudio.audioUnitPlayback);
+                UInt32 sz = sizeof(wg);
+                if (!au || AudioUnitGetProperty(au, kAudioOutputUnitProperty_OSWorkgroup,
+                                                kAudioUnitScope_Global, 0, &wg, &sz) != noErr)
+                    wg = nullptr;
+            }
+            vivid::session::session_set_audio_workgroup(app.session, wg);
+        }
+#else
+        vivid::session::session_set_audio_workgroup(app.session, nullptr);
+#endif
         if (ma_device_start(&device) != MA_SUCCESS) audio_ok = false;
         else hang_monitor.start();   // ADR-0045 Tier 2a: begin watching the RT thread's in-flight beacon
     }

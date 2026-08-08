@@ -48,6 +48,24 @@ int op_index_by_id(VisualGraph* vg, int id) {
     return -1;
 }
 
+// ADR-0053 Phase B: resolve a source node's value-lane OUTPUT ordinal (the index a ParamControlEdge's
+// src_lane holds — counting ONLY value-lane outputs, low→high) from a signal port NAME (e.g. "low",
+// "beat_pulse"). Returns -1 if no value-lane output has that name. Names come straight from the op's
+// port descriptors, so this stays correct as the reactive catalog grows.
+int value_lane_ordinal(VisualGraph* vg, int node_idx, const std::string& signal) {
+    if (!vg || node_idx < 0) return -1;
+    int lane = 0;
+    for (int p = 0; ; ++p) {
+        const VividPortDescriptor* pd = vg->output_port_desc(node_idx, p);
+        if (!pd) break;
+        const bool is_value_lane = pd->type == VIVID_PORT_SCALAR && pd->multiplicity == VIVID_MULTIPLICITY_MANY;
+        if (!is_value_lane) continue;
+        if (pd->name && signal == pd->name) return lane;
+        ++lane;
+    }
+    return -1;
+}
+
 }  // namespace
 
 // The bridge: wire a characteristic source to a param destination (with amount/curve/invert/range),
@@ -152,6 +170,68 @@ void register_mappings_handlers(Handlers& handlers_) {
         const std::string dst = b.value("dst", std::string());
         if (dst.empty()) return err(code::kBadArg, "need dst");
         c.graph->disconnect_dest(dst);
+        return ok();
+    };
+    // ADR-0053 Phase B: the typed convergence path — wire a SOURCE node's value-lane output (e.g. a
+    // ReactiveMaster's "low" signal) into a visual op PARAMETER as a first-class graph control edge,
+    // instead of the hidden string mapping. Identifies the source lane by port NAME (`signal`) or by
+    // ordinal (`src_lane`); the shape carries amount/curve/invert/lo/hi/attack/release.
+    handlers_["connect_control_to_param"] = [](const ControlCtx& c, const json& b) {
+        if (!c.vgraph || !c.graph) return err(code::kNoGraph, "no graph");
+        const int node_id = b.value("node_id", b.value("id", -1));
+        const int idx = op_index_by_id(c.vgraph, node_id);
+        if (idx < 0) return err(code::kNotFound, "no visual node with node_id " + std::to_string(node_id));
+        const int src_id = b.value("src_node_id", -1);
+        const int src_idx = op_index_by_id(c.vgraph, src_id);
+        if (src_idx < 0) return err(code::kNotFound, "no source node with src_node_id " + std::to_string(src_id));
+
+        const std::string param = b.value("param", std::string());
+        if (param.empty()) return err(code::kBadArg, "need visual param name");
+        int local = -1;
+        for (int l = 0; l < c.graph->op_param_count_at(idx); ++l)
+            if (param == c.graph->op_param_label_at(idx, l)) { local = l; break; }
+        if (local < 0) {
+            json params = json::array();
+            for (int l = 0; l < c.graph->op_param_count_at(idx); ++l)
+                params.push_back(c.graph->op_param_label_at(idx, l));
+            json r = err(code::kNotFound, "visual node " + std::to_string(node_id) + " has no param '" + param + "'");
+            r["available_params"] = params;
+            return r;
+        }
+
+        int lane = b.value("src_lane", -1);
+        const std::string signal = b.value("signal", std::string());
+        if (lane < 0 && !signal.empty()) lane = value_lane_ordinal(c.vgraph, src_idx, signal);
+        if (lane < 0) return err(code::kBadArg, "need signal (a source output name) or src_lane");
+
+        VisualControlShape sh;
+        sh.amount  = b.value("amount", 1.0f);
+        sh.curve   = b.value("curve", 0.0f);
+        sh.invert  = b.value("invert", false);
+        sh.out_lo  = b.value("lo", 0.0f);
+        sh.out_hi  = b.value("hi", 1.0f);
+        sh.attack  = b.value("attack", 0.0f);
+        sh.release = b.value("release", 0.0f);
+        c.vgraph->set_param_control(idx, local, src_id, lane, sh);
+
+        json r = ok();
+        r["node_id"] = node_id; r["param"] = param; r["param_index"] = local;
+        r["src_node_id"] = src_id; r["src_lane"] = lane; if (!signal.empty()) r["signal"] = signal;
+        r["range"] = { c.graph->op_param_min_at(idx, local), c.graph->op_param_max_at(idx, local) };
+        return r;
+    };
+    handlers_["disconnect_control"] = [](const ControlCtx& c, const json& b) {
+        if (!c.vgraph || !c.graph) return err(code::kNoGraph, "no graph");
+        const int node_id = b.value("node_id", b.value("id", -1));
+        const int idx = op_index_by_id(c.vgraph, node_id);
+        if (idx < 0) return err(code::kNotFound, "no visual node with node_id " + std::to_string(node_id));
+        const std::string param = b.value("param", std::string());
+        if (param.empty()) return err(code::kBadArg, "need visual param name");
+        int local = -1;
+        for (int l = 0; l < c.graph->op_param_count_at(idx); ++l)
+            if (param == c.graph->op_param_label_at(idx, l)) { local = l; break; }
+        if (local < 0) return err(code::kNotFound, "visual node has no param '" + param + "'");
+        c.vgraph->clear_param_control(idx, local);
         return ok();
     };
 }

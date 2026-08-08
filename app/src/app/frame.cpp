@@ -36,6 +36,7 @@
 #include "audio/mini_fft.h"   // frame-side spectrum for the <src>.fft.k bridge sources
 #include "operator_api/note_bus.h"   // publish each track's held notes for the note-instancer op
 #include "operator_api/spectrum_bus.h"   // publish the master spectrum for per-band geometry ops
+#include "operator_api/reactive_bus.h"   // ADR-0053 Phase B: publish master/track signals for Reactive source ops
 #include "operator_api/note_events.h"   // publish each track's discrete note on/off events for one-shot ops
 #include "audio/vst3_plugin_window.h"
 #include "audio/clap_plugin_window.h"
@@ -285,6 +286,12 @@ void publish_bridge_sources(App& app, Window& win) {
             std::min(1.0f, win.beatPulse) };                       // beat pulse
         for (int k = 0; k < B::kNumTransportKinds; ++k)
             graph.publish(H(key(kTransport, 0, 0, k), [k] { return B::transport_source(B::kTransportKindSuffixes[k]); }), tvals[k]);
+        // ADR-0053 Phase B: publish the same nine master signals to the reactive bus, so the visible
+        // ReactiveMaster SOURCE op can read them and drive visual params through real control edges. Order
+        // MUST match VIVID_REACTIVE_MASTER_SIGNALS: 5 master scalars then 4 transport signals.
+        const float msig[VIVID_REACTIVE_MASTER_SIGNALS] = {
+            mvals[0], mvals[1], mvals[2], mvals[3], mvals[4], tvals[0], tvals[1], tvals[2], tvals[3] };
+        vivid_reactive_bus_publish_master(msig, VIVID_REACTIVE_MASTER_SIGNALS);
     }
     if (app.session) if (int nm = S::session_master_analysis_copy(app.session, an_buf, S::kAnalysisN); nm > 1) {
         do_fft(nm, [&](int k, float v) { graph.publish(H(key(kMasterFft, 0, 0, k), [k] { return B::master_fft(k); }), v); });
@@ -326,6 +333,10 @@ void publish_bridge_sources(App& app, Window& win) {
                                  std::min(1.0f, win.trkNoteHold[t]) };
         for (int k = 0; k < 8; ++k)
             graph.publish(H(key(kTrack, tid, 0, k), [tid, k] { return B::track_source(static_cast<int>(tid), B::kTrackKindSuffixes[k]); }), tvals[k]);
+        // ADR-0053 Phase B: publish the same eight track signals to the reactive bus (into slot `t`,
+        // TAGGED with the stable id `tid`, so a ReactiveTrack op addressing by stable id follows the
+        // track across reorder/delete). Order MUST match VIVID_REACTIVE_TRACK_SIGNALS.
+        vivid_reactive_bus_publish_track(t, static_cast<int>(tid), tvals, VIVID_REACTIVE_TRACK_SIGNALS);
         if (int ns = S::session_track_analysis_copy(app.session, t, an_buf, S::kAnalysisN); ns > 1)
             do_fft(ns, [&](int k, float v) { graph.publish(H(key(kTrackFft, tid, 0, k), [tid, k] { return B::track_fft(static_cast<int>(tid), k); }), v); });
         // Per-audio-graph-node sources. RMS (node_<t>_<nid>.rms) is always-on + cheap (from the scope
@@ -381,6 +392,8 @@ void publish_bridge_sources(App& app, Window& win) {
         vivid_note_bus_publish(s, -1, nullptr, 0);
         if (s < VIVID_NOTE_EVENT_TRACKS) vivid_note_event_bus_publish(s, -1, nullptr, 0);
     }
+    for (int s = ntracks; s < VIVID_REACTIVE_BUS_TRACKS; ++s)   // ADR-0053 Phase B: free stale reactive slots
+        vivid_reactive_bus_publish_track(s, -1, nullptr, 0);
     // Advance mapping smoothing (envelope followers) once per frame BEFORE resolving params, using a
     // real wall-clock delta clamped against stalls. Sources are all published above at this point.
     static double s_prev_bridge_t = glfwGetTime();
@@ -782,6 +795,7 @@ void run_frame_loop(App& app, Window& win) {
             vgraph.set_metronome(static_cast<float>(transport.bpm.load(std::memory_order_relaxed)),
                                  transport.beats_per_bar.load(std::memory_order_relaxed), beats);
             vgraph.run_chain(frame.encoder, tsec);
+            gpu.gpu_mark(frame.encoder, "visuals");   // GPU timing: end of the output render (vs. the editor UI that follows)
             win.preview.out_aspect = vgraph.rt_aspect();   // cache: drives the preview's height + hit-rects
             win.preview.clamp(win.visuals_panel());        // ...so a new aspect can resize it out of bounds
             // ADR-0014: WHERE the output is shown is also the Output node's business. Reconcile the
