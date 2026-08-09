@@ -42,14 +42,7 @@ CLI_SOURCES = sorted(CLI_DIR.glob("*.cpp"))
 # must say which: (A) the key is consumed by machinery the static parser can't follow, or (B) a
 # REAL known gap the tool advertises but the handler ignores, kept here (not silently) until it is
 # resolved. Anything without an entry fails — so genuine new drift can't hide.
-ARG_PARITY_ALLOW: dict[tuple[str, str], str] = {
-    ("inspect_scene", "detail"): (
-        "REAL GAP (not a parser artifact): the inspect_scene MCP tool exposes detail= but the "
-        "handler (control_handlers_introspection.cpp) never reads it — the knob is a no-op. "
-        "Pending a decision: honor detail (mirror inspect_bindings' summary/full split) or drop "
-        "the param from the tool. Remove this entry once fixed."
-    ),
-}
+ARG_PARITY_ALLOW: dict[tuple[str, str], str] = {}
 
 # Free functions that a handler lambda delegates request-body parsing to (they take the whole
 # `json&` body and read keys off it — some are defined in OTHER translation units). Their keys

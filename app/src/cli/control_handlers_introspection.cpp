@@ -544,6 +544,9 @@ void register_introspection_handlers(Handlers& handlers_) {
     handlers_["inspect_scene"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int scene = b.value("scene", 0);
+        // "brief" returns just the scene summary + fill counts; "normal"/"full" (default) also
+        // include the per-track breakdown. Mirrors inspect_bindings' detail split.
+        const std::string detail = b.value("detail", std::string("normal"));
         json e; if (!need_scene(c.session, scene, e)) return e;
         json tracks = json::array();
         int filled = 0;
@@ -588,7 +591,9 @@ void register_introspection_handlers(Handlers& handlers_) {
         r["summary"] = ss.str();
         r["scene"] = scene;
         r["name"] = safe_cstr(P::session_scene_name(c.session, scene));   // ADR-0022 P3.3
-        r["tracks"] = tracks;
+        r["filled"] = filled;
+        r["track_count"] = P::session_track_count(c.session);
+        if (detail != "brief") r["tracks"] = tracks;
         return r;
     };
     handlers_["explain_scene"] = [](const ControlCtx& c, const json& b) {
