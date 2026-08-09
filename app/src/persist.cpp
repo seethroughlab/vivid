@@ -262,6 +262,10 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     j["master"] = { {"gain", vivid::session::session_master_gain(s)} };
     // Scene-launch quantization in bars (optional; absent in older files => 1 = next-bar switching).
     j["launch_quantum_bars"] = vivid::session::session_launch_quantum_bars(s);
+    // Session music-theory context (root + scale NAME). Bridge-owned vocabulary (mcp/theory.py),
+    // persisted here so the key/scale round-trips with the project (optional; older files => C major).
+    j["music"] = { {"root",  vivid::session::session_music_root(s)},
+                   {"scale", vivid::session::session_music_scale(s)} };
     json tracks = json::array();
     for (int t = 0; t < nt; ++t) {
         json jt;
@@ -748,6 +752,12 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
     // Scene-launch quantization (optional; absent in older files => 1 = next-bar switching).
     if (restore_audio && !params_only && j.contains("launch_quantum_bars"))
         vivid::session::session_set_launch_quantum_bars(s, j.value("launch_quantum_bars", 1));
+    // Session music-theory context (optional; absent => C major). Pure metadata (two strings, no
+    // audio state), so it restores under ANY tier — including a ParamsOnly/Skip undo restore — which
+    // keeps a key/scale change undoable in lockstep with the rest of the document.
+    if (j.contains("music") && j["music"].is_object())
+        vivid::session::session_set_music(s, j["music"].value("root", "C").c_str(),
+                                             j["music"].value("scale", "major").c_str());
     // ADR-0022 P2b: a load fully REPLACES the session, so drop any existing cross-track edges before the
     // document's tracks + edges are restored (else the previous session's edges leak, and a surviving
     // edge with matching ids would duplicate-reject the restore, leaving it resolved against a stale

@@ -197,6 +197,12 @@ void  session_set_master_gain(Session*, float gain);
 // (1 = next bar, the default; typically 4 = let the current phrase finish). Clamped to >= 1.
 int   session_launch_quantum_bars(Session*);
 void  session_set_launch_quantum_bars(Session*, int bars);
+// Session music-theory context: root note + scale NAME (e.g. "C" + "minor"). The theory vocabulary
+// + validation live in the Python bridge (mcp/theory.py); the core just persists the two strings so
+// the key/scale round-trips with the project. UI/main thread only.
+const char* session_music_root(Session*);
+const char* session_music_scale(Session*);
+void        session_set_music(Session*, const char* root, const char* scale);
 int   session_master_gnid(Session*);                // ADR-0022 P2b.3c: the master's global node id (0)
 float session_master_level(Session*);               // master output RMS (meters)
 float session_master_transient(Session*);           // master onset detector (0..1)

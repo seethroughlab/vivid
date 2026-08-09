@@ -408,6 +408,7 @@ void register_project_handlers(Handlers& handlers_) {
         // plugin is freed on this thread — no UAF even if an editor window is floated (which the
         // control surface has no Window handle to close; the GUI New path closes them — Ph4 P1-01).
         while (P::session_track_count(c.session) > 0) P::session_remove_track(c.session, 0);
+        P::session_set_music(c.session, "C", "major");  // a blank project starts at the C-major default
         c.graph->reset_nodes();                        // data nodes + mappings
         if (c.vgraph) { c.vgraph->reset_to_default(); c.vgraph->set_asset_dir(""); }  // clean canvas: just Output
         if (c.app) {
