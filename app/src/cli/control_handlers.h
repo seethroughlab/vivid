@@ -26,5 +26,6 @@ void register_package_handlers(Handlers& handlers_);         // ADR-0024 Phase 7
 void register_edit_handlers(Handlers& handlers_);            // ADR-0017 undo/redo
 void register_video_export_handlers(Handlers& handlers_);    // realtime AV video export (File > Export Video / MCP)
 void register_audio_export_handlers(Handlers& handlers_);    // ADR-0032: offline master-mix bounce to .wav (File > Export Audio / MCP)
+void register_audio_io_handlers(Handlers& handlers_);        // ADR-0032 Phase A: output device enumerate/select
 
 }  // namespace vivid
