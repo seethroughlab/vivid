@@ -33,6 +33,7 @@ namespace vivid { namespace platform { static MenuActions g_actions; } }
 - (void)setGeminiKey:(id)sender   { (void)sender; if (vivid::platform::g_actions.set_gemini_key)  vivid::platform::g_actions.set_gemini_key(); }
 - (void)evaluateOutput:(id)sender { (void)sender; if (vivid::platform::g_actions.evaluate_output) vivid::platform::g_actions.evaluate_output(); }
 - (void)exportVideo:(id)sender    { (void)sender; if (vivid::platform::g_actions.export_video)    vivid::platform::g_actions.export_video(); }
+- (void)exportAudio:(id)sender    { (void)sender; if (vivid::platform::g_actions.export_audio)    vivid::platform::g_actions.export_audio(); }
 - (void)toggleReduceMotion:(id)sender { (void)sender; if (vivid::platform::g_actions.toggle_reduce_motion) vivid::platform::g_actions.toggle_reduce_motion(); }
 @end
 
@@ -90,6 +91,10 @@ void install_menu_bar(const MenuActions& actions) {
         [fileMenu addItem:[NSMenuItem separatorItem]];
         g_exportVideoItem = [[NSMenuItem alloc] initWithTitle:@"Export Video…" action:@selector(exportVideo:) keyEquivalent:@""];
         [g_exportVideoItem setTarget:g_target]; [fileMenu addItem:g_exportVideoItem]; [g_exportVideoItem release];
+
+        // Export Audio — offline master-mix bounce to a .wav (ADR-0032).
+        it = [[NSMenuItem alloc] initWithTitle:@"Export Audio…" action:@selector(exportAudio:) keyEquivalent:@""];
+        [it setTarget:g_target]; [fileMenu addItem:it]; [it release];
 
         NSMenuItem* fileItem = [[NSMenuItem alloc] initWithTitle:@"File" action:nil keyEquivalent:@""];
         [fileItem setSubmenu:fileMenu];

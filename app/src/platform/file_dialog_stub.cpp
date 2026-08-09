@@ -8,6 +8,7 @@ namespace vivid::platform {
 std::string open_project_dialog() { return {}; }
 std::string save_project_dialog(const std::string&) { return {}; }
 std::string save_video_dialog(const std::string&) { return {}; }
+std::string save_audio_dialog(const std::string&) { return {}; }
 std::string open_file_dialog(const std::string&, const std::vector<std::string>&) { return {}; }
 // No native modal off macOS — proceed (Discard) rather than block a headless build.
 DiscardChoice confirm_discard_changes() { return DiscardChoice::Discard; }

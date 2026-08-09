@@ -247,6 +247,8 @@ add_executable(vivid MACOSX_BUNDLE
     src/audio/plugin_probe.cpp
     src/audio/plugin_scan.cpp
     src/audio/audio_callback.cpp
+    src/audio/audio_bounce.cpp
+    src/audio/audio_bounce_app.cpp
     src/audio/movie_audio_bus.cpp
     src/audio/note_bus.cpp
     src/audio/spectrum_bus.cpp
@@ -305,6 +307,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/cli/control_handlers_music_eval.cpp
     src/cli/control_handlers_visual_eval.cpp
     src/cli/control_handlers_video_export.cpp
+    src/cli/control_handlers_audio_export.cpp
     src/cli/edit_methods.cpp
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp
@@ -530,6 +533,7 @@ if(VIVID_BUILD_TESTS AND APPLE)
         src/audio/glitch/glitch_ops.cpp
         src/audio/audio_clip.cpp
         src/audio/audio_graph.cpp
+        src/audio/audio_bounce.cpp
         src/audio/plugin_catalog.cpp
         src/gpu/op_runtime.cpp
         src/operator_api/operator_descriptor_validation.cpp
@@ -560,6 +564,14 @@ if(VIVID_BUILD_TESTS AND APPLE)
     target_link_libraries(test_session_executor PRIVATE ${_audio_engine_libs})
     add_test(NAME test_session_executor COMMAND test_session_executor)
     set_tests_properties(test_session_executor PROPERTIES LABELS "AUDIO_ENGINE")
+
+    # ADR-0032: offline master-mix WAV bounce. Drives bounce_session_to_wav headlessly (no device) and
+    # asserts on the written .wav — exactly the executor's render path plus the ma_encoder writer.
+    add_executable(test_audio_bounce tests/test_audio_bounce.cpp ${_audio_engine_srcs})
+    target_include_directories(test_audio_bounce PRIVATE src src/audio src/gpu tests)
+    target_link_libraries(test_audio_bounce PRIVATE ${_audio_engine_libs})
+    add_test(NAME test_audio_bounce COMMAND test_audio_bounce)
+    set_tests_properties(test_audio_bounce PROPERTIES LABELS "AUDIO_ENGINE")
 
     # ADR-0029 phase 2: the concurrent audio↔UI harness — a render thread racing a UI/mutator thread over
     # the same engine. The AUDIO_THREAD label is what the macOS ThreadSanitizer CI gate runs (-L AUDIO_THREAD).

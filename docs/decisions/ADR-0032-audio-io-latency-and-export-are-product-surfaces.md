@@ -1,8 +1,38 @@
 # ADR-0032: Audio I/O, Latency, and Export Are Product Surfaces
 
-Status: proposed
+Status: proposed (Phase 1 — offline WAV export — implemented 2026-08-08; decisions #1–4 still open)
 
 Date: 2026-07-26
+
+## As built — Phase 1: offline master bounce to WAV (2026-08-08)
+
+Decision **#5** (offline export/bounce) and the clipping/peak half of **#6** (failures visible)
+shipped as the ADR's stated first slice — "export the master mix to WAV first" — because a
+deterministic offline render is the simpler proof of graph/transport correctness.
+
+- **Offline render, not capture.** `bounce_session_to_wav` (`app/src/audio/audio_bounce.{h,cpp}`)
+  loops `session_process` with a hand-advanced *local* beat clock — the same path the headless
+  `test_session_executor` already drives — so the bounce uses the identical session graph + transport
+  semantics as realtime playback, faster than realtime, with no device. Output is written via
+  miniaudio's `ma_encoder` (32-bit float WAV; encoding was already compiled in — no new dependency).
+- **Device-paused orchestration.** `run_audio_bounce` (`audio_bounce_app.cpp`) pauses the audio device
+  (`ma_device_stop` blocks until the RT callback has returned, so the main thread owns the session with
+  no race), bounces, sends an all-notes-off to reset voices the offline pass advanced, then resumes.
+  The device handle reaches the app as an opaque `App::audio_device` (keeps `miniaudio.h` out of
+  `app.h`).
+- **Surfaces.** `File > Export Audio…` (30 s default) and the `export_audio` / `audio_export_status`
+  MCP tools (`control_handlers_audio_export.cpp`). A bounce that exceeds 0 dBFS logs an
+  `export clipped` warning through ADR-0019 and returns `clipped:true`. Length is an explicit
+  `seconds` (primary) or `bars` (derived from tempo).
+- **Range semantics (Phase-1 scope).** Renders the *current* arming from beat 0 for the requested
+  length — like pressing play from the top; it does not replay a timeline of scene-launch events.
+  Deterministic for native-op sessions; third-party VST3/CLAP plugins may render slightly differently
+  offline. Verified end-to-end: unit test (`test_audio_bounce`, valid WAV / frame count / byte-identical
+  determinism / clip flag / path safety) + a live-app MCP bounce (device pause/resume clean, valid file).
+
+**Still open (later phases):** device model + selection + fallback (#1), input routing / recording
+(#2), latency reporting + compensation (#3, #4), and audiovisual offline export (the visual graph is
+still wall-clock-driven).
 
 Extends [ADR-0003](ADR-0003-master-musical-transport.md),
 [ADR-0004](ADR-0004-plugin-first-music-authoring.md), and
