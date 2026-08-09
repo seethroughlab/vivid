@@ -30,3 +30,5 @@ jobs:
         run: uv run tools/check_abi_docs.py
       - name: MCP <-> control-server argument-shape parity (static)
         run: uv run mcp/tests/test_mcp_arg_parity.py
+      - name: Vendored example/package snapshots are consistent (static)
+        run: uv run tools/check_vendored_snapshots.py
