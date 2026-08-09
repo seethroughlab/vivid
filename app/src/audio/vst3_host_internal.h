@@ -578,6 +578,11 @@ struct Session {
     // last quantum index seen on the audio thread so the boundary is detected once.
     std::atomic<int> launch_quantum_bars{1};
     long long        last_launch_q = -1;
+    // Session music-theory context: root note + scale NAME (e.g. "C" + "minor"). The theory
+    // vocabulary + validation live in the Python bridge (mcp/theory.py, ADR-0046); the core just
+    // stores the two strings so the key/scale round-trips with the project. UI/main thread only.
+    std::string      music_root  = "C";
+    std::string      music_scale = "major";
     uint32_t  sample_rate = 0;
     // Live MIDI input (M6): monitored/recorded notes flow through `live_in` to the armed
     // track's instrument. `armed_track` is a stable track id (-1 = none). Both are read on

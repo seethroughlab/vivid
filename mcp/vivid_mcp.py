@@ -1609,7 +1609,25 @@ def set_progression(track: int, scene: int, chords: list[str], beats_per_chord: 
 
 
 # ---------------- key context + transforms ----------------
-_key_ctx = {"root": "C", "scale": "major"}
+# The session key/scale context is PERSISTED natively (it round-trips with the project and survives a
+# bridge restart once the project is reloaded). The bridge owns the theory vocabulary (theory.py) and
+# reads/writes the native context via the get_music_key / set_music_key control handlers.
+
+def _music_key() -> tuple:
+    """The persisted (root, scale) session context; defaults to C major if unset/unreachable."""
+    st = _post("get_music_key")
+    if st.get("ok"):
+        return st.get("root", "C"), (st.get("scale", "major") or "major").lower()
+    return "C", "major"
+
+
+def _key_default(root: str, scale: str) -> tuple:
+    """Resolve an optional root/scale against the persisted session context (only fetches native
+    state when a default is actually needed)."""
+    if root and scale:
+        return root, scale.lower()
+    dr, ds = _music_key()
+    return (root or dr), (scale or ds).lower()
 
 
 def _rmw(track: int, scene: int, fn, _tries: int = 3) -> dict:
@@ -1637,25 +1655,29 @@ def _rmw(track: int, scene: int, fn, _tries: int = 3) -> dict:
 def set_key(root: str, scale: str = "major") -> dict:
     """Set the session key/scale context (root e.g. "C"/"F#", scale e.g. major|minor|dorian|
     pentatonic_minor|blues|…). Tools with an optional key/scale (quantize_to_scale, harmonize,
-    get_scale) default to this. Bridge-side + EPHEMERAL in v1 (resets on bridge restart; not
-    saved with the session)."""
+    get_scale) default to this. PERSISTED with the project — it is saved in the session and restored
+    on load (an undoable "Set Key/Scale" edit), so it survives a bridge restart once the project is
+    reopened."""
     if scale.lower() not in theory.SCALES:
         return {"ok": False, "code": "bad_arg", "error": f"unknown scale '{scale}'"}
-    _key_ctx.update(root=root, scale=scale.lower())
-    return {"ok": True, **_key_ctx}
+    return _post("set_music_key", {"root": root, "scale": scale.lower()})
 
 
 @mcp.tool
 def get_key() -> dict:
     """The current key/scale context + its scale note names."""
-    return {"ok": True, **_key_ctx,
-            "notes": [theory.note_name(m) for m in theory.scale_notes(_key_ctx["root"], _key_ctx["scale"])]}
+    st = _post("get_music_key")
+    if not st.get("ok"):
+        return st
+    root, scale = st.get("root", "C"), (st.get("scale", "major") or "major").lower()
+    return {"ok": True, "root": root, "scale": scale,
+            "notes": [theory.note_name(m) for m in theory.scale_notes(root, scale)]}
 
 
 @mcp.tool
 def get_scale(root: str = "", scale: str = "") -> dict:
     """The MIDI notes + names of a scale (defaults to the key context), e.g. get_scale("D","dorian")."""
-    r, sc = root or _key_ctx["root"], (scale or _key_ctx["scale"]).lower()
+    r, sc = _key_default(root, scale)
     if sc not in theory.SCALES:
         return {"ok": False, "code": "bad_arg", "error": f"unknown scale '{sc}'"}
     midi = theory.scale_notes(r, sc)
@@ -1671,7 +1693,7 @@ def transpose(track: int, scene: int, semitones: int) -> dict:
 @mcp.tool
 def quantize_to_scale(track: int, scene: int, root: str = "", scale: str = "") -> dict:
     """Snap a clip's off-key notes into the scale (defaults to the key context)."""
-    r, sc = root or _key_ctx["root"], scale or _key_ctx["scale"]
+    r, sc = _key_default(root, scale)
     return _rmw(track, scene, lambda notes, L: theory.quantize_to_scale(notes, r, sc))
 
 
@@ -1679,7 +1701,7 @@ def quantize_to_scale(track: int, scene: int, root: str = "", scale: str = "") -
 def harmonize(track: int, scene: int, degree: int = 2, root: str = "", scale: str = "") -> dict:
     """Add a diatonic harmony voice `degree` scale-steps from each note (2 = a third above,
     4 = a fifth; negative = below). Defaults to the key context. Keeps the originals."""
-    r, sc = root or _key_ctx["root"], scale or _key_ctx["scale"]
+    r, sc = _key_default(root, scale)
     return _rmw(track, scene, lambda notes, L: theory.harmonize(notes, degree, r, sc))
 
 
@@ -2152,7 +2174,8 @@ def get_authoring_guide() -> dict:
             "audio_track": "note tools apply to MIDI tracks only (is_audio=false in list_tracks).",
             "full_replace": "set_clip / set_progression / arpeggiate / set_drum_pattern REPLACE the clip; "
                             "add_notes / add_chord / euclidean_fill APPEND.",
-            "key_context": "set_key is bridge-side + ephemeral (resets if the bridge restarts; not saved).",
+            "key_context": "set_key is PERSISTED with the project (saved in the session, restored on load, "
+                           "undoable); it survives a bridge restart once the project is reopened.",
         },
     }
 

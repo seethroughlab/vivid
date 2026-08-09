@@ -1790,6 +1790,15 @@ void  session_set_master_gain(Session* s, float g) { if (s) s->master.gain.store
 // Scene-launch quantization in bars (1 = next bar; typically 4 = let the phrase finish).
 int   session_launch_quantum_bars(Session* s) { return s ? s->launch_quantum_bars.load(std::memory_order_relaxed) : 1; }
 void  session_set_launch_quantum_bars(Session* s, int bars) { if (s) s->launch_quantum_bars.store(std::max(1, bars), std::memory_order_relaxed); }
+// Session music-theory context (root + scale NAME). The core stores two strings; the theory
+// vocabulary + validation live in the Python bridge (mcp/theory.py). UI/main thread only.
+const char* session_music_root(Session* s)  { return s ? s->music_root.c_str()  : "C"; }
+const char* session_music_scale(Session* s) { return s ? s->music_scale.c_str() : "major"; }
+void session_set_music(Session* s, const char* root, const char* scale) {
+    if (!s) return;
+    if (root  && *root)  s->music_root  = root;
+    if (scale && *scale) s->music_scale = scale;
+}
 // The analysis / publication READ surface (meters, note scalars, held notes, spectrum + per-node FFT
 // rings, node control-out) moved to vst3_host_analysis.cpp (ADR-0025) — cold frame-thread accessors over
 // state the render path below publishes. The capture-snapshot API stays here (it's the export ring).
