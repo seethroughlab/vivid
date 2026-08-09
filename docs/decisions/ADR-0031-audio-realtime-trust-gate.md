@@ -1,6 +1,6 @@
 # ADR-0031: Audio Realtime Trust Gate
 
-Status: proposed
+Status: accepted (2026-08-09 — implemented across 5 slices; see As Built)
 
 Date: 2026-07-26
 
@@ -79,4 +79,45 @@ audio callback's actual risk surface.
 - **Tradeoff:** The harness will expose bugs that ordinary tests miss; the first pass may be noisy.
 - **Follow-up:** Once green, make the TSan audio trust gate required in branch protection and update
   `app/docs/thread-safety.md` so a new cross-thread channel is not complete until the harness drives it.
+
+## As Built (2026-08-09 — 5 slices, PRs #315–#319)
+
+Grounding the six decisions against the live tree at implementation time reshaped the work: **decision
+#2 was already delivered by ADR-0029** and **#1 was mostly delivered**, so the net-new work was the
+audio-health instrumentation (#3/#4/#6), the harness extension (#1 remainder), and the gate wiring (#5).
+
+1. **#6 budgets in code — DONE (slice 1, #315).** `app/src/audio/audio_budgets.h`: `AudioBudgets` +
+   cached `audio_budgets()` accessor (reads env once, warmed on the main thread like `watchdog_config()`).
+   Owns max block / device period / sample rate / callback budget multiplier / bailout-Error count /
+   stress-ms / allowed-skips. A `static_assert` in `vst3_host_internal.h` pins the max-block default to
+   `kGraphMaxBlock`.
+2. **#3 callback health counters — DONE (slice 2, #316).** `app/src/audio/audio_health.h`
+   (`vivid::audio::health`): relaxed-atomic counters (callbacks, render bail-to-silence, over-budget,
+   handoff skips) + last/max callback-µs gauges; `steady_clock` timing in `audio_callback.cpp`; the 8
+   pure-contention `try_lock` sites in `session_process` credit a skip. **RT-scope gate decision:** a
+   `thread_local` set only by `audio_callback` (`RtScope`/`in_rt()`) — chosen over threading a `bool`
+   param through `session_process`'s public signature — so the offline bounce never ticks the metric.
+   The capture / `aud_mtx` try_locks are **excluded** (they skip on "no work" as often as contention).
+3. **#4 surface via HealthSnapshot — DONE (slice 3, #317).** `HealthSnapshot` gains the audio fields as
+   per-frame deltas + gauges; `severity()` maps sustained render bailouts (≥ threshold) → Error and
+   over-budget/skips → passive Warning, staying pure by taking the threshold as a snapshot field.
+   **Empty-session bail exclusion:** only oversized-block bail counts, so an idle/empty session never
+   rolls up to Error. Folded into the existing `HealthSnapshot`/`get_health` (no new MCP tool → parity
+   test stays green) + a diagnostics-panel "Audio RT" row.
+4. **#1 concurrent harness — DONE (slice 4, #318).** Extended `test_session_concurrency` to churn graph
+   edges (connect/disconnect audio + control edges, remove nodes) and run the render thread in `RtScope`;
+   budget-driven soak (`VIVID_AUDIO_STRESS_MS`) + opt-in skip ceiling. Clean under TSan. **Undo/redo and
+   audio↔visual mappings are out of scope** for this harness: both are App/UI-layer (`undo_manager`,
+   `MappingRegistry`), not the `session_*` C API — they race the edit model, not `session_process`.
+5. **#5 production gate audio-aware — DONE (slice 5, #319).** Killed the curated `--target` foot-gun in
+   `production-gate-pr.yml` (a new AUDIO_ENGINE test not added to the list went red): the
+   `audio-engine-tests` job now builds all and selects by label, mirroring `run_release_verification.sh`.
+   The portable `test_audio_budgets` + `test_runtime_health` additions ride the existing `core`
+   (`HEADLESS_SMOKE`) gate; the app-ON audio tests run in the existing `audio-engine-tests` +
+   `audio-thread-sanitizer` legs (no new `run_production_gate.sh audio` profile). `thread-safety.md`
+   documents the counters, the RT-scope gate, and the extended harness.
+
+**Manual follow-up (repo admin, not a file change):** make `audio-engine-tests` and
+`audio-thread-sanitizer` *required* status checks in branch protection so the audio gate actually blocks
+a merge — a GitHub setting, out of scope for these PRs.
 
