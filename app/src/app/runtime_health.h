@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <string>
 #include <nlohmann/json.hpp>
 
@@ -17,6 +18,18 @@ struct App;
 struct HealthSnapshot {
     // audio
     bool        audio_session_active = false;   // a real multi-track session (vs test tone)
+
+    // audio realtime health (ADR-0031 §4) — counters are DELTAS since the previous snapshot (collect
+    // runs once per frame); gauges are absolute. Populated from the vivid::audio::health atomics.
+    uint64_t    audio_callbacks = 0;            // realtime callbacks since last snapshot (denominator)
+    uint64_t    audio_render_bailouts = 0;      // oversized-block bail-to-silence events (audible dropout)
+    uint64_t    audio_over_budget = 0;          // callbacks that blew the realtime time budget
+    uint64_t    audio_handoff_skips = 0;        // try_lock handoffs skipped on contention (kept stale)
+    uint32_t    audio_last_callback_us = 0;     // gauge: most-recent callback wall time
+    uint32_t    audio_max_callback_us = 0;      // gauge: high-water callback wall time since start
+    // Error threshold for render bailouts, set by collect_health from audio_budgets() so severity()
+    // stays a pure comparison (no audio_budgets link in the App-free rollup). 0 = don't raise on bailouts.
+    uint32_t    audio_bailout_error_threshold = 0;
 
     // gpu
     bool        gpu_ok = true;                   // device not lost

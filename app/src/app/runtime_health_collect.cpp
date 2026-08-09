@@ -7,7 +7,11 @@
 #include "gpu/visual_graph.h"
 #include "ui/node_graph.h"
 #include "cli/control_server.h"
+#include "audio/audio_health.h"    // ADR-0031: RT health counters (read the atomics)
+#include "audio/audio_budgets.h"   // ADR-0031: bailout Error threshold
 #include "version.h"
+
+#include <cstdint>
 
 namespace vivid {
 
@@ -35,6 +39,22 @@ HealthSnapshot collect_health(const App& app) {
     if (app.vgraph) s.output_fed = app.vgraph->output_has_feed();
 
     s.control_running = app.control && app.control->running();
+
+    // ADR-0031 §4: roll the RT audio-health atomics into the snapshot as per-frame DELTAS. collect runs
+    // only on the frame thread, so plain function-local statics hold the last-seen totals (single caller).
+    namespace ah = vivid::audio::health;
+    static uint64_t last_cb = 0, last_bail = 0, last_ob = 0, last_skip = 0;
+    const uint64_t cb   = ah::g_callbacks.load(std::memory_order_relaxed);
+    const uint64_t bail = ah::g_render_bailouts.load(std::memory_order_relaxed);
+    const uint64_t ob   = ah::g_over_budget.load(std::memory_order_relaxed);
+    const uint64_t sk   = ah::g_handoff_skips.load(std::memory_order_relaxed);
+    s.audio_callbacks       = cb   - last_cb;   last_cb   = cb;
+    s.audio_render_bailouts = bail - last_bail; last_bail = bail;
+    s.audio_over_budget     = ob   - last_ob;   last_ob   = ob;
+    s.audio_handoff_skips   = sk   - last_skip; last_skip = sk;
+    s.audio_last_callback_us = ah::g_last_callback_us.load(std::memory_order_relaxed);
+    s.audio_max_callback_us  = ah::g_max_callback_us.load(std::memory_order_relaxed);
+    s.audio_bailout_error_threshold = vivid::audio::audio_budgets().bailout_error_count;
     return s;
 }
 

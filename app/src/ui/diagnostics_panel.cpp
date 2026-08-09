@@ -59,6 +59,16 @@ void draw_diagnostics_panel(Renderer2D& ui, const HealthSnapshot& h, const App& 
     std::snprintf(buf, sizeof buf, "%s   \xC2\xB7   v%s", h.control_running ? "control server up" : "control server DOWN",
                   h.app_version.c_str());
     line("Runtime", buf, h.control_running ? sty.body : sty.gold);
+    // ADR-0031 §4: realtime audio health — recent bail/over-budget/skip deltas + callback-µs gauges.
+    std::snprintf(buf, sizeof buf, "%llu bail, %llu over-budget, %llu skips  \xC2\xB7  %uus (max %u)",
+                  static_cast<unsigned long long>(h.audio_render_bailouts),
+                  static_cast<unsigned long long>(h.audio_over_budget),
+                  static_cast<unsigned long long>(h.audio_handoff_skips),
+                  h.audio_last_callback_us, h.audio_max_callback_us);
+    const bool audio_err = h.audio_bailout_error_threshold > 0 &&
+                           h.audio_render_bailouts >= h.audio_bailout_error_threshold;
+    line("Audio RT", buf, audio_err ? sty.red
+                        : (h.audio_over_budget || h.audio_handoff_skips) ? sty.gold : sty.green);
 
     // Missing-operator node rows — clickable: click one to select that node in the graph.
     if (!missing.empty()) {
