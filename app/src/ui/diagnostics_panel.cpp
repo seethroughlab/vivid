@@ -67,9 +67,16 @@ void draw_diagnostics_panel(Renderer2D& ui, const HealthSnapshot& h, const App& 
         const char* dn = h.audio_device_name.empty() ? "System Default" : h.audio_device_name.c_str();
         const double lat_ms = h.audio_device_sr
             ? h.audio_device_latency_frames * 1000.0 / h.audio_device_sr : 0.0;
-        std::snprintf(buf, sizeof buf, "%.36s  \xC2\xB7  %u Hz  \xC2\xB7  %u buf  \xC2\xB7  ~%.0f ms out%s", dn,
-                      h.audio_device_sr, h.audio_device_period, lat_ms,
-                      h.audio_device_fallback ? "  (fallback)" : "");
+        // ADR-0032 Phase B: append plugin-reported latency only when relevant (keeps idle sessions clean).
+        char fx[40] = "";
+        if (h.audio_plugin_latency_unknown)
+            std::snprintf(fx, sizeof fx, "  \xC2\xB7  plugins: unknown");
+        else if (h.audio_max_plugin_latency_samples > 0 && h.audio_device_sr)
+            std::snprintf(fx, sizeof fx, "  \xC2\xB7  +%.0f ms fx",
+                          h.audio_max_plugin_latency_samples * 1000.0 / h.audio_device_sr);
+        std::snprintf(buf, sizeof buf, "%.28s  \xC2\xB7  %u Hz  \xC2\xB7  %u buf  \xC2\xB7  ~%.0f ms out%s%s", dn,
+                      h.audio_device_sr, h.audio_device_period, lat_ms, fx,
+                      h.audio_device_fallback ? "  (fb)" : "");
         line("Audio device", buf, h.audio_device_fallback ? sty.gold : sty.body);
     }
     // ADR-0031 §4: realtime audio health — recent bail/over-budget/skip deltas + callback-µs gauges.

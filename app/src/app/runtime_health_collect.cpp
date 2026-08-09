@@ -10,6 +10,7 @@
 #include "audio/audio_health.h"    // ADR-0031: RT health counters (read the atomics)
 #include "audio/audio_budgets.h"   // ADR-0031: bailout Error threshold
 #include "audio/audio_device_manager.h"  // ADR-0032 Phase A: active output-device status
+#include "audio/vst3_host.h"             // ADR-0032 Phase B: plugin-latency session accessors
 #include "version.h"
 
 #include <cstdint>
@@ -66,6 +67,13 @@ HealthSnapshot collect_health(const App& app) {
         s.audio_device_period   = d.actual_period;
         s.audio_device_fallback = d.using_fallback;
         s.audio_device_latency_frames = d.output_latency_frames;
+    }
+    // ADR-0032 Phase B: plugin-reported latency (read once at activate; native ops contribute 0).
+    if (app.session) {
+        s.audio_max_plugin_latency_samples =
+            static_cast<uint32_t>(vivid::session::session_max_plugin_latency_samples(app.session));
+        s.audio_plugin_latency_unknown =
+            vivid::session::session_any_plugin_latency_unknown(app.session) != 0;
     }
     return s;
 }

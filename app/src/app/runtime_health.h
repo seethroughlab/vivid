@@ -39,6 +39,8 @@ struct HealthSnapshot {
     uint32_t    audio_device_period = 0;       // requested buffer size
     bool        audio_device_fallback = false; // the saved device was gone → opened default instead
     uint32_t    audio_device_latency_frames = 0;  // ADR-0032 Phase B: backend output buffering (0 = unknown)
+    uint32_t    audio_max_plugin_latency_samples = 0;  // max per-track summed plugin latency (reporting only)
+    bool        audio_plugin_latency_unknown = false;  // a loaded CLAP plugin doesn't report latency
 
     // gpu
     bool        gpu_ok = true;                   // device not lost

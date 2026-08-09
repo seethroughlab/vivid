@@ -1204,6 +1204,48 @@ Session* session_create(uint32_t sample_rate) {
 }
 
 int  session_track_count(Session* s) { return s ? static_cast<int>(s->tracks.size()) : 0; }
+
+// ADR-0032 Phase B: sum the plugin-reported latency over ALL of a track's plugin handles. Two storage
+// models coexist — the ADR-0033 graph slots (pslots) AND the legacy linear chain (handle/effects +
+// clap_inst/clap_effects, populated by set_track_clap_instrument etc.). Iterate both and dedup by handle
+// pointer (a plugin lives in one model, but dedup is cheap insurance against a mirror). VST3 always
+// reports (getLatencySamples); a CLAP without clap.latency is "unknown" (counts 0, flags unknown).
+static int track_plugin_latency_sum(const Track& t, bool* any_unknown) {
+    int sum = 0;
+    std::vector<const void*> seen;
+    auto first_time = [&](const void* p) {
+        if (!p || std::find(seen.begin(), seen.end(), p) != seen.end()) return false;
+        seen.push_back(p); return true;
+    };
+    auto add_vst3 = [&](const Vst3Handle* h) { if (first_time(h) && h->latency_samples > 0) sum += h->latency_samples; };
+    auto add_clap = [&](const ClapHandle* h) {
+        if (!first_time(h)) return;
+        sum += static_cast<int>(h->latency_samples);
+        if (!h->latency_known && any_unknown) *any_unknown = true;
+    };
+    for (const auto& ps : t.pslots) { if (ps.dead) continue; add_vst3(ps.vst3); add_clap(ps.clap); }
+    add_vst3(t.handle);
+    for (const auto* fx : t.effects) add_vst3(fx);
+    add_clap(t.clap_inst);
+    for (const auto* fx : t.clap_effects) add_clap(fx);
+    return sum;
+}
+int session_track_latency_samples(Session* s, int track) {
+    if (!s || track < 0 || track >= static_cast<int>(s->tracks.size())) return 0;
+    return track_plugin_latency_sum(*s->tracks[static_cast<size_t>(track)], nullptr);
+}
+int session_max_plugin_latency_samples(Session* s) {
+    if (!s) return 0;
+    int mx = 0;
+    for (const auto& tp : s->tracks) { const int l = track_plugin_latency_sum(*tp, nullptr); if (l > mx) mx = l; }
+    return mx;
+}
+int session_any_plugin_latency_unknown(Session* s) {
+    if (!s) return 0;
+    bool unk = false;
+    for (const auto& tp : s->tracks) track_plugin_latency_sum(*tp, &unk);
+    return unk ? 1 : 0;
+}
 int  session_scene_count(Session* s) { return s ? s->scenes : 0; }
 
 // ADR-0022 P3.3: the default display name for scene i — A..Z, then "Scene N". UI-thread only.
