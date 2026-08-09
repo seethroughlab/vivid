@@ -532,6 +532,8 @@ struct Vst3Handle {
     IEditController*   controller            = nullptr;
     bool               controller_is_owned   = false; // created separately; we must terminate+release
     bool               processing            = false;  // setProcessing(true) called
+    int32              latency_samples       = 0;      // ADR-0032 Phase B: getLatencySamples() read post-setActive
+    bool               latency_known         = true;   // VST3 always reports (0 = definitely none)
     vivid::audio::PluginFaultState watchdog;           // ADR-0045 Tier 2a: over-budget strikes + faulted latch
     Vst3ComponentHandler component_handler;           // stub for setComponentHandler
     ParamQueue         param_q;                        // UI->audio parameter changes
@@ -1176,6 +1178,7 @@ inline Vst3Handle* vst3_load_plugin(const char* bundle_path,
     h->factory              = factory;
     h->component            = component;
     h->processor            = processor;
+    h->latency_samples      = processor->getLatencySamples();   // ADR-0032 Phase B: valid post-setActive(true)
     h->controller           = controller;
     h->controller_is_owned  = controller_is_owned;
 

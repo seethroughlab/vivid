@@ -94,6 +94,10 @@ bool AudioDeviceManager::open(App& app, const DevicePrefs& p) {
     status_.open = true;
     status_.actual_sample_rate = impl_->device.sampleRate;
     status_.actual_period = p.period_frames;
+    // ADR-0032 Phase B: the backend's internal output buffering (only valid once opened). miniaudio has
+    // no accessor — compute from the negotiated internal period × count.
+    status_.output_latency_frames =
+        impl_->device.playback.internalPeriodSizeInFrames * impl_->device.playback.internalPeriods;
     if (idx >= 0) {
         status_.active_name = devices[static_cast<size_t>(idx)].name;
     } else {

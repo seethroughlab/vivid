@@ -47,7 +47,14 @@ nlohmann::json to_json(const HealthSnapshot& s) {
                      {"device_name", s.audio_device_name},
                      {"device_sample_rate", s.audio_device_sr},
                      {"device_period", s.audio_device_period},
-                     {"device_fallback", s.audio_device_fallback} };
+                     {"device_fallback", s.audio_device_fallback},
+                     {"device_latency_frames", s.audio_device_latency_frames},
+                     {"device_latency_ms", s.audio_device_sr
+                          ? s.audio_device_latency_frames * 1000.0 / s.audio_device_sr : 0.0},
+                     {"max_plugin_latency_samples", s.audio_max_plugin_latency_samples},
+                     {"max_plugin_latency_ms", s.audio_device_sr
+                          ? s.audio_max_plugin_latency_samples * 1000.0 / s.audio_device_sr : 0.0},
+                     {"plugin_latency_unknown", s.audio_plugin_latency_unknown} };
     j["gpu"]     = { {"ok", s.gpu_ok}, {"errors", s.gpu_errors} };
     if (!s.gpu_last_error.empty()) j["gpu"]["last_error"] = s.gpu_last_error;
     j["graph"]   = { {"op_nodes", s.op_nodes}, {"op_types", s.op_types},

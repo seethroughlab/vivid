@@ -54,6 +54,14 @@ void     session_set_audio_workgroup(Session* s, void* os_workgroup);
 
 int  session_track_count(Session*);
 int  session_scene_count(Session*);
+// ADR-0032 Phase B (latency reporting): plugin-reported processing latency in samples, read once at
+// plugin activation. Per-track = serial SUM over the track's owned plugin slots (VST3 + CLAP; native
+// ops contribute 0). `session_max_plugin_latency_samples` = max over tracks; `_any_plugin_latency_unknown`
+// = 1 if any loaded plugin doesn't report latency (a CLAP without clap.latency). Main/UI thread; returns
+// plain ints (no plugin-handle leak). NOT compensation — reporting only.
+int  session_track_latency_samples(Session*, int track);
+int  session_max_plugin_latency_samples(Session*);
+int  session_any_plugin_latency_unknown(Session*);
 // Append a scene (grid row): grows every track's clip vector by one empty clip. Returns the
 // new scene index, or -1 if already at kMaxScenes. UI/main thread only (append is RT-safe
 // because clip vectors are reserved to kMaxScenes, so no reallocation occurs).
