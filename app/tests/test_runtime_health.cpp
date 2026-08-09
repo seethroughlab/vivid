@@ -66,5 +66,45 @@ int main() {
     auto je = to_json(err1);
     CHECK(je["severity"] == "error");
 
+    // --- ADR-0031 audio realtime health rollup ----------------------------------------------------
+    // Over-budget callbacks / handoff skips are recoverable pressure -> passive Warning.
+    HealthSnapshot ab = ok;
+    ab.audio_over_budget = 1;
+    CHECK(severity(ab) == Severity::Warning);
+    HealthSnapshot sk = ok;
+    sk.audio_handoff_skips = 3;
+    CHECK(severity(sk) == Severity::Warning);
+
+    // Sustained render bail-to-silence at/over the threshold -> Error (audible dropout).
+    HealthSnapshot bail = ok;
+    bail.audio_bailout_error_threshold = 4;
+    bail.audio_render_bailouts = 4;
+    CHECK(severity(bail) == Severity::Error);
+    // ...but below the threshold is not yet an Error (still Ok if nothing else is wrong).
+    HealthSnapshot bail_lo = ok;
+    bail_lo.audio_bailout_error_threshold = 4;
+    bail_lo.audio_render_bailouts = 2;
+    CHECK(severity(bail_lo) == Severity::Ok);
+    // A zero threshold means "no audio data" — bailouts must never raise severity then.
+    HealthSnapshot no_thresh = ok;
+    no_thresh.audio_bailout_error_threshold = 0;
+    no_thresh.audio_render_bailouts = 999;
+    CHECK(severity(no_thresh) == Severity::Ok);
+    // Bailout Error dominates a co-occurring over-budget warning.
+    HealthSnapshot bail_ob = bail;
+    bail_ob.audio_over_budget = 7;
+    CHECK(severity(bail_ob) == Severity::Error);
+    // All-zero audio fields leave the pre-audio rollup unchanged.
+    CHECK(severity(ok) == Severity::Ok);
+
+    // JSON carries the audio counters under the existing "audio" object (backward-compatible shape).
+    HealthSnapshot aj = ok;
+    aj.audio_over_budget = 2; aj.audio_handoff_skips = 5; aj.audio_max_callback_us = 4200;
+    auto ja = to_json(aj);
+    CHECK(ja["audio"]["over_budget"] == 2);
+    CHECK(ja["audio"]["handoff_skips"] == 5);
+    CHECK(ja["audio"]["max_callback_us"] == 4200);
+    CHECK(ja["severity"] == "warning");
+
     return vivid::test::summary("test_runtime_health");
 }
