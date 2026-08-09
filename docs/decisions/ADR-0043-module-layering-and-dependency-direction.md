@@ -1,13 +1,48 @@
 # ADR-0043: Module Layering and Dependency Direction
 
-Status: proposed
+Status: accepted
 
-Date: 2026-07-31
+Date: 2026-07-31 (accepted 2026-08-09)
 
 > **Origin.** Raised by the first-release Code Audit, Phase 1 (Architecture & Ownership
 > Boundaries), finding **P3-01**. See
 > `docs/audits/07-31-2026/code/phase-01-architecture-and-ownership-boundaries.md`.
-> This is a stub capturing the decision to make; it is not yet accepted.
+
+## Accepted decision (2026-08-09)
+
+The candidate stack below is ratified, and enforcement **option (c)** — a lightweight CI
+include-linter — is now in place (`tools/check_module_layering.py`, wired into
+`version-guard.yml`). Option (b), the CMake object-library split, remains deferred (high churn,
+low current value) and can layer on top later without changing this policy.
+
+**Layer stack** (higher = higher in the stack; an `#include "<module>/…"` is legal iff it points to
+an **equal-or-lower** rank — edges point down):
+
+| Rank | Module(s) | Role |
+|---:|---|---|
+| 50 | `cli` | control adapter (top) |
+| 40 | `app` | composition / shell |
+| 30 | `ui` | view |
+| 20 | `gpu`, `audio` | engine (peers) |
+| 15 | `packages` | package loader/compiler service |
+| 10 | `platform` | downward-only OS seam |
+| 0 | `operator_api`, `midi` | leaf SDK / leaf |
+
+`packages` is placed just **below** the engine — the one rank the original stub left open. This is
+deliberate: it makes the reported `gpu ↔ packages` cycle resolve cleanly as `packages → gpu` being
+the back-edge to remove (`gpu` may use `packages/file_watcher.h` downward; `packages` must not reach
+up into `gpu`).
+
+**Enforcement is a ratchet, not a big-bang cleanup.** The 28 pre-existing upward includes the audit
+flagged (`ui → app` ×12, `audio → app` ×4, `app → cli` ×4, `packages → gpu` ×3, `gpu → app` ×2,
+`gpu → ui`, `packages → app`, `ui → cli`) are grandfathered in `tools/module_layering_baseline.txt`.
+The linter fails only on a **new** wrong-direction include; fixing an existing edge and deleting its
+baseline line shrinks the debt. Decision #2 below (break cycles opportunistically) is unchanged — the
+baseline is what "opportunistically" is measured against.
+
+---
+
+_Original stub (the decision to make), retained for context:_
 
 ## Context
 
