@@ -65,8 +65,11 @@ void draw_diagnostics_panel(Renderer2D& ui, const HealthSnapshot& h, const App& 
         line("Audio device", "unavailable", sty.dim);
     } else {
         const char* dn = h.audio_device_name.empty() ? "System Default" : h.audio_device_name.c_str();
-        std::snprintf(buf, sizeof buf, "%.48s  \xC2\xB7  %u Hz  \xC2\xB7  %u buf%s", dn,
-                      h.audio_device_sr, h.audio_device_period, h.audio_device_fallback ? "  (fallback)" : "");
+        const double lat_ms = h.audio_device_sr
+            ? h.audio_device_latency_frames * 1000.0 / h.audio_device_sr : 0.0;
+        std::snprintf(buf, sizeof buf, "%.36s  \xC2\xB7  %u Hz  \xC2\xB7  %u buf  \xC2\xB7  ~%.0f ms out%s", dn,
+                      h.audio_device_sr, h.audio_device_period, lat_ms,
+                      h.audio_device_fallback ? "  (fallback)" : "");
         line("Audio device", buf, h.audio_device_fallback ? sty.gold : sty.body);
     }
     // ADR-0031 §4: realtime audio health — recent bail/over-budget/skip deltas + callback-µs gauges.

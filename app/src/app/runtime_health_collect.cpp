@@ -65,6 +65,7 @@ HealthSnapshot collect_health(const App& app) {
         s.audio_device_sr       = d.actual_sample_rate;
         s.audio_device_period   = d.actual_period;
         s.audio_device_fallback = d.using_fallback;
+        s.audio_device_latency_frames = d.output_latency_frames;
     }
     return s;
 }

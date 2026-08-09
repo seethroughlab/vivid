@@ -38,6 +38,9 @@ struct DeviceStatus {
     std::string active_name;             // the device actually opened ("" => system default)
     uint32_t    actual_sample_rate = 0;  // device.sampleRate after open — the rate the callback runs at
     uint32_t    actual_period = 0;       // requested period echoed back
+    // ADR-0032 Phase B: honest output latency = the backend's internal buffering in frames
+    // (internalPeriodSizeInFrames × internalPeriods). 0 when unknown/headless. ms = frames·1000/sr.
+    uint32_t    output_latency_frames = 0;
     bool        using_fallback = false;  // the requested device was unavailable → opened default instead
     std::string reason;                  // human-readable fallback/failure text (VLOG + panel)
 };
