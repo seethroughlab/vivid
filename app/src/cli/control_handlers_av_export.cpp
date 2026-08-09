@@ -26,7 +26,7 @@ void register_av_export_handlers(Handlers& handlers_) {
         if (req.seconds <= 0.0 && req.bars <= 0.0)
             return err(code::kBadArg, "seconds (or bars) is required and must be > 0");
         std::string e;
-        if (!av_export_start(*c.app, req, &e)) return err(code::kBadArg, e);
+        if (!av_export_start(*c.app, c.window, req, &e)) return err(code::kBadArg, e);   // c.window may be null (headless → C1 fallback)
         json r = ok();
         r["started"] = true;
         r["path"]    = req.path;

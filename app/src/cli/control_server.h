@@ -10,7 +10,7 @@
 #include <nlohmann/json.hpp>
 
 namespace vivid::session { struct Session; }
-namespace vivid { namespace ui { class NodeGraph; } class VisualGraph; struct App; }
+namespace vivid { namespace ui { class NodeGraph; } class VisualGraph; struct App; struct Window; }
 struct Transport;
 
 namespace vivid {
@@ -23,6 +23,7 @@ struct ControlCtx {
     vivid::VisualGraph*   vgraph    = nullptr;
     Transport*            transport = nullptr;
     vivid::App*           app       = nullptr;   // for op registry + loaders (package install)
+    vivid::Window*        window    = nullptr;   // ADR-0032 Phase C2: live Window for offline AV reactivity
     int*   win_w   = nullptr;
     int*   win_h   = nullptr;
     float* split_x = nullptr;

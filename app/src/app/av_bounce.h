@@ -11,7 +11,7 @@
 #include <vector>
 
 struct Transport;
-namespace vivid { struct App; }
+namespace vivid { struct App; struct Window; }
 namespace vivid::session { struct Session; }
 
 namespace vivid {
@@ -100,8 +100,12 @@ bool av_bounce_run(vivid::session::Session* session, const Transport& tr, AvFram
 // App::av_export. av_export_tick — called once per frame-loop tick — renders a batch; when the job
 // finishes it finalizes the file, stores App::last_av_export, sends an all-notes-off, resumes the device,
 // and returns AvTickDone (else AvTickRunning / AvTickIdle). av_export_active reports whether a job is live.
+// `win` (Phase C2) enables offline reactivity: the job feeds computed master metering + synthetic beats
+// into the transport atomics and calls publish_bridge_sources(app, *win) per frame, so audio-reactive
+// visuals key on the muxed audio. Null (headless control caller) → time/beat-synced only, master-reactive
+// stale (the C1 fallback).
 enum class AvTick { Idle, Running, Done };
-bool av_export_start(App& app, const AvBounceRequest& req, std::string* err);
+bool av_export_start(App& app, Window* win, const AvBounceRequest& req, std::string* err);
 AvTick av_export_tick(App& app);
 bool av_export_active(const App& app);
 // Progress of the active job (frames rendered / total). Returns false when no job is running.
