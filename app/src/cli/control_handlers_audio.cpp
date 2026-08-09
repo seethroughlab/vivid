@@ -162,6 +162,19 @@ void register_audio_handlers(Handlers& handlers_) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0), scene = b.value("scene", 0);
         json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
+        // Optimistic concurrency: a read-modify-write caller passes the `expected_rev` it read via
+        // get_clip. If the clip's revision has advanced since, someone else wrote in between — reject
+        // the stale write (conflict) instead of clobbering. Absent => an unconditional write (REPLACE
+        // tools, and every pre-existing caller, are unchanged).
+        if (b.contains("expected_rev")) {
+            const uint64_t have = P::session_clip_rev(c.session, track, scene);
+            const uint64_t want = b.value("expected_rev", static_cast<uint64_t>(0));
+            if (have != want) {
+                json cf = err(code::kConflict, "clip changed since read (expected rev " +
+                              std::to_string(want) + ", have " + std::to_string(have) + ")");
+                cf["rev"] = have; return cf;   // hand back the current rev so the caller can re-read+retry
+            }
+        }
         std::vector<P::ClipNote> notes;
         if (b.contains("notes"))
             for (const auto& jn : b["notes"]) {
@@ -171,7 +184,8 @@ void register_audio_handlers(Handlers& handlers_) {
             }
         P::session_set_clip(c.session, track, scene,
                             notes.data(), static_cast<int>(notes.size()), b.value("length", 4.0));
-        json r = ok(); r["notes"] = static_cast<int>(notes.size()); return r;
+        json r = ok(); r["notes"] = static_cast<int>(notes.size());
+        r["rev"] = P::session_clip_rev(c.session, track, scene); return r;
     };
     // Read a MIDI clip back (the read half that read-modify-write authoring tools need).
     handlers_["get_clip"] = [](const ControlCtx& c, const json& b) {
@@ -186,7 +200,9 @@ void register_audio_handlers(Handlers& handlers_) {
             P::expr_to_json(buf[i], jn);
             notes.push_back(jn);
         }
-        json r = ok(); r["notes"] = notes; r["length"] = P::session_clip_length(c.session, track, scene); return r;
+        json r = ok(); r["notes"] = notes; r["length"] = P::session_clip_length(c.session, track, scene);
+        r["rev"] = P::session_clip_rev(c.session, track, scene);   // for optimistic-concurrency RMW writes
+        return r;
     };
     // ---------------- audio-clip warp / shaping (A2) ----------------
     handlers_["audio_set_warp"] = [](const ControlCtx& c, const json& b) {

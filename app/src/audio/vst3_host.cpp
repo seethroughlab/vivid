@@ -2077,6 +2077,12 @@ double session_clip_length(Session* s, int t, int sc) {
     std::lock_guard<std::mutex> lk(s->tracks[t]->edit_mtx);
     return s->tracks[t]->edit_clips[sc].length;
 }
+// Optimistic-concurrency revision for a clip's note content (see MidiClip::rev). 0 for an invalid cell.
+uint64_t session_clip_rev(Session* s, int t, int sc) {
+    if (!clip_valid(s, t, sc)) return 0;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->edit_mtx);
+    return s->tracks[t]->edit_clips[sc].rev;
+}
 void session_set_clip(Session* s, int t, int sc, const ClipNote* notes, int n, double length) {
     if (!clip_valid(s, t, sc)) return;
     Track& tr = *s->tracks[t];
@@ -2086,6 +2092,7 @@ void session_set_clip(Session* s, int t, int sc, const ClipNote* notes, int n, d
         was_empty = tr.edit_clips[sc].notes.empty();
         tr.edit_clips[sc].notes.assign(notes, notes + (n > 0 ? n : 0));
         tr.edit_clips[sc].length = length > 0 ? length : tr.edit_clips[sc].length;
+        tr.edit_clips[sc].rev++;   // optimistic-concurrency: every note-content write advances the revision
         now_empty = tr.edit_clips[sc].notes.empty();
     }
     tr.edit_gen.fetch_add(1, std::memory_order_release);

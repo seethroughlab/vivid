@@ -34,3 +34,5 @@ jobs:
         run: uv run tools/check_vendored_snapshots.py
       - name: Module layering — no new upward includes (ADR-0043, static)
         run: uv run tools/check_module_layering.py
+      - name: Clip RMW retry loop (optimistic concurrency, offline)
+        run: uv run --project mcp mcp/tests/test_rmw_retry.py   # imports the bridge -> needs mcp deps (httpx/fastmcp)

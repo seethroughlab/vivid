@@ -290,6 +290,7 @@ bool        session_pool_place_audio(Session*, int index, int track, int scene);
 int    session_clip_note_count(Session*, int track, int scene);
 int    session_get_clip(Session*, int track, int scene, ClipNote* out, int max);  // returns count
 double session_clip_length(Session*, int track, int scene);
+uint64_t session_clip_rev(Session*, int track, int scene);   // optimistic-concurrency revision of note content
 void   session_set_clip(Session*, int track, int scene, const ClipNote* notes, int n, double length);
 // In-clip loop region (beats). loop_end <= loop_start disables it (loop the whole clip).
 void   session_set_clip_loop(Session*, int track, int scene, double loop_start, double loop_end);
