@@ -147,8 +147,15 @@ Concrete candidate list (all verified pure in `app/operators/CMakeLists.txt`):
 > and the showcase ships as hosted video. So `Particles3D` moving is not a flagship regression.) Both
 > packages verified: all their ops compile + register on install.
 >
-> Still pending: only `ShapeGrid`/`Lines` (carry-the-package in the committed geometry/grid/surge-lead
-> demos) — the last two candidates, and the only ones needing a demo migration.
+> Slice 5 (implemented — program complete, 12 ops moved out): `ShapeGrid` + `Lines` — the last two, and
+> the only ones a committed demo uses. Rather than a shared package, each is pushed **into the demos that
+> use it as a customizable project-local operator**: `geometry` carries both, `grid` carries `Lines`,
+> `surge-lead` carries `ShapeGrid` (each a `.cpp` + manifest the demo owns and can specialize, compiled
+> on load). The generalized standalone `examples/operators/{ShapeGrid,Lines}` were removed — the demos
+> are now the examples. Verified render **parity** (geometry 0.317, grid 0.201, surge-lead 0.318 —
+> unchanged). Tradeoff accepted: these three demos now compile-on-open (need the toolchain), where they
+> were pure data before. **Result: the 12 recipe/single-look candidates are all out of the default
+> install; the core catalog is the spine + composable primitives + dependency-pinned ops.**
 
 The **native note-generator recipes** `Euclid`, `Chord`, `RandMelody` are recipes by ADR-0046, but
 they are compiled *into the binary* (`builtin_audio_ops.cpp`), not dylibs, and the audio-package route

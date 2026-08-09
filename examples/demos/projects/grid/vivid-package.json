@@ -1,0 +1,7 @@
+{
+  "name": "grid-ops",
+  "version": "0.1.0",
+  "operators": [
+    { "name": "Lines", "kind": "gpu_visual", "source": "lines.cpp" }
+  ]
+}
