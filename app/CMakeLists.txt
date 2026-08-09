@@ -573,6 +573,15 @@ if(VIVID_BUILD_TESTS AND APPLE)
     add_test(NAME test_audio_bounce COMMAND test_audio_bounce)
     set_tests_properties(test_audio_bounce PROPERTIES LABELS "AUDIO_ENGINE")
 
+    # ADR-0031 §3: RT audio-health counters + the RtScope handoff-skip gate. Unit-tests the gate +
+    # over-budget accounting, then drives session_process off-RT to confirm the wired-in skip counters
+    # stay silent and an oversized block bails to silence.
+    add_executable(test_audio_health tests/test_audio_health.cpp ${_audio_engine_srcs})
+    target_include_directories(test_audio_health PRIVATE src src/audio src/gpu tests)
+    target_link_libraries(test_audio_health PRIVATE ${_audio_engine_libs})
+    add_test(NAME test_audio_health COMMAND test_audio_health)
+    set_tests_properties(test_audio_health PROPERTIES LABELS "AUDIO_ENGINE")
+
     # ADR-0029 phase 2: the concurrent audio↔UI harness — a render thread racing a UI/mutator thread over
     # the same engine. The AUDIO_THREAD label is what the macOS ThreadSanitizer CI gate runs (-L AUDIO_THREAD).
     add_executable(test_session_concurrency tests/test_session_concurrency.cpp ${_audio_engine_srcs})
