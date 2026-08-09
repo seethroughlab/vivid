@@ -247,6 +247,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/audio/plugin_probe.cpp
     src/audio/plugin_scan.cpp
     src/audio/audio_callback.cpp
+    src/audio/audio_device_manager.cpp
     src/audio/audio_bounce.cpp
     src/audio/audio_bounce_app.cpp
     src/audio/movie_audio_bus.cpp
