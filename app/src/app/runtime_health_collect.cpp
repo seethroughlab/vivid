@@ -9,6 +9,7 @@
 #include "cli/control_server.h"
 #include "audio/audio_health.h"    // ADR-0031: RT health counters (read the atomics)
 #include "audio/audio_budgets.h"   // ADR-0031: bailout Error threshold
+#include "audio/audio_device_manager.h"  // ADR-0032 Phase A: active output-device status
 #include "version.h"
 
 #include <cstdint>
@@ -55,6 +56,16 @@ HealthSnapshot collect_health(const App& app) {
     s.audio_last_callback_us = ah::g_last_callback_us.load(std::memory_order_relaxed);
     s.audio_max_callback_us  = ah::g_max_callback_us.load(std::memory_order_relaxed);
     s.audio_bailout_error_threshold = vivid::audio::audio_budgets().bailout_error_count;
+
+    // ADR-0032 Phase A: the active output device (null when headless — the app runs without audio).
+    if (app.audio_devices) {
+        const auto& d = app.audio_devices->status();
+        s.audio_device_open     = d.open;
+        s.audio_device_name     = d.active_name;
+        s.audio_device_sr       = d.actual_sample_rate;
+        s.audio_device_period   = d.actual_period;
+        s.audio_device_fallback = d.using_fallback;
+    }
     return s;
 }
 

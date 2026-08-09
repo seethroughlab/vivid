@@ -25,7 +25,7 @@ inline const float* severity_color(Severity sev) {
 struct DiagGeom { float px, py, w, h, rowh, hdr; int scalar_rows, missing_rows, quarantine_rows; };
 inline DiagGeom diag_geom(int missing_count, int win_w, int quarantine_count = 0) {
     DiagGeom o;
-    o.w = 460.f; o.rowh = 22.f; o.hdr = 40.f; o.scalar_rows = 9;   // +1: ADR-0031 "Audio RT" row
+    o.w = 460.f; o.rowh = 22.f; o.hdr = 40.f; o.scalar_rows = 10;  // +ADR-0031 "Audio RT" + ADR-0032 "Audio device"
     o.missing_rows = missing_count;
     o.quarantine_rows = quarantine_count;
     const int body_rows = o.scalar_rows

@@ -42,7 +42,12 @@ nlohmann::json to_json(const HealthSnapshot& s) {
                      {"over_budget", s.audio_over_budget},
                      {"handoff_skips", s.audio_handoff_skips},
                      {"last_callback_us", s.audio_last_callback_us},
-                     {"max_callback_us", s.audio_max_callback_us} };
+                     {"max_callback_us", s.audio_max_callback_us},
+                     {"device_open", s.audio_device_open},
+                     {"device_name", s.audio_device_name},
+                     {"device_sample_rate", s.audio_device_sr},
+                     {"device_period", s.audio_device_period},
+                     {"device_fallback", s.audio_device_fallback} };
     j["gpu"]     = { {"ok", s.gpu_ok}, {"errors", s.gpu_errors} };
     if (!s.gpu_last_error.empty()) j["gpu"]["last_error"] = s.gpu_last_error;
     j["graph"]   = { {"op_nodes", s.op_nodes}, {"op_types", s.op_types},

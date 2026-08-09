@@ -490,9 +490,39 @@ int main(int argc, char** argv) {
                 app.reduce_motion ? "Reduce Motion on \xE2\x80\x94 output flashing is damped"
                                   : "Reduce Motion off", glfwGetTime());
         };
+        // ADR-0032 Phase A: View > Audio Output picker. Selecting a device hot-swaps it live (reopen),
+        // persists the choice, and refreshes the submenu checkmark. Captures only long-lived main() locals.
+        ma.select_audio_device = [&](const std::string& name) {
+            if (!app.audio_devices) return;
+            vivid::audio::DevicePrefs p;
+            p.requested_name      = name;             // "" => system default
+            p.sample_rate         = 0;                // reopen pins to the session rate
+            p.period_frames       = app_settings.audio_period_frames;
+            p.fallback_to_default = app_settings.audio_fallback_to_default;
+            const bool ok = app.audio_devices->reopen(app, p);
+            app_settings.audio_device_name = name;
+            vivid::save_app_settings(app_settings, vivid::app_settings_path());
+            const auto& st = app.audio_devices->status();
+            std::vector<std::string> names;
+            for (const auto& d : app.audio_devices->enumerate()) names.push_back(d.name);
+            vivid::platform::set_audio_devices(names, st.active_name);
+            if (!ok || st.using_fallback)
+                VLOG_WARN(app, "%s", st.reason.empty() ? "audio device unavailable" : st.reason.c_str());
+            const std::string label = st.open
+                ? "Audio output: " + (st.active_name.empty() ? std::string("System Default") : st.active_name)
+                : std::string("Audio device unavailable");
+            vivid::ui::push_toast(win.toasts, ok ? vivid::LogLevel::Info : vivid::LogLevel::Warning,
+                                  label.c_str(), glfwGetTime());
+        };
         vivid::platform::install_menu_bar(ma);
         vivid::platform::set_reduce_motion_checked(app.reduce_motion);   // reflect the persisted state
         vivid::platform::set_recent_projects(app.project.recent_project_paths);
+        // ADR-0032 Phase A: populate the Audio Output submenu with the enumerated devices + active mark.
+        if (app.audio_devices) {
+            std::vector<std::string> names;
+            for (const auto& d : app.audio_devices->enumerate()) names.push_back(d.name);
+            vivid::platform::set_audio_devices(names, app.audio_devices->status().active_name);
+        }
         // File > Open Example — the bundled demos (ADR-0021/P2). Discovered once at startup.
         std::vector<vivid::platform::MenuItemEntry> examples;
         for (const auto& e : vivid::examples::discover_examples()) examples.push_back({ e.name, e.path, e.group });
