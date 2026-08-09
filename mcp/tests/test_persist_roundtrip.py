@@ -96,6 +96,9 @@ def build_project() -> None:
     # subgraph) so the assertion is the flag itself, not entangled with note-node id ordering.
     fx = ok("audio_graph_add_op", {"track": ta, "op": "Bitcrush"})["node"]
     ok("set_node_bypass", {"track": ta, "ids": [fx], "bypass": True})
+    # Session music-theory context: set a NON-default key/scale so the round-trip proves it survives
+    # save/load (new_project below resets it to the C-major default, so the reload must restore it).
+    ok("set_music_key", {"root": "F#", "scale": "dorian"})
 
 
 def snapshot() -> dict:
@@ -154,6 +157,7 @@ def main() -> int:
             "a node label": any(n.get("name") for n in g.get("chain", [])),   # ADR-0033 P5
             "an annotation": len(g.get("annotations", [])) >= 1,             # ADR-0033 P5
             "a bypassed node": '"bypassed"' in json.dumps(before),           # ADR-0033 P3
+            "music context (non-default)": before.get("music") == {"root": "F#", "scale": "dorian"},
         }
         missing = [k for k, v in checks.items() if not v]
         if missing:
@@ -164,6 +168,12 @@ def main() -> int:
             proj = str(Path(d) / "roundtrip.vivid")
             ok("save_project", {"path": proj})
             ok("new_project")                 # fully clear, so load rebuilds from disk (not a no-op)
+            # Prove new_project actually reset the music context to the C-major default — otherwise the
+            # "survives reload" assertion below could pass by mere leftover state instead of a real restore.
+            cleared = snapshot().get("music")
+            if cleared != {"root": "C", "scale": "major"}:
+                print(f"FAIL: new_project did not reset the music context to C major: {cleared}")
+                return 1
             ok("load_project", {"path": proj})
             time.sleep(0.5)
             after = snapshot()

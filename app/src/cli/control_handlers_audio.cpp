@@ -91,6 +91,28 @@ void register_audio_handlers(Handlers& handlers_) {
         P::session_set_launch_quantum_bars(c.session, bars);
         json r = ok(); r["bars"] = P::session_launch_quantum_bars(c.session); return r;
     };
+    // Session music-theory context: root note + scale NAME (e.g. "C"/"minor"). The theory vocabulary
+    // + validation live in the Python bridge (mcp/theory.py, ADR-0046); the core just persists the two
+    // strings so the key/scale round-trips with the project. set_music_key is a classified edit
+    // (undoable + marks the doc dirty; see edit_methods.cpp); get_music_key reads it back — the bridge
+    // reads it to default quantize_to_scale/harmonize/get_scale after a project load or bridge restart.
+    handlers_["set_music_key"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const std::string root  = b.value("root",  std::string("C"));
+        const std::string scale = b.value("scale", std::string("major"));
+        P::session_set_music(c.session, root.c_str(), scale.c_str());
+        json r = ok();
+        r["root"]  = P::session_music_root(c.session);
+        r["scale"] = P::session_music_scale(c.session);
+        return r;
+    };
+    handlers_["get_music_key"] = [](const ControlCtx& c, const json&) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        json r = ok();
+        r["root"]  = P::session_music_root(c.session);
+        r["scale"] = P::session_music_scale(c.session);
+        return r;
+    };
     // ADR-0022 P1b.4: solo/mute. Silence a track in the master mix (mute), or hear only the
     // soloed track(s) (solo). The track's own meter stays pre-mute.
     handlers_["set_track_mute"] = [](const ControlCtx& c, const json& b) {
