@@ -86,6 +86,11 @@ jobs:
       - name: Reactive control edges (large-graph add + track-drop)
         run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_reactive_edges.py
 
+      # API-cleanup Phase-7 follow-up b: optimistic-concurrency guard on clip edits — get_clip reports a
+      # per-clip rev; set_clip with a stale expected_rev is rejected ('conflict') instead of clobbering.
+      - name: Clip edit conflict (optimistic concurrency)
+        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_clip_conflict.py
+
       # Import the Developer ID cert into a dedicated temporary keychain so codesign can reach the
       # private key non-interactively (a locked/service-context login keychain gives
       # errSecInternalComponent on a self-hosted runner). Cleaned up below regardless of outcome.

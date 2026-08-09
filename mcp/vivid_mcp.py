@@ -1630,14 +1630,25 @@ def _key_default(root: str, scale: str) -> tuple:
     return (root or dr), (scale or ds).lower()
 
 
-def _rmw(track: int, scene: int, fn) -> dict:
-    """Read a clip, transform its notes via fn(notes, length) -> notes, write it back."""
-    cur = _post("get_clip", {"track": track, "scene": scene})
-    if not cur.get("ok"):
-        return cur
-    length = cur.get("length", 4.0)
-    return _post("set_clip", {"track": track, "scene": scene,
-                              "notes": fn(cur.get("notes", []), length), "length": length})
+def _rmw(track: int, scene: int, fn, _tries: int = 3) -> dict:
+    """Read a clip, transform its notes via fn(notes, length) -> notes, write it back.
+
+    Optimistic concurrency: the write carries the `rev` the read observed as `expected_rev`. If another
+    edit landed in between the control server rejects it (code 'conflict'); we re-read + re-apply + re-
+    write, up to `_tries` times, so two independent edits to the same clip both land instead of one
+    silently clobbering the other. A persistent conflict (a fight over the same notes) surfaces the
+    'conflict' code rather than looping forever."""
+    for _ in range(max(1, _tries)):
+        cur = _post("get_clip", {"track": track, "scene": scene})
+        if not cur.get("ok"):
+            return cur
+        length = cur.get("length", 4.0)
+        res = _post("set_clip", {"track": track, "scene": scene,
+                                 "notes": fn(cur.get("notes", []), length), "length": length,
+                                 "expected_rev": cur.get("rev", 0)})
+        if res.get("code") != "conflict":
+            return res
+    return res
 
 
 @mcp.tool
@@ -2123,7 +2134,7 @@ def get_authoring_guide() -> dict:
         "errors": "Every reply has an 'ok' bool. Failures are {ok:false, code, error}: "
                   "branch on the stable `code` (bad_json, unknown_method, no_session, no_graph, "
                   "no_vgraph, no_transport, bad_arg, out_of_range, not_found, io_error, internal, "
-                  "timeout), not the human `error` text. An out-of-range track/scene/device index "
+                  "timeout, conflict), not the human `error` text. An out-of-range track/scene/device index "
                   "now returns out_of_range instead of silently succeeding.",
         "music_theory": {
             "notes": "Anywhere a pitch is taken, `p` accepts a MIDI int OR a name: 'C4','F#3','Bb5' "
