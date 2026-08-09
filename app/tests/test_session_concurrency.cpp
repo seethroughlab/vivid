@@ -3,6 +3,13 @@
 // try_lock + SPSC machinery exists to keep safe: a RENDER thread looping session_process, and a single
 // UI/MUTATOR thread that adds/removes tracks, edits clips, mutates the graph, sets params, delivers and
 // clears frame-bridge param overrides (ADR-0030 P2), launches scenes, and reads the published snapshots.
+//
+// ADR-0031 §1 widened the mutator to also churn graph EDGES — connect/disconnect audio + control edges and
+// remove nodes — the xaudio/xctl/gmtx handoff path the earlier switch never touched, and where slice 2's
+// RT handoff-skip counter lives. OUT OF SCOPE here (deliberately): undo/redo and audio↔visual mappings —
+// both are App/UI-layer state (undo_manager, ui/NodeGraph MappingRegistry), not the `session_*` C API this
+// harness drives; they race the EDIT model, not session_process. The mapping mechanism that DOES reach the
+// render — the frame-bridge override channel mappings write through — is already raced (cases 12/13/15).
 // Under TSan (the macOS AUDIO_THREAD leg) this proves the audio↔UI
 // channels are race-clean; the assertions (finite output, sane snapshots) are secondary to TSan observing
 // the races. Model per app/docs/thread-safety.md: all mutation on one UI thread; the audio thread only
@@ -12,6 +19,8 @@
 // macOS-only (the engine reaches CoreFoundation): built in the full-app configure, like test_session_executor.
 #include "audio/vst3_host.h"
 #include "audio/builtin_audio_ops.h"   // register_builtin_audio_ops
+#include "audio/audio_budgets.h"       // ADR-0031 §6: stress duration + allowed-skip budget
+#include "audio/audio_health.h"        // ADR-0031 §3: RtScope + g_handoff_skips
 #include "gpu/op_runtime.h"            // vivid::OpRegistry
 #include "midi/midi_clip.h"            // ClipNote
 #include "test_helpers.h"
@@ -68,6 +77,10 @@ int main() {
 
     // --- RENDER thread: the audio-callback role -----------------------------------------------------
     std::thread render([&] {
+        // ADR-0031 §3: this thread plays the RT audio callback, so mark the RT scope — session_process's
+        // try_lock handoff-skip counter (vivid::audio::health::g_handoff_skips) is gated on it. Under this
+        // harness's deliberate contention, skips WILL accrue; that is the metric slice 4 can bound.
+        vivid::audio::health::RtScope rt_scope;
         std::vector<float> out(static_cast<size_t>(frames) * 2, 0.f);
         double beats = 0.0;
         const double per_block = static_cast<double>(frames) / sr * (120.0 / 60.0);
@@ -84,10 +97,20 @@ int main() {
         constexpr int kMaxTracks = 4;
         ActiveNote held[64];
         float scope[128], spec[1024];
-        for (int k = 0; k < 3000; ++k) {
+        // ADR-0031 §6: budget-driven run length. VIVID_AUDIO_STRESS_MS>0 runs the mutator for that many
+        // wall-clock ms (a longer soak on demand); the default 0 keeps the fixed 3000-iteration loop.
+        const uint32_t stress_ms = vivid::audio::audio_budgets().stress_ms;
+        const auto t_start = std::chrono::steady_clock::now();
+        auto more = [&](int k) {
+            if (stress_ms > 0)
+                return std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - t_start).count() < static_cast<long long>(stress_ms);
+            return k < 3000;
+        };
+        for (int k = 0; more(k); ++k) {
             const int nt = session_track_count(s);
             const int tr = nt > 0 ? (k % nt) : -1;
-            switch (k % 16) {
+            switch (k % 20) {
                 case 0: if (nt < kMaxTracks) session_add_graph_track(s, "Tx"); break;   // tracks_gen
                 case 1: if (nt > 1) session_remove_track(s, nt - 1); break;             // tracks_gen + tracks_retired
                 case 2: if (tr >= 0) session_set_track_audio_instrument(s, tr, "TestTone"); break;  // op_fx_gen + ggen
@@ -123,6 +146,22 @@ int main() {
                              else       session_audio_graph_node_param_override_clear(s, t0, plug_nid, plug_gp);
                          }
                          break;
+                // ADR-0031 §1: race graph EDGE churn — connect/disconnect audio + control edges and remove
+                // nodes while the render thread swaps the compiled plan. This is the xaudio/xctl/gmtx handoff
+                // path (where slice 2's g_handoff_skips counter lives), previously unexercised by the harness.
+                case 16: if (tr >= 0) { const int nn = session_track_audio_graph_node_count(s, tr);          // audio edge connect
+                                        if (nn >= 2) session_audio_graph_connect(s, tr, session_track_audio_graph_node_id(s, tr, 0),
+                                                                                 session_track_audio_graph_node_id(s, tr, nn - 1)); } break;
+                case 17: if (tr >= 0) { const int nn = session_track_audio_graph_node_count(s, tr);          // audio edge disconnect
+                                        if (nn >= 2) session_audio_graph_disconnect(s, tr, session_track_audio_graph_node_id(s, tr, 0),
+                                                                                    session_track_audio_graph_node_id(s, tr, nn - 1)); } break;
+                case 18: if (tr >= 0) { const int nn = session_track_audio_graph_node_count(s, tr);          // control edge connect/disconnect
+                                        if (nn >= 2) { const int a = session_track_audio_graph_node_id(s, tr, nn - 1),
+                                                                 b = session_track_audio_graph_node_id(s, tr, 0);
+                                                       if (k & 1) session_audio_graph_connect_control(s, tr, a, b, 0, 0.25f, 0.f, 0, 0);
+                                                       else       session_audio_graph_disconnect_control(s, tr, a, b, 0); } } break;
+                case 19: if (tr >= 0) { const int nn = session_track_audio_graph_node_count(s, tr);          // remove a node (effects only)
+                                        if (nn >= 2) session_audio_graph_remove_node(s, tr, session_track_audio_graph_node_id(s, tr, nn - 1)); } break;
             }
             if ((k & 63) == 0) std::this_thread::yield();
         }
@@ -136,7 +175,15 @@ int main() {
     CHECK(ui_done.load(std::memory_order_relaxed));           // both threads finished
     CHECK(finite_ok.load(std::memory_order_relaxed));         // no NaN/Inf under any concurrent mutation
 
+    // ADR-0031 §6: opt-in handoff-skip ceiling. Skips are EXPECTED under this deliberate contention, so the
+    // default (VIVID_AUDIO_ALLOWED_SKIPS=0) disables the check — the real assurance is TSan seeing no race.
+    // Set it >0 to bound skips over a soak run. The counter only moved because the render thread ran in RtScope.
+    const uint32_t allowed = vivid::audio::audio_budgets().allowed_skips;
+    const uint64_t skips = vivid::audio::health::g_handoff_skips.load(std::memory_order_relaxed);
+    if (allowed > 0) CHECK(skips <= allowed);
+
     session_destroy(s);
-    std::puts("test_session_concurrency: OK");
+    std::printf("test_session_concurrency: OK (handoff skips observed: %llu)\n",
+                static_cast<unsigned long long>(skips));
     return 0;
 }
