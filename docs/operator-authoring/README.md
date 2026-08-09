@@ -6,7 +6,7 @@ app rebuild. Built-in operators use the same API, so the built-ins are your refe
 
 This guide walks from **choosing a kind** → authoring → packaging → building → testing → loading →
 exposing it to agents. The API surface itself is in [`../operator-api/`](../operator-api/) (current
-operator ABI **v11**); real-time rules are in [`../../app/docs/thread-safety.md`](../../app/docs/thread-safety.md).
+operator ABI **v17**); real-time rules are in [`../../app/docs/thread-safety.md`](../../app/docs/thread-safety.md).
 
 ## 1. Choose a kind
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "operator_api/types.h"
+#include "operator_api/ports.h"   // authoring helpers: texture/audio port builders + param readers
 #include <vector>
 #include <string>
 #include <initializer_list>
