@@ -1,6 +1,7 @@
 #pragma once
 #include <functional>
 #include <memory>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -61,6 +62,11 @@ struct App {
     // vivid-package.json. Cleared on New/project switch so package operators are scoped like
     // project shaders, not leaked globally for the rest of the process.
     std::set<std::string> project_operator_types;
+    // Source-forward (ADR-0054): registered op name -> absolute path of the .cpp that ships with the
+    // open project. Lets a project-local operator's node right-click resolve to "Open source in
+    // editor" (the source is right there in the project), inviting the user to read/edit/fork it.
+    // Cleared alongside project_operator_types.
+    std::map<std::string, std::string> project_operator_sources;
     // Which operators accept which dropped file extensions (ADR-0021/P3). Rebuilt from op_loaders
     // after the startup scan and after each live package install.
     FileDropRegistry file_drops;
