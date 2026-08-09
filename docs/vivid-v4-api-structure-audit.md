@@ -1,5 +1,14 @@
 # Vivid V4 API and Structure Audit
 
+> **Superseded snapshot (kept for the record).** This is a point-in-time audit from 2026-07-06;
+> do not read its version numbers or "recommended fix" lists as current. In particular, its §2
+> asks to split the operator authoring docs into current-contract vs history, move the ABI
+> changelog into its own file, and add a current-ABI reference page — all since done
+> ([`operator-api/`](operator-api/), [`operator-authoring/`](operator-authoring/),
+> [`operator-api/abi-changelog.md`](operator-api/abi-changelog.md)). The current operator ABI is
+> **v17** (this doc predates that and says v11). The live cleanup program is tracked separately;
+> for the authoritative public surface start at [`operator-api/README.md`](operator-api/README.md).
+
 Date: 2026-07-06
 
 Audience: coding agents and engineers preparing cleanup or product-readiness work.
