@@ -15,6 +15,10 @@ std::string save_project_dialog(const std::string& suggested_name);
 // field (e.g. "vivid-export.mp4"). Returns the chosen absolute path, or "" if cancelled / no dialog.
 std::string save_video_dialog(const std::string& suggested_name);
 
+// Choose a destination for an audio export (File > Export Audio, ADR-0032). `suggested_name` seeds
+// the name field (e.g. "vivid-export.wav"). Returns the chosen absolute path, or "" if cancelled.
+std::string save_audio_dialog(const std::string& suggested_name);
+
 // Choose a single existing file (e.g. an image for an Image node). `message` labels the
 // panel. Returns the chosen absolute path, or "" if cancelled / no native dialog.
 // `extensions` (lowercased, no dot — e.g. {"png","jpg"}) filters the panel to those types; empty

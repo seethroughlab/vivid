@@ -885,6 +885,28 @@ def video_export_status() -> dict:
     return _post("video_export_status", {})
 
 
+# ---------------- audio export (offline WAV bounce, ADR-0032) ----------------
+@mcp.tool
+def export_audio(path: str, seconds: float = 0.0, bars: float = 0.0, block: int = 0) -> dict:
+    """Bounce the session's master mix to a .wav OFFLINE and return when finished (synchronous).
+    Renders through the same session graph + transport as realtime but faster-than-realtime with the
+    audio device paused (live playback goes briefly silent), from beat 0 for an explicit length: pass
+    `seconds` (primary) OR `bars` (derived from the current tempo). `path` must be absolute and end in
+    .wav. `block` overrides the render block size (default 1024). Returns {path, frames, duration_sec,
+    peak, clipped}; `clipped` is true if any sample exceeded 0 dBFS. Note: this bounces the CURRENT
+    arming played from the top — it does not replay a timeline of scene-launch events. Deterministic
+    for native-op sessions; third-party plugins may render slightly differently offline."""
+    return _post("export_audio", {"path": path, "seconds": seconds, "bars": bars, "block": block})
+
+
+@mcp.tool
+def audio_export_status() -> dict:
+    """Poll the last offline audio export (export_audio). Returns {done, path, frames, duration_sec,
+    peak, clipped}; `done` is false until the first bounce completes. export_audio is synchronous, so
+    this mostly mirrors its return value for scripted checks."""
+    return _post("audio_export_status", {})
+
+
 @mcp.tool
 def analyze_frame(path: str = "") -> dict:
     """Structured perception of the active visual output (or a saved image via path). Returns

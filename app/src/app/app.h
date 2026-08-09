@@ -8,6 +8,7 @@
 
 #include "app/log.h"               // ADR-0019 (E4): the leveled logger (owned here)
 #include "app/project_state.h"
+#include "audio/audio_bounce.h"    // ADR-0032: BounceResult (File > Export Audio / export_audio MCP)
 #include "gpu/op_runtime.h"        // OpRegistry (operator-based visuals)
 #include "gpu/operator_loader.h"   // OperatorLoader (dlopen'd operators; owned here)
 #include "gpu/shader_library.h"    // ShaderLibrary (ADR-0016: a shader FILE is an operator)
@@ -51,6 +52,10 @@ struct App {
     std::function<void()> before_audio_rebuild;
     CrashRecovery*      crash_recovery = nullptr; // ADR-0018 warm-snapshot writer (a main.cpp local)
     VideoRecorder*      recorder    = nullptr;   // realtime AV video export (a main.cpp local)
+    // ADR-0032: the ma_device (a main.cpp local), kept OPAQUE so miniaudio.h stays out of this
+    // widely-included header. The audio-export path casts it back to ma_device* to pause/resume the
+    // device around an offline WAV bounce. Null when audio is unavailable (headless / device open failed).
+    void*               audio_device = nullptr;
     OpRegistry          op_registry;           // built-in + loaded operators
     // Loaders for dlopen'd operator dylibs. Owned here so each outlives the
     // registry factory that captures its raw pointer (App lives the whole run).
@@ -76,6 +81,8 @@ struct App {
     MusicEval           music_eval; // ADR-0026: in-app Gemini audio evaluation (async jobs)
     ReactivityRing      reactivity;  // reactive-visuals loop: per-frame visual+audio ring for analyze_output(av)
     VisualEval          visual_eval; // reactive-visuals loop: multimodal Gemini judge (async jobs)
+
+    BounceResult last_audio_export;   // ADR-0032: result of the most recent offline WAV bounce (empty path => none)
 
     bool recovered_unsaved = false;   // ADR-0018: a launch-time autosave recovery ran; mark dirty post-baseline
     bool reduce_motion = false;       // UX Ph4 F1: app-level accessibility toggle (persisted in settings.json)

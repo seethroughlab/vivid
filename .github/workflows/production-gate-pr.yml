@@ -68,7 +68,7 @@ jobs:
           # fixture (vivid_test_clap) via add_dependencies, so it is built too. test_session_concurrency
           # is TSan-only and runs in the audio-thread-sanitizer job below.
           cmake --build app/build-audio -j --target \
-            test_session_executor test_plugin_param_base test_bridge_undo_stability \
+            test_session_executor test_audio_bounce test_plugin_param_base test_bridge_undo_stability \
             test_clap_plugin_roundtrip test_clap_modulation test_missing_instrument_cue \
             test_node_bypass test_node_solo test_plugin_watchdog test_plugin_hang_monitor
       - name: Run the audio-engine tests (native ops + real in-tree CLAP plugin)

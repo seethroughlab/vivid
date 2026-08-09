@@ -317,6 +317,7 @@ int main(int argc, char** argv) {
     vivid::audio::PluginHangMonitor hang_monitor;   // ADR-0045 Tier 2a: watches for a plugin stuck in process()
     bool audio_ok = (ma_device_init(nullptr, &cfg, &device) == MA_SUCCESS);
     if (audio_ok) {
+        app.audio_device = &device;   // ADR-0032: let the audio-export path pause/resume the device for an offline bounce
         transport.configure_capture(device.sampleRate, 30.0);
         // Now that we know the device sample rate, create the (empty) session engine. The app
         // starts clean — no baked-in content; a project is loaded via File > Open. The splash
@@ -436,6 +437,29 @@ int main(int argc, char** argv) {
                 vivid::ui::push_toast(win.toasts, vivid::LogLevel::Info,
                     "Recording video\xE2\x80\xA6  (File \xE2\x96\xB8 Stop Export)", glfwGetTime());
             } else {
+                vivid::ui::push_toast(win.toasts, vivid::LogLevel::Warning,
+                    "Export failed: " + err, glfwGetTime(), 8.0);
+            }
+        };
+        // File > Export Audio: bounce the master mix to a .wav OFFLINE (ADR-0032). Unlike Export Video
+        // (a realtime capture), this pauses the device and renders faster than realtime, so playback
+        // briefly goes silent. Fixed default length for the menu path; the export_audio MCP tool takes
+        // an explicit seconds/bars.
+        ma.export_audio = [&] {
+            const std::string path = vivid::platform::save_audio_dialog("vivid-export.wav");
+            if (path.empty()) return;   // cancelled
+            vivid::BounceRequest req; req.path = path; req.seconds = 30.0;
+            vivid::BounceResult res; std::string err;
+            if (vivid::run_audio_bounce(app, req, res, &err)) {
+                char m[224];
+                std::snprintf(m, sizeof m, "Audio exported: %s (%.1fs%s)",
+                              res.path.c_str(), res.duration_sec, res.clipped ? ", CLIPPED" : "");
+                vivid::ui::push_toast(win.toasts, vivid::LogLevel::Info, m, glfwGetTime(), 10.0);
+                if (res.clipped)
+                    VLOG_WARN(app, "audio export clipped: peak %.3f (>0 dBFS): %s",
+                              static_cast<double>(res.peak), res.path.c_str());
+            } else {
+                VLOG_ERR(app, "audio export failed: %s", err.c_str());
                 vivid::ui::push_toast(win.toasts, vivid::LogLevel::Warning,
                     "Export failed: " + err, glfwGetTime(), 8.0);
             }

@@ -21,6 +21,7 @@ struct MenuActions {
     std::function<void()> set_gemini_key;   // Eval > Set Gemini Key… (ADR-0026)
     std::function<void()> evaluate_output;  // Eval > Evaluate Output
     std::function<void()> export_video;     // File > Export Video (toggles start/stop a realtime AV export)
+    std::function<void()> export_audio;     // File > Export Audio (offline master-mix bounce to .wav, ADR-0032)
     std::function<void()> toggle_reduce_motion;  // View > Reduce Motion (UX Ph4 F1 accessibility toggle)
 };
 
