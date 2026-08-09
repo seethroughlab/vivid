@@ -22,6 +22,7 @@
 #include "ui/ui_style.h"
 #include "ui/layout.h"
 #include "app/app.h"
+#include "app/log.h"            // VLOG_WARN (ADR-0019 log surfacing)
 #include "app/edit_gateway.h"   // ADR-0017 undo/redo command sink
 #include "app/window.h"
 #include "app/input.h"
@@ -46,6 +47,7 @@
 #include "audio/plugin_hang_monitor.h" // ADR-0045 Tier 2a: the permanent-hang monitor thread
 #include "audio/plugin_probe.h"        // --probe-plugin subprocess entry point
 #include "audio/audio_callback.h"
+#include "audio/audio_device_manager.h"   // ADR-0032 Phase A: audio output device model
 #include "ui/mapping_overview.h"
 #include "ui/session_view.h"
 #include "cli/control_server.h"
@@ -244,8 +246,10 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "[vivid] visual graph init failed (viewer disabled)\n");
     app.vgraph = &vgraph;
 
-    // UX Ph4 F1: restore the persisted reduce-motion / flash-limit setting and apply it to the pipeline.
-    app.reduce_motion = vivid::load_app_settings(vivid::app_settings_path()).reduce_motion;
+    // UX Ph4 F1 + ADR-0032: load ALL app-level settings once and keep them (device prefs + reduce-motion
+    // share settings.json, so a partial save would clobber the other's fields — see the save site below).
+    vivid::AppSettings app_settings = vivid::load_app_settings(vivid::app_settings_path());
+    app.reduce_motion = app_settings.reduce_motion;
     vgraph.set_reduce_motion(app.reduce_motion);
 
     // ADR-0020: the operator hot-reload watcher is ON BY DEFAULT (like the shader watcher). At
@@ -299,34 +303,31 @@ int main(int argc, char** argv) {
     vivid::VideoRecorder video_recorder;   // realtime AV export; driven per-frame in run_frame_loop
     app.recorder = &video_recorder;
 
-    ma_device_config cfg = ma_device_config_init(ma_device_type_playback);
-    cfg.playback.format = ma_format_f32;
-    cfg.playback.channels = 2;
-    cfg.sampleRate = 0;  // device default
-    cfg.dataCallback = audio_callback;
-    cfg.pUserData = &app;   // the audio thread sees the shared App, never a Window
-    // Give the RT callback real headroom. The callback hosts several plugin synths (Surge/CLAP + VST3)
-    // whose per-block cost SPIKES on dense passages (e.g. a 16th-note arp stacking voices) even though
-    // average CPU is low — with miniaudio's tiny low-latency default period those spikes overrun a single
-    // callback's deadline and crackle. A ~23 ms period (1024 frames @ 44.1k) absorbs the spikes; the extra
-    // latency is imperceptible for playback and audio-reactive visuals. Bump higher if a heavier session
-    // still crackles.
-    cfg.periodSizeInFrames = 1024;
-    cfg.performanceProfile = ma_performance_profile_conservative;
-
-    ma_device device;
+    // ADR-0032 Phase A: the audio output device model owns the miniaudio context + device (miniaudio.h
+    // confined to audio_device_manager.cpp). It opens the persisted device (or the system default, with a
+    // logged fallback if that device is gone), at the device's native rate — the callback hosts several
+    // plugin synths whose per-block cost spikes on dense passages, so the pinned ~23 ms period (1024
+    // frames) absorbs the spikes; imperceptible latency for playback + audio-reactive visuals.
+    vivid::audio::AudioDeviceManager audio_mgr;
+    app.audio_devices = &audio_mgr;
     vivid::audio::PluginHangMonitor hang_monitor;   // ADR-0045 Tier 2a: watches for a plugin stuck in process()
-    bool audio_ok = (ma_device_init(nullptr, &cfg, &device) == MA_SUCCESS);
+    vivid::audio::DevicePrefs dev_prefs;
+    dev_prefs.requested_name      = app_settings.audio_device_name;      // "" => system default
+    dev_prefs.sample_rate         = app_settings.audio_sample_rate;      // 0  => device native rate
+    dev_prefs.period_frames       = app_settings.audio_period_frames;
+    dev_prefs.fallback_to_default = app_settings.audio_fallback_to_default;
+    bool audio_ok = audio_mgr.open(app, dev_prefs);
     if (audio_ok) {
-        app.audio_device = &device;   // ADR-0032: let the audio-export path pause/resume the device for an offline bounce
-        transport.configure_capture(device.sampleRate, 30.0);
+        app.audio_device = audio_mgr.device_handle();   // ADR-0032: stable ma_device* for the offline bounce
+        const uint32_t sr = audio_mgr.status().actual_sample_rate;
+        transport.configure_capture(sr, 30.0);
         // Now that we know the device sample rate, create the (empty) session engine. The app
         // starts clean — no baked-in content; a project is loaded via File > Open. The splash
         // progress hook stays wired for any future load phases.
         vivid::session::session_set_load_progress(
             [](void* u, const char* s) { (*static_cast<std::function<void(const char*)>*>(u))(s); },
             &render_splash);
-        app.session = vivid::session::session_create(device.sampleRate);
+        app.session = vivid::session::session_create(sr);
         vivid::session::session_set_load_progress(nullptr, nullptr);
         vivid::session::session_set_op_registry(app.session, &app.op_registry);   // AO-1: native audio ops
         // Classify the installed plugins (instrument vs effect) in the background: cached verdicts
@@ -341,14 +342,21 @@ int main(int argc, char** argv) {
         // ADR-0031 §6: warm the realtime audio-budgets config (reads env once) on THIS thread too,
         // before the RT audio thread reads it via the health counters.
         (void)vivid::audio::audio_budgets();
+        // ADR-0032/0019: surface a device fallback (the saved output was gone) through the log; and warn
+        // honestly if a REQUESTED rate wasn't honored (opening at native rate never warns).
+        if (audio_mgr.status().using_fallback)
+            VLOG_WARN(app, "%s", audio_mgr.status().reason.c_str());
+        if (dev_prefs.sample_rate != 0 && sr != dev_prefs.sample_rate)
+            VLOG_WARN(app, "audio: requested %u Hz but device opened at %u Hz", dev_prefs.sample_rate, sr);
 #if defined(__APPLE__)
         // ADR-0052: hand the track-parallel audio worker pool the CoreAudio device's os_workgroup so
         // its RT worker threads share the audio I/O thread's scheduling deadline. miniaudio exposes the
         // playback AudioUnit; the workgroup property returns a +1-retained handle the pool takes over.
         {
+            ma_device* dev = static_cast<ma_device*>(audio_mgr.device_handle());
             os_workgroup_t wg = nullptr;
-            if (device.pContext && device.pContext->backend == ma_backend_coreaudio) {
-                AudioUnit au = static_cast<AudioUnit>(device.coreaudio.audioUnitPlayback);
+            if (dev && dev->pContext && dev->pContext->backend == ma_backend_coreaudio) {
+                AudioUnit au = static_cast<AudioUnit>(dev->coreaudio.audioUnitPlayback);
                 UInt32 sz = sizeof(wg);
                 if (!au || AudioUnitGetProperty(au, kAudioOutputUnitProperty_OSWorkgroup,
                                                 kAudioUnitScope_Global, 0, &wg, &sz) != noErr)
@@ -359,7 +367,7 @@ int main(int argc, char** argv) {
 #else
         vivid::session::session_set_audio_workgroup(app.session, nullptr);
 #endif
-        if (ma_device_start(&device) != MA_SUCCESS) audio_ok = false;
+        if (!audio_mgr.start()) audio_ok = false;
         else hang_monitor.start();   // ADR-0045 Tier 2a: begin watching the RT thread's in-flight beacon
     }
     glfwSetWindowUserPointer(window, &win);
@@ -433,7 +441,7 @@ int main(int argc, char** argv) {
             }
             const std::string path = vivid::platform::save_video_dialog("vivid-export.mp4");
             if (path.empty()) return;   // cancelled
-            const uint32_t sr = audio_ok ? static_cast<uint32_t>(device.sampleRate) : 0;
+            const uint32_t sr = audio_ok ? audio_mgr.status().actual_sample_rate : 0;
             std::string err;
             if (app.vgraph && app.transport &&
                 app.recorder->start(path, 60.0, 0.0, app.vgraph->rt_w(), app.vgraph->rt_h(),
@@ -473,7 +481,10 @@ int main(int argc, char** argv) {
         ma.toggle_reduce_motion = [&] {
             app.reduce_motion = !app.reduce_motion;
             if (app.vgraph) app.vgraph->set_reduce_motion(app.reduce_motion);
-            vivid::save_app_settings({ app.reduce_motion }, vivid::app_settings_path());
+            // ADR-0032: save the FULL settings (device prefs share the file) — a positional literal here
+            // would zero the audio-device fields on every toggle.
+            app_settings.reduce_motion = app.reduce_motion;
+            vivid::save_app_settings(app_settings, vivid::app_settings_path());
             vivid::platform::set_reduce_motion_checked(app.reduce_motion);
             vivid::ui::push_toast(win.toasts, vivid::LogLevel::Info,
                 app.reduce_motion ? "Reduce Motion on \xE2\x80\x94 output flashing is damped"
@@ -488,7 +499,7 @@ int main(int argc, char** argv) {
         vivid::platform::set_example_projects(examples);
     }
     std::fprintf(stderr, "[vivid] audio: %s (%u Hz)\n",
-                 audio_ok ? "running" : "unavailable", audio_ok ? device.sampleRate : 0);
+                 audio_ok ? "running" : "unavailable", audio_ok ? audio_mgr.status().actual_sample_rate : 0);
 
     // MCP control server: a loopback HTTP endpoint the agent bridge drives. Commands
     // are queued on the HTTP thread and applied on the main thread each frame.
@@ -562,8 +573,8 @@ int main(int argc, char** argv) {
 
     app.midi_in.stop();   // stop hardware MIDI before tearing down state
     control.stop();   // stop the MCP control server thread before tearing down state
-    hang_monitor.stop();                      // ADR-0045 Tier 2a: join the monitor before the device tears down
-    if (audio_ok) ma_device_uninit(&device);  // stops the callback first
+    hang_monitor.stop();      // ADR-0045 Tier 2a: join the monitor before the device tears down
+    audio_mgr.close();        // ADR-0032: stops the callback + uninits the device (idempotent)
     for (int t = 0; t < 8; ++t) if (win.track_win[t]) vst3_plugin_window_close(win.track_win[t]);
     for (int k = 0; k < 8; ++k) if (win.fx_win[k]) vst3_plugin_window_close(win.fx_win[k]);
     for (int k = 0; k < 8; ++k) if (win.clap_win[k]) clap_plugin_window_close(win.clap_win[k]);
