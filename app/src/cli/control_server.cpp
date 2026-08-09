@@ -107,6 +107,7 @@ void ControlServer::register_handlers() {
 
     register_video_export_handlers(handlers_);   // ---- realtime AV video export ----
     register_audio_export_handlers(handlers_);   // ---- ADR-0032: offline master-mix WAV bounce ----
+    register_audio_io_handlers(handlers_);       // ---- ADR-0032 Phase A: output device enumerate/select ----
 }
 
 }  // namespace vivid

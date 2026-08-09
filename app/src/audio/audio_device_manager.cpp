@@ -104,6 +104,15 @@ bool AudioDeviceManager::open(App& app, const DevicePrefs& p) {
     return true;
 }
 
+bool AudioDeviceManager::reopen(App& app, DevicePrefs p) {
+    if (session_rate_ != 0) p.sample_rate = session_rate_;   // keep the callback at the pinned session rate
+    stop();                                                  // blocks until the in-flight callback returns
+    if (!open(app, p)) return false;                         // close()s the old device, inits + resolves the new
+    return start();
+    // The worker-pool workgroup is intentionally NOT re-handed here — session_set_audio_workgroup is
+    // start-once (see audio_device_manager.h). The launch device's workgroup persists.
+}
+
 bool AudioDeviceManager::start() {
     return impl_->device_open && ma_device_start(&impl_->device) == MA_SUCCESS;
 }

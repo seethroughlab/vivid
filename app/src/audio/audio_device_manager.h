@@ -69,6 +69,14 @@ public:
     // Fills status(). Does NOT start the device (call start() after the session is built).
     bool open(App& app, const DevicePrefs& p);
 
+    // Live hot-swap (main thread): stop → open(requested name, at the PINNED session rate) → start.
+    // Requesting the pinned rate (not the device native rate) keeps the callback at the session rate, so
+    // the session engine is never rebuilt. On failure, open()'s fallback-to-default applies. Returns true
+    // iff a device is running afterward. NOTE: the ADR-0052 worker-pool os_workgroup is start-once, so a
+    // swapped device keeps the LAUNCH device's workgroup — RT scheduling on the new device is slightly
+    // degraded but functional (re-handoff needs a pool restart; a follow-up).
+    bool reopen(App& app, DevicePrefs p);
+
     bool start();                       // ma_device_start; false if not open or start failed
     void stop();                        // ma_device_stop  (blocks until the in-flight callback returns)
     void close();                       // stop + uninit the device (idempotent)

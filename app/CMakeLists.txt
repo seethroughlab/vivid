@@ -309,6 +309,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/cli/control_handlers_visual_eval.cpp
     src/cli/control_handlers_video_export.cpp
     src/cli/control_handlers_audio_export.cpp
+    src/cli/control_handlers_audio_io.cpp
     src/cli/edit_methods.cpp
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp

@@ -907,6 +907,25 @@ def audio_export_status() -> dict:
     return _post("audio_export_status", {})
 
 
+# ---------------- audio output device (ADR-0032 Phase A) ----------------
+@mcp.tool
+def get_audio_devices() -> dict:
+    """List the available audio OUTPUT devices and the active one. Returns {devices:[{name,is_default}],
+    active:{name, sample_rate, period, open, using_fallback, reason}}. `active.using_fallback` is true when
+    the saved device was unavailable and the system default was opened instead (`reason` explains). This is
+    hardware I/O device selection — distinct from the plugin instrument/effect pickers."""
+    return _post("get_audio_devices", {})
+
+
+@mcp.tool
+def set_audio_device(name: str = "") -> dict:
+    """Select the audio OUTPUT device by name (from get_audio_devices) and hot-swap the live device.
+    An empty name selects the system default. The choice is persisted machine-level (settings.json) and
+    restored next launch. Live playback briefly drops out during the swap. Returns {active:{...}}; if the
+    named device can't open, falls back to the default (active.using_fallback = true)."""
+    return _post("set_audio_device", {"name": name})
+
+
 @mcp.tool
 def analyze_frame(path: str = "") -> dict:
     """Structured perception of the active visual output (or a saved image via path). Returns
