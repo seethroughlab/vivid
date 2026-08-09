@@ -38,17 +38,34 @@ int main() {
     const std::vector<DeviceInfo> dupes = { { "Aggregate", false }, { "Aggregate", false } };
     CHECK(resolve_device_index(dupes, "Aggregate") == 0);
 
-    // Struct defaults: native rate (0), pinned period, fallback on.
+    // ADR-0032 Phase D1: resolve_device_index is direction-agnostic — the same seam resolves a persisted
+    // INPUT name against the enumerated capture list. A missing input resolves to -1 = the system default
+    // input (a soft fallback in open(), never a hard failure).
+    const std::vector<DeviceInfo> inputs = {
+        { "Built-in Microphone", true },
+        { "USB Interface", false },
+    };
+    CHECK(resolve_device_index(inputs, "") == -1);                    // default input
+    CHECK(resolve_device_index(inputs, "Built-in Microphone") == 0);
+    CHECK(resolve_device_index(inputs, "USB Interface") == 1);
+    CHECK(resolve_device_index(inputs, "Line In") == -1);            // gone → default input
+
+    // Struct defaults: native rate (0), pinned period, fallback on, input OFF (playback-only by default).
     DevicePrefs p;
     CHECK(p.requested_name.empty());
     CHECK(p.sample_rate == 0u);
     CHECK(p.period_frames == 1024u);
     CHECK(p.fallback_to_default == true);
+    CHECK(p.enable_input == false);
+    CHECK(p.input_name.empty());
 
     DeviceStatus st;
     CHECK(st.open == false);
     CHECK(st.using_fallback == false);
     CHECK(st.actual_sample_rate == 0u);
+    CHECK(st.input_open == false);
+    CHECK(st.input_active_name.empty());
+    CHECK(st.input_latency_frames == 0u);
 
     return vivid::test::summary("test_audio_device_resolve");
 }

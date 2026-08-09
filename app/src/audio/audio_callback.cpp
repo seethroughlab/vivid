@@ -17,10 +17,24 @@ namespace { constexpr double kPi = 3.14159265358979323846; }
 // Real-time audio callback: render the hosted instrument's arpeggio (or a test
 // tone if no plugin), advance the transport, and publish a block RMS level.
 // device->pUserData is the shared App (never a Window).
-void audio_callback(ma_device* device, void* out, const void* /*in*/, ma_uint32 frames) {
+// `in` is non-null only when the device opened DUPLEX (ADR-0032 Phase D1 hardware input); it is
+// interleaved-stereo f32, `frames` long, at device->sampleRate.
+void audio_callback(ma_device* device, void* out, const void* in, ma_uint32 frames) {
     auto* a = static_cast<vivid::App*>(device->pUserData);
     auto* fout = static_cast<float*>(out);
     const double sr = device->sampleRate;
+
+    // ADR-0032 Phase D1: hardware input. `in` is live only on a duplex device. Publish a block-RMS
+    // input level for the diagnostics meter (left channel, matching the output meter below). The
+    // per-block input PCM will additionally be handed to a lock-free ring for the AudioInput source op
+    // in Phase D2 — this is that producer site.
+    if (in && a->transport) {
+        const float* fin = static_cast<const float*>(in);
+        double s = 0.0;
+        for (ma_uint32 i = 0; i < frames; ++i) { const float l = fin[i * 2]; s += static_cast<double>(l) * l; }
+        a->transport->input_level.store(
+            static_cast<float>(std::sqrt(s / (frames > 0 ? frames : 1))), std::memory_order_relaxed);
+    }
 
     // ADR-0031 §3: mark the realtime scope (gates in-session_process handoff-skip counting so the
     // offline bounce never ticks it) and time the whole callback for the over-budget counter.
