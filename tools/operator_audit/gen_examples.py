@@ -85,33 +85,37 @@ def find_output(v) -> int:
     raise RuntimeError("no Output node in a fresh session")
 
 
-def carry_package(pkg_dir: str, op_name: str, dst: str):
-    """Carry ONLY `op_name` from a (possibly multi-op) source package into the example folder as a
-    single-op project-local package: a minimal manifest + just that op's source + any vendor/ headers.
-    (A shared package like content-visual holds several ops; an example should carry only its own.)"""
+def carry_ops(op_names, dst: str):
+    """Carry EVERY moved-out op in `op_names` — the op under test AND any moved-out op the scaffold
+    wired in as a helper source (e.g. `InstanceGrid` is the canonical 'instances' source in
+    scaffolds.py) — into the example folder as ONE project-local package: a merged manifest + each op's
+    source + the union of their vendored header dirs. Without carrying the helpers, the saved example
+    opens with a missing-node warning for a moved-out op it references but doesn't ship."""
     import json
-    src_manifest = json.load(open(os.path.join(pkg_dir, "vivid-package.json")))
-    entry = next(o for o in src_manifest["operators"] if o["name"] == op_name)
-    # minimal single-op manifest (keep vendor deps — the vendored headers travel with it)
-    out = {"name": op_name, "version": src_manifest.get("version", "0.1.0"), "operators": [entry]}
-    if "dependencies" in src_manifest:
-        out["dependencies"] = src_manifest["dependencies"]
     os.makedirs(dst, exist_ok=True)
+    entries, vendor = [], {}                       # merged op entries; include-dir -> dep (deduped)
+    for name in sorted(op_names):
+        pkg_dir = PACKAGE_FOR[name]
+        mf = json.load(open(os.path.join(pkg_dir, "vivid-package.json")))
+        entry = next(o for o in mf["operators"] if o["name"] == name)
+        entries.append(entry)
+        shutil.copy2(os.path.join(pkg_dir, entry["source"]), os.path.join(dst, entry["source"]))
+        for dep in mf.get("dependencies", {}).get("vendor", []):
+            inc = dep.get("include")
+            if inc and inc not in vendor:
+                vendor[inc] = dep
+                if os.path.isdir(os.path.join(pkg_dir, inc)):
+                    shutil.copytree(os.path.join(pkg_dir, inc), os.path.join(dst, inc), dirs_exist_ok=True)
+    out = {"name": os.path.basename(dst) + "-ops", "version": "0.1.0", "operators": entries}
+    if vendor:
+        out["dependencies"] = {"vendor": list(vendor.values())}
     json.dump(out, open(os.path.join(dst, "vivid-package.json"), "w"), indent=2)
-    # just this op's source
-    shutil.copy2(os.path.join(pkg_dir, entry["source"]), os.path.join(dst, entry["source"]))
-    # vendored headers (shared across the package's ops) if declared
-    for dep in src_manifest.get("dependencies", {}).get("vendor", []):
-        inc = dep.get("include")
-        if inc and os.path.isdir(os.path.join(pkg_dir, inc)):
-            shutil.copytree(os.path.join(pkg_dir, inc), os.path.join(dst, inc), dirs_exist_ok=True)
 
 
 def gen_one(v, op) -> str:
     """Returns a status string prefixed with the outcome: saved / skip-* / error."""
     name = op["name"]
     dst = os.path.join(EXAMPLES, name)
-    pkg = PACKAGE_FOR.get(name)
 
     v.call("new_project")
     out = find_output(v)
@@ -137,9 +141,13 @@ def gen_one(v, op) -> str:
 
     os.makedirs(dst, exist_ok=True)
     v.save_project(dst)
-    if pkg:
-        carry_package(pkg, name, dst)
-    return f"saved   {name}{' (+pkg)' if pkg else ''}"
+    # Carry EVERY moved-out op present in the saved graph — the op under test AND any moved-out helper
+    # source the scaffold wired in — so the example never references an op it doesn't ship.
+    graph_ops = {(n.get("op_type") or n.get("type") or n.get("op")) for n in v.graph()["nodes"]}
+    carried = sorted(o for o in graph_ops if o in PACKAGE_FOR)
+    if carried:
+        carry_ops(carried, dst)
+    return f"saved   {name}{(' (+pkg: ' + ','.join(carried) + ')') if carried else ''}"
 
 
 def visual_ops(v):
