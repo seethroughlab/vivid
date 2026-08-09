@@ -7,6 +7,7 @@
 #include "audio/analysis_ring.h"   // ADR-0029: atomic-slot spectrum ring (MeterState::an_ring)
 #include "audio/node_ring_bank.h"  // ADR-0029: atomic-slot per-node capture rings (node_scope, node_an)
 #include "audio/held_note_set.h"   // ADR-0029: atomic-slot polyphonic held-note set (Track::held)
+#include "audio/audio_budgets.h"   // ADR-0031 §6: RT audio budgets (kDefaultMaxBlockFrames coupling)
 #include "audio/note_event_ring.h" // discrete note on/off events (Track::note_events) for one-shot visuals
 #include "midi/midi_clip.h"
 #include "audio/audio_clip.h"
@@ -77,6 +78,10 @@ constexpr int      kGraphMaxNodes = 64;
 // node index must fit in 64 bits. Raising kGraphMaxNodes past 64 needs a wider mask.
 static_assert(kGraphMaxNodes <= 64, "node_analyze_mask is a uint64_t bitset over node indices");
 constexpr uint32_t kGraphMaxBlock = 4096;
+// ADR-0031 §6: audio_budgets().max_block_frames defaults to kDefaultMaxBlockFrames and is what the RT
+// health counters treat as "oversized". Keep it pinned to this pool-stride authority at compile time.
+static_assert(kGraphMaxBlock == vivid::audio::kDefaultMaxBlockFrames,
+              "audio_budgets max block default must track kGraphMaxBlock (pool stride)");
 constexpr double   kTrackCaptureSeconds = 30.0;
 // ADR-0015: capacity of ONE note buffer. Matches audio_op_runtime's kMaxNotes — a block that
 // somehow carried more notes than this would be truncated rather than allocate on the RT thread.

@@ -42,6 +42,7 @@
 #include "audio/builtin_audio_ops.h"   // AO-1: native audio operators
 #include "audio/plugin_scan.h"         // background plugin classifier (instrument vs effect)
 #include "audio/plugin_watchdog.h"     // ADR-0045 Tier 2a: warm the RT plugin-watchdog config
+#include "audio/audio_budgets.h"       // ADR-0031 §6: warm the RT audio-budgets config
 #include "audio/plugin_hang_monitor.h" // ADR-0045 Tier 2a: the permanent-hang monitor thread
 #include "audio/plugin_probe.h"        // --probe-plugin subprocess entry point
 #include "audio/audio_callback.h"
@@ -337,6 +338,9 @@ int main(int argc, char** argv) {
         // ADR-0045 Tier 2a: warm the plugin-watchdog config (reads env once) on THIS thread, before the
         // RT audio thread starts — so the RT thread never triggers the getenv-backed lazy init.
         (void)vivid::audio::watchdog_config();
+        // ADR-0031 §6: warm the realtime audio-budgets config (reads env once) on THIS thread too,
+        // before the RT audio thread reads it via the health counters.
+        (void)vivid::audio::audio_budgets();
 #if defined(__APPLE__)
         // ADR-0052: hand the track-parallel audio worker pool the CoreAudio device's os_workgroup so
         // its RT worker threads share the audio I/O thread's scheduling deadline. miniaudio exposes the

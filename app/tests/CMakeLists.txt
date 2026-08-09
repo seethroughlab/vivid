@@ -38,6 +38,7 @@ vivid_add_test(test_param_widget)   # inspector widget classifier (type/hint/enu
 vivid_add_test(test_graph_camera)   # ADR-0023 #1/#3d shared graph camera (transform + pan/zoom/reset math)
 vivid_add_test(test_graph_selection)  # ADR-0033 P1 multi-select set + marquee-resolve (pure, header-only)
 vivid_add_test(test_chooser_rank)   # ADR-0046 add-node chooser demotes recipe ops below primitives
+vivid_add_test(test_audio_budgets)  # ADR-0031 §6 RT audio-budgets config (defaults + env override, pure)
 vivid_add_test(test_port_compat)    # ADR-0047 typed-port compatibility rule (visual connection validation)
 vivid_add_test(test_operator_ports) # operator_api/ports.h authoring helpers (port builders + param readers)
 vivid_add_test(test_editor_controls)  # ADR-0048 clip/sample editor control substrate hit geometry
