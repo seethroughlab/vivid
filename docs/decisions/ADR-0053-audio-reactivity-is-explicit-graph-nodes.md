@@ -1,6 +1,6 @@
 # ADR-0053: Audio Reactivity Is Authored as Explicit Graph Nodes
 
-Status: proposed
+Status: accepted (implemented — #288, Phase A + B; 2026-08-08)
 
 Date: 2026-08-07
 
