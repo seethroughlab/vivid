@@ -674,4 +674,16 @@ if(VIVID_BUILD_TESTS AND APPLE)
     target_link_libraries(test_node_solo PRIVATE ${_audio_engine_libs})
     add_test(NAME test_node_solo COMMAND test_node_solo)
     set_tests_properties(test_node_solo PROPERTIES LABELS "AUDIO_ENGINE")
+
+    # Aggregate build target for the non-TSan AUDIO_ENGINE test tier. The CI audio-engine-tests job
+    # builds THIS instead of the whole app (build-all was correct but rebuilt the GUI/GPU app it never
+    # runs — slow on every audio PR) and instead of a hand-curated --target list in the workflow YAML
+    # (a new test not added there went Not Run -> red, ADR-0031 #319). The list lives HERE, next to the
+    # tests — >>> ADD A NEW AUDIO_ENGINE TEST TO THIS DEPENDS LIST when you register one above. <<<
+    # test_session_concurrency is TSan-only (AUDIO_THREAD) and is built by the audio-thread-sanitizer job.
+    add_custom_target(audio_engine_tests DEPENDS
+        test_session_executor test_audio_bounce test_audio_health test_plugin_param_base
+        test_bridge_undo_stability test_clap_plugin_roundtrip test_clap_modulation
+        test_missing_instrument_cue test_node_bypass test_node_solo test_plugin_watchdog
+        test_plugin_hang_monitor)
 endif()

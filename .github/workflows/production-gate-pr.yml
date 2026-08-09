@@ -64,12 +64,12 @@ jobs:
         run: |
           cmake -S app -B app/build-audio -DVIVID_BUILD_APP=ON -DVIVID_BUILD_TESTS=ON \
                 -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          # ADR-0031 §5: build EVERYTHING the configure enables, then select by label — mirroring
-          # run_release_verification.sh (step 3/4). The old hand-curated --target list was a foot-gun:
-          # a new AUDIO_ENGINE test not added to it was registered but never built, so `ctest -L
-          # AUDIO_ENGINE` reported it Not Run and this job went red. Building all removes the list, so
-          # every AUDIO_ENGINE test (and any future one) is picked up automatically — no YAML edit needed.
-          cmake --build app/build-audio -j
+          # Build the AUDIO_ENGINE test tier via the CMake aggregate target (app/CMakeLists.txt:
+          # audio_engine_tests). This replaced two prior approaches: the original hand-curated --target
+          # list in THIS yaml (a foot-gun — a new test not added here went Not Run -> red, ADR-0031 #319)
+          # and a build-all (correct but rebuilt the whole GUI/GPU app this job never runs — slow on every
+          # audio PR). The aggregate is fast (only the test tier) AND the list lives next to the tests.
+          cmake --build app/build-audio -j --target audio_engine_tests
       - name: Run the audio-engine tests (native ops + real in-tree CLAP plugin)
         # --no-tests=error (Ph6 P2-01): a label that matches nothing is a FAILURE, not a silent pass.
         # test_session_concurrency is TSan-only and runs in the audio-thread-sanitizer job below.
