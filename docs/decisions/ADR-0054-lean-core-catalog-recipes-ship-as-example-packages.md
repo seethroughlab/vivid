@@ -1,47 +1,53 @@
-# ADR-0054: The Core Catalog Is a Lean Spine — Recipes and Single-Look Ops Ship as Example Packages
+# ADR-0054: Built-in Operators Teach Authoring — Keep the Core a Lean Substrate; Recipes and Single-Look Ops Ship as Editable Examples
 
-Status: proposed
+Status: accepted (implemented — Stage 1 #290; move-out #291/#292/#296/#297/#298; shader curation #299)
 
 Date: 2026-08-08
 
 ## Context
 
-Vivid ships **~54 bundled visual operators** plus 11 native audio ops. The visuals are all package
-dylibs built by `add_vivid_operator(...)` (`app/operators/CMakeLists.txt`), copied into the app
-bundle's `PlugIns/`, and `dlopen`'d at startup (`app/src/main.cpp:162`). Two packages dominate:
+**The premise.** Vivid's value is not its built-in operator catalog — it is the **core structures you
+build on and the operators you author yourself.** The built-ins exist mostly to *teach* that: to show
+what composing primitives (or writing a small operator) looks like, so a user copies, modifies, and
+authors rather than only wiring pre-made nodes. Because Vivid is **LLM-empowered**, "make your own
+operator" is a realistic default — not an expert-only path — so the product is the **plumbing that
+makes authoring frictionless**, and the catalog's job is to *invite* authoring, not substitute for it.
 
-- `core-visuals` — 24 ops (`bloom`, `feedback`, `image`, `switch`, `output`, `customshader`, the
-  mesh pipeline, `text`/`vectortext`, `video`, `webcam`, and the workflow nodes `emitter`,
-  `instancer`, `solids`, `shape_grid`, `lines`, `time_machine`, `cosine_palette`, …).
-- `vivid-3d` — 19 ops (the scene-graph spine `render_3d`/`scene_merge`, the reactivity spine
-  `reactive_master`/`reactive_track`/`audio_spectrum`, the lane primitives, plus content variety:
-  `instance_grid`, `instance_noise`, `deformer`, `particles3d`, `instances_from_signal`, …).
+That premise puts a bloated built-in catalog on the wrong side of the lesson. Today Vivid ships **~54
+bundled visual operators** plus 11 native audio ops — all package dylibs built by
+`add_vivid_operator(...)` (`app/operators/CMakeLists.txt`), copied into `PlugIns/`, and `dlopen`'d at
+startup. Two packages dominate: `core-visuals` (24 ops — the mesh pipeline, `image`/`switch`/`output`/
+`customshader`, and workflow nodes like `emitter`/`instancer`/`solids`/`shape_grid`/`lines`) and
+`vivid-3d` (19 ops — the scene-graph + reactivity spine + lane primitives, plus content variety like
+`particles3d`/`deformer`/`instances_from_signal`). A catalog that large reads as "here is a big set of
+finished effects to pick from" — which teaches the opposite of the premise.
 
-Alongside them, two packages already model the *other* posture — `example-visuals` (`Gradient`) and
+Alongside them, two packages already model the *right* posture — `example-visuals` (`Gradient`) and
 `example-audio` (`Drive`, `SineSynth`, `PulseGen`) — each a directory with a `vivid-package.json`
-manifest that is **compiled at install/load time** by the package compiler (`clang++` against
-`operator_api/`, `app/src/packages/package_compiler.cpp`), not pre-built into the bundle. The same
-machinery already supports **project-local** packages: `install_package(..., out_dir)` accepts a
-project folder, and `discover_packages(clones, ...)` scans them at launch
-(`app/src/packages/package_manager.h:29`, `app/src/main.cpp:261`).
+compiled at install/load by the package compiler (`app/src/packages/package_compiler.cpp`), not
+pre-built into the bundle. The same machinery supports **project-local** packages:
+`install_package(..., out_dir)` accepts a project folder, and `discover_packages(clones, ...)` scans
+them at launch — so an operator's *source* can ship inside the project that uses it, visible and
+editable. The plumbing for "not core — a compilable, editable example that lives with its project"
+exists and is proven. What is missing is a **policy** for which operators are core *substrate* versus
+that example surface.
 
-So the plumbing for "not core — ships as a compilable example, optionally inside the project folder"
-exists and is proven. What is missing is a **policy** for *which* operators belong in the pre-bundled
-core versus that example/project surface.
+Two things make this the right decision (and one non-goal):
 
-Three forces make this worth deciding now:
+1. **ADR-0046 already split the catalog in spirit.** First-class operators are *composable
+   primitives*; `Instancer`, `Emitter`, `Solids`, `InstancesFromSignal` are *recipes* — workflow-shaped
+   nodes that teach a single path. It demoted them in ranking but left them bundled. This ADR asks the
+   real question: should a recipe be *bundled core* at all, or is its right home an **editable example**
+   a user opens, reads, and forks into their own operator?
+2. **ADR-0039** commits to a package/registry future. A lean core with a healthy example-package
+   surface is the on-ramp to a world where users and the LLM routinely author and share operators —
+   dogfooded first on our own content ops.
 
-1. **Every core op has a standing cost.** ADR-0042 puts a per-operator Definition of Done on the
-   catalog (thumbnail, renders, params, perf), audited by `tools/operator_audit/audit.py`. Fifty-plus
-   bundled ops is fifty-plus DoD surfaces to keep green on every release.
-2. **ADR-0046 already split the catalog in spirit.** It declares first-class operators are
-   *composable primitives*, and that `Instancer`, `Emitter`, `Solids`, and `InstancesFromSignal` are
-   *recipes* — workflow-shaped nodes that teach a single path. It demoted them in ranking but left
-   them bundled. This ADR asks the next question: should a recipe be *bundled core* at all, or is its
-   right home an example package?
-3. **ADR-0039** already commits to a package/registry future ("community packages are coming soon").
-   A lean core with a healthy example-package surface is the on-ramp to that model, dogfooded by our
-   own content ops.
+**Non-goal — this is not about size or cost.** It is tempting to justify a lean core by the per-op
+Definition-of-Done upkeep (ADR-0042) or bundle weight; those are real but they are *side effects*, not
+the reason. The reason is **posture**: the core should read as *primitives + editable examples that
+invite you to author*, not a finished catalog that invites you to only consume. If leanness ever
+conflicts with keeping a genuinely reusable primitive discoverable, keep the primitive.
 
 **A hard constraint shapes the answer.** The install-time compiler links **only** `wgpu_native` and
 the `operator_api/` headers (`package_compiler.cpp:157`) — no project link step for extra libraries.
@@ -58,9 +64,12 @@ not coincidentally, are exactly where the recipe and single-look content nodes l
 
 ## Decision
 
-Define **core** as the smallest catalog that every project needs, and move eligible **recipes** and
-**single-look content ops** out of the bundled core into **example packages** (which may be dropped
-into a project folder). Adopt a two-part test.
+Define **core** as the lean **substrate every project builds on** — the composable primitives, the
+render/reactivity/audio spine, and the ops pinned there by dependencies — and move eligible **recipes**
+and **single-look content ops** out into **editable examples**: an installable package, or the
+operator's source carried *inside the project that uses it*. What remains bundled should read as
+*primitives to compose and examples to fork into your own operator*, not a finished catalog to consume.
+Adopt a two-part test.
 
 ### What stays in core (the spine)
 
@@ -177,9 +186,9 @@ pre-built spine everyone pays for**.
   *where they live*, not to remove them.
 
 - **Keep everything bundled; rely on chooser ranking (ADR-0046 as-is).** Rejected as insufficient for
-  *this* goal. Ranking makes recipes *quieter*; it does not make the core *leaner*. Every bundled op
-  still carries an ADR-0042 DoD, still ships in `PlugIns/`, still enlarges the surface a release must
-  keep green.
+  *this* goal. Ranking makes recipes *quieter*, but a demoted-but-bundled recipe is still a finished
+  node you *use* — not source you *open, read, and fork into your own operator*. It doesn't change the
+  lesson the catalog teaches, and it never puts the operator's source in front of the user.
 
 - **Ship the moved ops as example packages that are still copied into the bundle.** This is the
   weakest form and a reasonable *interim*: it removes them from the "core primitive" mental model and
@@ -193,9 +202,12 @@ pre-built spine everyone pays for**.
 
 ## Consequences
 
-- **Positive — leaner spine.** The core catalog shrinks to primitives + spine + dependency-pinned
-  ops. Fewer ADR-0042 DoD surfaces on the critical release path; the chooser's default surface is
-  building blocks, matching ADR-0046's intent structurally, not just by ranking.
+- **Positive — the catalog teaches authoring.** What remains reads as primitives to compose and
+  editable examples to fork; a moved-out op ships as **source a user opens, modifies, and makes their
+  own** — the encouraged path in an LLM-empowered tool, where authoring an operator is a realistic
+  default. The default surface is building blocks, matching ADR-0046's intent structurally, not just by
+  ranking. (It also shrinks the per-op ADR-0042 DoD surface on the release path — a welcome side
+  effect, not the point.)
 - **Positive — dogfooded package path.** Our own recipes become the reference example packages,
   exercising the exact install/project-local flow ADR-0039 will lean on for community packages.
 - **Positive — projects can carry their looks.** A project that wants `Particles3D` or a recipe can
