@@ -32,3 +32,5 @@ jobs:
         run: uv run mcp/tests/test_mcp_arg_parity.py
       - name: Vendored example/package snapshots are consistent (static)
         run: uv run tools/check_vendored_snapshots.py
+      - name: Module layering — no new upward includes (ADR-0043, static)
+        run: uv run tools/check_module_layering.py
