@@ -17,12 +17,6 @@
 #include <vector>
 
 namespace {
-VividPortDescriptor tex_port(const char* name, VividPortDirection dir) {
-    VividPortDescriptor p{};
-    p.name = name; p.type = VIVID_PORT_TEXTURE; p.direction = dir;
-    p.value_type = VIVID_VALUE_TEXTURE; p.multiplicity = VIVID_MULTIPLICITY_SCALAR;
-    return p;
-}
 const char* kImageWGSL = R"(
 @vertex fn vs_main(@builtin(vertex_index) vi: u32) -> FullscreenOutput {
     return fullscreenTriangle(vi, false);
@@ -67,7 +61,7 @@ struct ImageOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     void collect_params(std::vector<vivid::ParamBase*>& o) override { o.push_back(&path); }
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
-        o.push_back(tex_port("texture", VIVID_PORT_OUTPUT));
+        o.push_back(vivid::texture_output());
     }
 
     ~ImageOp() override {
