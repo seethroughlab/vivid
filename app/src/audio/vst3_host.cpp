@@ -11,6 +11,7 @@
 #include "audio/sampler_op.h"                          // ADR-0049: SamplerInfo/SamplerSlice (read API)
 #include "audio/audio_graph.h"                        // AG-0: per-track audio signal graph (ADR-0012)
 #include "audio/plugin_hang_monitor.h"                 // ADR-0045 Tier 2a: the in-flight beacon (PluginInFlight)
+#include "audio/audio_health.h"                        // ADR-0031 §3: RT health counters (note_handoff_skip)
 #include "audio/clap_host.h"                           // CLAP plugin hosting (ClapHandle, clap_run, clap_load_plugin)
 #include "audio/plugin_catalog.h"                     // A2: PluginFormat (kFmtVST3 / kFmtCLAP)
 #include "audio/vst3_presets.h"                         // VST3 preset discovery/load (.vstpreset + Serum/Pigments adapters)
@@ -2310,7 +2311,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             s->tracks_view = s->tracks_pub;
             s->tracks_gen_seen = s->tracks_gen.load(std::memory_order_acquire);
             s->tracks_mtx.unlock();
-        }
+        } else vivid::audio::health::note_handoff_skip();   // ADR-0031 §3: contention skip (kept stale)
     }
     if (s->tracks_view.empty()) return false;
     s->render_list.clear();   // ADR-0022 P1b: rebuilt each block; the master node sums it
@@ -2322,7 +2323,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             s->xctl_view.swap(s->xctl_ho);
             s->xctl_gen_seen = s->xctl_gen.load(std::memory_order_acquire);
             s->xctl_mtx.unlock();
-        }
+        } else vivid::audio::health::note_handoff_skip();   // ADR-0031 §3: contention skip (kept stale)
     }
     // ADR-0022 P2b.4: same handoff for the resolved cross-track AUDIO edges.
     if (s->xaudio_gen.load(std::memory_order_acquire) != s->xaudio_gen_seen) {
@@ -2330,7 +2331,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             s->xaudio_view.swap(s->xaudio_ho);
             s->xaudio_gen_seen = s->xaudio_gen.load(std::memory_order_acquire);
             s->xaudio_mtx.unlock();
-        }
+        } else vivid::audio::health::note_handoff_skip();   // ADR-0031 §3: contention skip (kept stale)
     }
     // ADR-0022 P2b.5: same handoff for the resolved cross-track NOTE edges.
     if (s->xnote_gen.load(std::memory_order_acquire) != s->xnote_gen_seen) {
@@ -2338,7 +2339,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             s->xnote_view.swap(s->xnote_ho);
             s->xnote_gen_seen = s->xnote_gen.load(std::memory_order_acquire);
             s->xnote_mtx.unlock();
-        }
+        } else vivid::audio::health::note_handoff_skip();   // ADR-0031 §3: contention skip (kept stale)
     }
 
     const uint32_t bpb = beats_per_bar ? beats_per_bar : 4;
@@ -2367,7 +2368,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             std::swap(t.gok, t.gok_ho);
             t.ggen_seen = t.ggen.load(std::memory_order_acquire);
             t.gmtx.unlock();
-        }
+        } else vivid::audio::health::note_handoff_skip();   // ADR-0031 §3: contention skip (kept stale)
     }
 
     // ADR-0022 P2a.1b: the modulator PRE-PASS — run every track's modulators into the session control
@@ -2432,7 +2433,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 t.sched.invalidate_active_src();
                 t.edit_gen_seen = t.edit_gen.load(std::memory_order_acquire);
                 t.edit_mtx.unlock();
-            }
+            } else vivid::audio::health::note_handoff_skip();   // ADR-0031 §3: contention skip (kept stale)
         }
         // Apply pending FX-chain edits (copy the UI's pointer list into the working
         // one; reserved capacity avoids a realloc). Only runs after an add/remove.
@@ -2441,7 +2442,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 t.effects = t.effects_edit;
                 t.fx_gen_seen = t.fx_gen.load(std::memory_order_acquire);
                 t.fx_mtx.unlock();
-            }
+            } else vivid::audio::health::note_handoff_skip();   // ADR-0031 §3: contention skip (kept stale)
         }
         // Apply pending native audio-operator edits (instrument slot + effect chain).
         if (t.op_fx_gen.load(std::memory_order_acquire) != t.op_fx_gen_seen) {
@@ -2450,7 +2451,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 t.op_instrument = t.op_instrument_edit;
                 t.op_fx_gen_seen = t.op_fx_gen.load(std::memory_order_acquire);
                 t.op_fx_mtx.unlock();
-            }
+            } else vivid::audio::health::note_handoff_skip();   // ADR-0031 §3: contention skip (kept stale)
         }
         if (t.is_audio) {
             // Quantized scene switch (a transport action the AudioClip graph node reads each block).
