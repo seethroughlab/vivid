@@ -51,14 +51,16 @@ add_vivid_operator(vivid_step_bars steps/step_bars.cpp)   # UI-4b: exports a cus
 add_vivid_operator(vivid_image packages/core-visuals/image.cpp)
 add_vivid_operator(vivid_switch packages/core-visuals/switch.cpp)
 # P8 migration: built-ins moved out of builtin_ops.cpp into packages (Bucket A).
-add_vivid_operator(vivid_shape_grid packages/core-visuals/shape_grid.cpp)
+# ShapeGrid moved OUT of the lean core (ADR-0054) — but not into a shared package: it is used only by
+# specific committed demos (geometry, surge-lead), which now each CARRY their own customizable copy as
+# a project-local operator (compiled on load_project). Same for Lines below (geometry, grid).
 add_vivid_operator(vivid_notes packages/core-visuals/notes_op.cpp)
 # Notes draws a live signal thumbnail via the shared 2D lane-thumb raster (header-only, in vivid-3d).
 target_include_directories(vivid_notes PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/packages/vivid-3d)
 # Emitter/Instancer/Solids (ADR-0046 recipes) moved OUT of the lean core (ADR-0054) into the
 # installable `packages/content-visual` package — pure operator_api + webgpu, no vendoring. No
 # committed demo uses them (the dev-only .py-generated demos are gitignored).
-add_vivid_operator(vivid_lines packages/core-visuals/lines.cpp)
+# Lines moved OUT too — carried per-demo (geometry, grid) as a project-local operator (see ShapeGrid above).
 add_vivid_operator(vivid_mesh packages/core-visuals/mesh.cpp)
 # Model: a glTF/GLB loader — needs nlohmann/json (stb_image + webgpu come free with add_vivid_operator).
 add_vivid_operator(vivid_model packages/core-visuals/model.cpp)

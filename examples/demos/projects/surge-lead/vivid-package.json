@@ -1,0 +1,7 @@
+{
+  "name": "surge-lead-ops",
+  "version": "0.1.0",
+  "operators": [
+    { "name": "ShapeGrid", "kind": "gpu_visual", "source": "shape_grid.cpp" }
+  ]
+}
