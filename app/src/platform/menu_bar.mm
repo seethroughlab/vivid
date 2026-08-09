@@ -35,6 +35,11 @@ namespace vivid { namespace platform { static MenuActions g_actions; } }
 - (void)exportVideo:(id)sender    { (void)sender; if (vivid::platform::g_actions.export_video)    vivid::platform::g_actions.export_video(); }
 - (void)exportAudio:(id)sender    { (void)sender; if (vivid::platform::g_actions.export_audio)    vivid::platform::g_actions.export_audio(); }
 - (void)toggleReduceMotion:(id)sender { (void)sender; if (vivid::platform::g_actions.toggle_reduce_motion) vivid::platform::g_actions.toggle_reduce_motion(); }
+- (void)selectAudioDevice:(NSMenuItem*)sender {
+    NSString* n = [sender representedObject];   // nil/"" for the "System Default" item
+    if (vivid::platform::g_actions.select_audio_device)
+        vivid::platform::g_actions.select_audio_device(std::string(n ? [n UTF8String] : ""));
+}
 @end
 
 static VividMenuTarget* g_target = nil;      // kept alive for the app lifetime (intentional)
@@ -44,6 +49,7 @@ static NSMenuItem*      g_undoItem = nil;    // Edit > Undo (title updated by se
 static NSMenuItem*      g_redoItem = nil;    // Edit > Redo
 static NSMenuItem*      g_exportVideoItem = nil;  // File > Export Video (title flips via set_export_video_recording)
 static NSMenuItem*      g_reduceMotionItem = nil; // View > Reduce Motion (checkmark via set_reduce_motion_checked)
+static NSMenu*          g_audioMenu = nil;        // View > Audio Output submenu (ADR-0032 Phase A)
 
 namespace vivid { namespace platform {
 
@@ -139,6 +145,13 @@ void install_menu_bar(const MenuActions& actions) {
         g_reduceMotionItem = [[NSMenuItem alloc] initWithTitle:@"Reduce Motion (flash limit)"
                                                         action:@selector(toggleReduceMotion:) keyEquivalent:@""];
         [g_reduceMotionItem setTarget:g_target]; [viewMenu addItem:g_reduceMotionItem]; [g_reduceMotionItem release];
+        // ADR-0032 Phase A: the audio OUTPUT device picker. Populated by set_audio_devices() after launch
+        // (and refreshed on a switch); each item hot-swaps the live device via select_audio_device.
+        [viewMenu addItem:[NSMenuItem separatorItem]];
+        g_audioMenu = [[NSMenu alloc] initWithTitle:@"Audio Output"];
+        [g_audioMenu setAutoenablesItems:NO];
+        NSMenuItem* audioItem = [[NSMenuItem alloc] initWithTitle:@"Audio Output" action:nil keyEquivalent:@""];
+        [audioItem setSubmenu:g_audioMenu]; [viewMenu addItem:audioItem]; [audioItem release];
         NSMenuItem* viewItem = [[NSMenuItem alloc] initWithTitle:@"View" action:nil keyEquivalent:@""];
         [viewItem setSubmenu:viewMenu];
         [mainMenu insertItem:viewItem atIndex:insertAt + 3];   // right after Eval
@@ -200,6 +213,32 @@ void set_recent_projects(const std::vector<std::string>& paths) {
             [it setTarget:g_target];
             [it setRepresentedObject:full];
             [g_recentMenu addItem:it]; [it release];
+        }
+    }
+}
+
+void set_audio_devices(const std::vector<std::string>& names, const std::string& active_name) {
+    if (!g_audioMenu) return;
+    @autoreleasepool {
+        [g_audioMenu removeAllItems];
+        // "System Default" follows the OS default device (persists an empty requested name). It is an
+        // action, not a state — the checkmark below marks whichever concrete device is actually active.
+        NSMenuItem* def = [[NSMenuItem alloc] initWithTitle:@"System Default"
+                                                     action:@selector(selectAudioDevice:) keyEquivalent:@""];
+        [def setTarget:g_target]; [def setRepresentedObject:@""];
+        [g_audioMenu addItem:def]; [def release];
+        if (names.empty()) {
+            NSMenuItem* none = [[NSMenuItem alloc] initWithTitle:@"No Output Devices" action:nil keyEquivalent:@""];
+            [none setEnabled:NO]; [g_audioMenu addItem:none]; [none release];
+            return;
+        }
+        [g_audioMenu addItem:[NSMenuItem separatorItem]];
+        for (const auto& n : names) {
+            NSString* nm = [NSString stringWithUTF8String:n.c_str()];
+            NSMenuItem* it = [[NSMenuItem alloc] initWithTitle:nm action:@selector(selectAudioDevice:) keyEquivalent:@""];
+            [it setTarget:g_target]; [it setRepresentedObject:nm];
+            if (n == active_name) [it setState:NSControlStateValueOn];   // the live device
+            [g_audioMenu addItem:it]; [it release];
         }
     }
 }

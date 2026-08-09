@@ -31,6 +31,14 @@ struct HealthSnapshot {
     // stays a pure comparison (no audio_budgets link in the App-free rollup). 0 = don't raise on bailouts.
     uint32_t    audio_bailout_error_threshold = 0;
 
+    // ADR-0032 Phase A — the active audio OUTPUT device (read-only display; not a severity input beyond
+    // the fallback flag). `audio_device_open` false => headless / no device.
+    bool        audio_device_open = false;
+    std::string audio_device_name;             // "" when opened the system default and its name is unknown
+    uint32_t    audio_device_sr = 0;           // the rate the callback runs at
+    uint32_t    audio_device_period = 0;       // requested buffer size
+    bool        audio_device_fallback = false; // the saved device was gone → opened default instead
+
     // gpu
     bool        gpu_ok = true;                   // device not lost
     unsigned    gpu_errors = 0;                  // uncaptured WebGPU errors since start

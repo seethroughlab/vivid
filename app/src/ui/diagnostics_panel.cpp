@@ -59,6 +59,16 @@ void draw_diagnostics_panel(Renderer2D& ui, const HealthSnapshot& h, const App& 
     std::snprintf(buf, sizeof buf, "%s   \xC2\xB7   v%s", h.control_running ? "control server up" : "control server DOWN",
                   h.app_version.c_str());
     line("Runtime", buf, h.control_running ? sty.body : sty.gold);
+    // ADR-0032 Phase A: the active audio OUTPUT device — name · rate · buffer. Gold when a saved device
+    // was gone and the default was substituted; dim when audio is unavailable (headless).
+    if (!h.audio_device_open) {
+        line("Audio device", "unavailable", sty.dim);
+    } else {
+        const char* dn = h.audio_device_name.empty() ? "System Default" : h.audio_device_name.c_str();
+        std::snprintf(buf, sizeof buf, "%.48s  \xC2\xB7  %u Hz  \xC2\xB7  %u buf%s", dn,
+                      h.audio_device_sr, h.audio_device_period, h.audio_device_fallback ? "  (fallback)" : "");
+        line("Audio device", buf, h.audio_device_fallback ? sty.gold : sty.body);
+    }
     // ADR-0031 §4: realtime audio health — recent bail/over-budget/skip deltas + callback-µs gauges.
     std::snprintf(buf, sizeof buf, "%llu bail, %llu over-budget, %llu skips  \xC2\xB7  %uus (max %u)",
                   static_cast<unsigned long long>(h.audio_render_bailouts),
