@@ -34,6 +34,7 @@ namespace vivid { namespace platform { static MenuActions g_actions; } }
 - (void)evaluateOutput:(id)sender { (void)sender; if (vivid::platform::g_actions.evaluate_output) vivid::platform::g_actions.evaluate_output(); }
 - (void)exportVideo:(id)sender    { (void)sender; if (vivid::platform::g_actions.export_video)    vivid::platform::g_actions.export_video(); }
 - (void)exportAudio:(id)sender    { (void)sender; if (vivid::platform::g_actions.export_audio)    vivid::platform::g_actions.export_audio(); }
+- (void)exportAv:(id)sender       { (void)sender; if (vivid::platform::g_actions.export_av)       vivid::platform::g_actions.export_av(); }
 - (void)toggleReduceMotion:(id)sender { (void)sender; if (vivid::platform::g_actions.toggle_reduce_motion) vivid::platform::g_actions.toggle_reduce_motion(); }
 - (void)selectAudioDevice:(NSMenuItem*)sender {
     NSString* n = [sender representedObject];   // nil/"" for the "System Default" item
@@ -100,6 +101,9 @@ void install_menu_bar(const MenuActions& actions) {
 
         // Export Audio — offline master-mix bounce to a .wav (ADR-0032).
         it = [[NSMenuItem alloc] initWithTitle:@"Export Audio…" action:@selector(exportAudio:) keyEquivalent:@""];
+        [it setTarget:g_target]; [fileMenu addItem:it]; [it release];
+        // Export Video (Deterministic) — offline AV render locked to a synthetic clock (ADR-0032 Phase C).
+        it = [[NSMenuItem alloc] initWithTitle:@"Export Video (Deterministic)…" action:@selector(exportAv:) keyEquivalent:@""];
         [it setTarget:g_target]; [fileMenu addItem:it]; [it release];
 
         NSMenuItem* fileItem = [[NSMenuItem alloc] initWithTitle:@"File" action:nil keyEquivalent:@""];

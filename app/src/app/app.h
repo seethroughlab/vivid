@@ -9,6 +9,7 @@
 #include "app/log.h"               // ADR-0019 (E4): the leveled logger (owned here)
 #include "app/project_state.h"
 #include "audio/audio_bounce.h"    // ADR-0032: BounceResult (File > Export Audio / export_audio MCP)
+#include "app/av_bounce.h"         // ADR-0032 Phase C: AvBounceResult (deterministic offline AV export)
 #include "gpu/op_runtime.h"        // OpRegistry (operator-based visuals)
 #include "gpu/operator_loader.h"   // OperatorLoader (dlopen'd operators; owned here)
 #include "gpu/shader_library.h"    // ShaderLibrary (ADR-0016: a shader FILE is an operator)
@@ -87,6 +88,8 @@ struct App {
     VisualEval          visual_eval; // reactive-visuals loop: multimodal Gemini judge (async jobs)
 
     BounceResult last_audio_export;   // ADR-0032: result of the most recent offline WAV bounce (empty path => none)
+    AvBounceResult last_av_export;    // ADR-0032 Phase C: result of the most recent offline AV export (empty => none)
+    void* av_export = nullptr;        // ADR-0032 Phase C: active offline AV export job (opaque; owned by av_bounce_app.cpp)
 
     bool recovered_unsaved = false;   // ADR-0018: a launch-time autosave recovery ran; mark dirty post-baseline
     bool reduce_motion = false;       // UX Ph4 F1: app-level accessibility toggle (persisted in settings.json)

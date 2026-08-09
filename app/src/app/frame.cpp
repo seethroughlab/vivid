@@ -792,9 +792,24 @@ void run_frame_loop(App& app, Window& win) {
             // current), but do NOT present yet — the output is blitted over the graph further down,
             // because the preview floats above the canvas.
             clear_pass(frame.encoder, frame.view, 0.045f, 0.05f, 0.06f);  // static dark backdrop
-            vgraph.set_metronome(static_cast<float>(transport.bpm.load(std::memory_order_relaxed)),
-                                 transport.beats_per_bar.load(std::memory_order_relaxed), beats);
-            vgraph.run_chain(frame.encoder, tsec);
+            // ADR-0032 Phase C: while an offline AV export is running, STEP IT instead of the live render.
+            // The export's own run_chain (synthetic clock, its own encoder) owns the shared VisualGraph
+            // state this tick — a live run_chain would clobber it — and the RT it leaves is shown as a live
+            // render preview. One export frame per tick keeps the UI responsive + shows progress.
+            if (vivid::av_export_active(app)) {
+                if (vivid::av_export_tick(app) == vivid::AvTick::Done) {
+                    const auto& r = app.last_av_export;
+                    char m[256];
+                    std::snprintf(m, sizeof m, "AV exported: %s (%llu frames, %.1fs%s)", r.path.c_str(),
+                                  static_cast<unsigned long long>(r.frames), r.duration_sec,
+                                  r.clipped ? ", audio CLIPPED" : "");
+                    vivid::ui::push_toast(win.toasts, vivid::LogLevel::Info, m, glfwGetTime(), 10.0);
+                }
+            } else {
+                vgraph.set_metronome(static_cast<float>(transport.bpm.load(std::memory_order_relaxed)),
+                                     transport.beats_per_bar.load(std::memory_order_relaxed), beats);
+                vgraph.run_chain(frame.encoder, tsec);
+            }
             gpu.gpu_mark(frame.encoder, "visuals");   // GPU timing: end of the output render (vs. the editor UI that follows)
             win.preview.out_aspect = vgraph.rt_aspect();   // cache: drives the preview's height + hit-rects
             win.preview.clamp(win.visuals_panel());        // ...so a new aspect can resize it out of bounds

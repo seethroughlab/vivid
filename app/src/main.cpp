@@ -476,6 +476,22 @@ int main(int argc, char** argv) {
                     "Export failed: " + err, glfwGetTime(), 8.0);
             }
         };
+        // ADR-0032 Phase C: File > Export Video (Deterministic) — offline AV render locked to a synthetic
+        // clock. ASYNC: kick off the job (the frame loop renders it a frame at a time and toasts on done).
+        ma.export_av = [&] {
+            const std::string path = vivid::platform::save_video_dialog("vivid-export.mp4");
+            if (path.empty()) return;   // cancelled
+            vivid::AvBounceRequest req; req.path = path; req.seconds = 30.0; req.fps = 60.0;
+            std::string err;
+            if (vivid::av_export_start(app, req, &err)) {
+                vivid::ui::push_toast(win.toasts, vivid::LogLevel::Info,
+                    "Rendering deterministic video… (audio pauses during export)", glfwGetTime(), 6.0);
+            } else {
+                VLOG_ERR(app, "AV export failed to start: %s", err.c_str());
+                vivid::ui::push_toast(win.toasts, vivid::LogLevel::Warning,
+                    "AV export failed: " + err, glfwGetTime(), 8.0);
+            }
+        };
         // UX Ph4 F1: View > Reduce Motion. Flip the app setting, push it to the pipeline, persist it,
         // sync the menu checkmark, and toast the new state so the change is legible.
         ma.toggle_reduce_motion = [&] {
