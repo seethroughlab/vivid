@@ -1,12 +1,31 @@
-# Operator examples
+# Operator examples — operators you own
 
-Minimal, one-per-operator example projects — "here's operator X in isolation" — as opposed to the
-polished demo compositions in `examples/demos/projects/`. Each is a folder project you can open with
-`load_project` (and, once wired, **File › Open Example › Operators**).
+These aren't just demos of built-in nodes. **Each is an operator you can open, read, edit, and fork
+into your own** — the whole point of Vivid. The built-ins exist to *teach* authoring, not to be the
+value; the value is composing the core primitives and writing your own operators (which, in an
+LLM-empowered tool, is a realistic default). See **ADR-0054**.
 
-These are **generated**, not hand-authored, by `tools/operator_audit/gen_examples.py`, which reuses the
-ADR-0042 audit scaffold (`scaffolds.build_scaffold` — it already builds a minimal renderable graph for
-any op from its ports) and saves it as a folder project instead of capturing a preview.
+One minimal project per operator — "here's operator X in isolation" — as opposed to the polished demo
+compositions in `examples/demos/projects/`. Open one via **File › Open Example › Operators** (or
+`load_project`).
+
+**When an example ships its operator's source** (the moved-out ops carry their `.cpp`/`.wgsl` right in
+the folder), opening it toasts a hint, and you can **right-click the node → *Open source in editor*** to
+read/edit it, or ***Fork & edit*** a built-in to start your own. Editing the source and reloading
+recompiles it — that loop *is* how you author. Copy an example folder as the starting point for a new
+operator.
+
+## Regenerate (the graphs, not the source)
+
+The example *graphs* are **generated** by `tools/operator_audit/gen_examples.py`, which reuses the
+ADR-0042 audit scaffold (`scaffolds.build_scaffold`) and saves a minimal renderable graph instead of
+capturing a preview. The carried operator *source* is the real thing — edit it freely.
+
+```bash
+# launch a lean app instance by DIRECT binary path with a control port:
+VIVID_PORT=9877 app/build/vivid.app/Contents/MacOS/vivid &
+uv run tools/operator_audit/gen_examples.py Render3D InstanceNoise   # or any op names
+```
 
 ## Regenerate
 

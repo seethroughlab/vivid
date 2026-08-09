@@ -3,6 +3,7 @@
 #include "app/app.h"                     // App: project + op_registry + op_loaders
 #include "persist.h"                     // save_session / load_session
 #include "packages/package_manager.h"    // install_package
+#include "packages/package_manifest.h"   // parse_package_manifest (op name -> source, source-forward)
 #include "gpu/operator_scan.h"           // load_and_register_operator
 #include "gpu/visual_graph.h"            // VisualGraph::set_asset_dir
 #include "ui/node_graph.h"               // chain_load_begin / reset_nodes
@@ -28,6 +29,7 @@ void retire_project_operators(App& app) {
         }),
         app.op_loaders.end());
     app.project_operator_types.clear();
+    app.project_operator_sources.clear();   // source-forward map is project-scoped too
     app.file_drops.rebuild(app.op_loaders);
 }
 
@@ -84,6 +86,11 @@ LoadResult load(App& app, ui::NodeGraph& graph, int& win_w, int& win_h, float& s
         std::error_code ec;
         if (fs::exists(fs::path(path) / "vivid-package.json", ec)) {
             r.had_package = true;
+            // op name -> its .cpp inside the project, so a registered project-local op resolves to
+            // "Open source in editor" on right-click (source-forward, ADR-0054).
+            std::map<std::string, std::string> op_src;
+            { PackageManifest mf = parse_package_manifest(path);
+              for (const auto& op : mf.operators) op_src[op.name] = (fs::path(path) / op.source).string(); }
             PackageInstallResult ir = install_package(path, path);  // compile INTO the project folder
             if (!ir.ok) { r.error = "package: " + ir.error; return r; }
             r.package_name = ir.name;
@@ -94,7 +101,11 @@ LoadResult load(App& app, ui::NodeGraph& graph, int& win_w, int& win_h, float& s
                 } else {
                     const std::string reg = load_and_register_operator(ci.dylib_path, app.op_registry, app.op_loaders);
                     o.registered = !reg.empty();
-                    if (o.registered) { ++r.registered; app.project_operator_types.insert(reg); }
+                    if (o.registered) {
+                        ++r.registered; app.project_operator_types.insert(reg);
+                        auto it = op_src.find(ci.op_name);
+                        if (it != op_src.end()) app.project_operator_sources[reg] = it->second;
+                    }
                     else o.note = "compiled but not registered (name already in use)";
                 }
                 r.ops.push_back(std::move(o));
