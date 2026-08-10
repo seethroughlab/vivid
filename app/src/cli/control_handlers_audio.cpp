@@ -91,6 +91,24 @@ void register_audio_handlers(Handlers& handlers_) {
         P::session_set_launch_quantum_bars(c.session, bars);
         json r = ok(); r["bars"] = P::session_launch_quantum_bars(c.session); return r;
     };
+    // ADR-0032 E1 (#4): opt-in playback plugin-delay compensation. {enabled} toggles it; the reply
+    // reports the resulting state — L_max applied (samples + ms), how many tracks are exactly compensated
+    // vs left live (unknown-latency / live-input / cross-track), and whether any latency was clamped.
+    // Persisted per project (persist.cpp). Off by default so a live set stays low-latency.
+    handlers_["set_pdc"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        P::session_set_pdc_enabled(c.session, b.value("enabled", false));
+        const int sr = P::session_sample_rate(c.session);
+        const int applied = P::session_pdc_applied_delay(c.session);
+        json r = ok();
+        r["enabled"]            = P::session_pdc_enabled(c.session);
+        r["applied_delay"]      = applied;
+        r["applied_delay_ms"]   = sr > 0 ? applied * 1000.0 / sr : 0.0;
+        r["tracks_compensated"] = P::session_pdc_tracks_compensated(c.session);
+        r["tracks_live"]        = P::session_pdc_tracks_live(c.session);
+        r["clamped"]            = P::session_pdc_clamped(c.session) != 0;
+        return r;
+    };
     // Session music-theory context: root note + scale NAME (e.g. "C"/"minor"). The theory vocabulary
     // + validation live in the Python bridge (mcp/theory.py, ADR-0046); the core just persists the two
     // strings so the key/scale round-trips with the project. set_music_key is a classified edit

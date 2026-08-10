@@ -3,6 +3,7 @@
 // (and headless-testable). Only the app target compiles this file.
 #include "app/runtime_health.h"
 #include "app/app.h"
+#include "transport.h"             // ADR-0032 Phase D1: read transport->input_level for the meter
 #include "gpu/gpu_context.h"
 #include "gpu/visual_graph.h"
 #include "ui/node_graph.h"
@@ -67,13 +68,25 @@ HealthSnapshot collect_health(const App& app) {
         s.audio_device_period   = d.actual_period;
         s.audio_device_fallback = d.using_fallback;
         s.audio_device_latency_frames = d.output_latency_frames;
+        // ADR-0032 Phase D1: the input (capture) side of a duplex device.
+        s.audio_input_open           = d.input_open;
+        s.audio_input_name           = d.input_active_name;
+        s.audio_input_latency_frames = d.input_latency_frames;
     }
+    if (app.transport)
+        s.audio_input_level = app.transport->input_level.load(std::memory_order_relaxed);
     // ADR-0032 Phase B: plugin-reported latency (read once at activate; native ops contribute 0).
     if (app.session) {
         s.audio_max_plugin_latency_samples =
             static_cast<uint32_t>(vivid::session::session_max_plugin_latency_samples(app.session));
         s.audio_plugin_latency_unknown =
             vivid::session::session_any_plugin_latency_unknown(app.session) != 0;
+        // ADR-0032 Phase E1: PDC state (published by pdc_recompute).
+        s.pdc_enabled              = vivid::session::session_pdc_enabled(app.session);
+        s.pdc_applied_delay_samples = static_cast<uint32_t>(vivid::session::session_pdc_applied_delay(app.session));
+        s.pdc_tracks_compensated   = vivid::session::session_pdc_tracks_compensated(app.session);
+        s.pdc_tracks_live          = vivid::session::session_pdc_tracks_live(app.session);
+        s.pdc_clamped              = vivid::session::session_pdc_clamped(app.session) != 0;
     }
     return s;
 }
