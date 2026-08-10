@@ -921,6 +921,27 @@ def audio_export_status() -> dict:
     return _post("audio_export_status", {})
 
 
+@mcp.tool
+def export_av(path: str, seconds: float = 0.0, bars: float = 0.0, fps: float = 60.0, block: int = 0) -> dict:
+    """Kick off a DETERMINISTIC offline audiovisual export (H.264 video + AAC audio .mp4/.mov). ASYNC:
+    returns {started} immediately, then the render runs a frame per app tick — poll `av_export_status`
+    until `active` is false. Unlike the realtime `export_video` capture, this locks the visual graph to the
+    SAME synthetic clock as the offline audio render, so the result is reproducible and sample-accurately
+    synced. `path` must be absolute and end in .mp4/.mov. Length = `seconds` (primary) OR `bars` (from
+    tempo). `fps` = video frame rate. Renders the CURRENT arming from beat 0 (not a scene timeline); the
+    metronome click is absent (as with the WAV bounce). Live audio pauses during the render. A heavy graph
+    at high res can take minutes for a long clip — that's offline rendering."""
+    return _post("export_av", {"path": path, "seconds": seconds, "bars": bars, "fps": fps, "block": block})
+
+
+@mcp.tool
+def av_export_status() -> dict:
+    """Poll the offline AV export (export_av). Returns {active, frames_done, total_frames, done, path,
+    frames, audio_frames, duration_sec, peak, clipped}. `active` = a render is in flight (watch
+    frames_done/total_frames for progress); `done` = a completed export exists (the last-result fields)."""
+    return _post("av_export_status", {})
+
+
 # ---------------- audio output device (ADR-0032 Phase A) ----------------
 @mcp.tool
 def get_audio_devices() -> dict:

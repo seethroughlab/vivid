@@ -214,6 +214,8 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/input_dock.cpp
     src/app/input_clipgrid.cpp
     src/app/frame.cpp
+    src/app/av_bounce.cpp
+    src/app/av_bounce_app.cpp
     src/app/editor_window.cpp
     src/app/project_io.cpp
     src/app/file_actions.cpp
@@ -311,6 +313,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/cli/control_handlers_video_export.cpp
     src/cli/control_handlers_audio_export.cpp
     src/cli/control_handlers_audio_io.cpp
+    src/cli/control_handlers_av_export.cpp
     src/cli/edit_methods.cpp
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp
@@ -576,6 +579,14 @@ if(VIVID_BUILD_TESTS AND APPLE)
     target_link_libraries(test_audio_bounce PRIVATE ${_audio_engine_libs})
     add_test(NAME test_audio_bounce COMMAND test_audio_bounce)
     set_tests_properties(test_audio_bounce PROPERTIES LABELS "AUDIO_ENGINE")
+
+    # ADR-0032 Phase C: the PURE offline AV loop (av_bounce.cpp) — sample-accurate PTS/clock math driven by
+    # mock frame source + mock exporter, no GPU/AVFoundation. src/app/av_bounce.cpp is GPU-free by design.
+    add_executable(test_av_bounce tests/test_av_bounce.cpp src/app/av_bounce.cpp ${_audio_engine_srcs})
+    target_include_directories(test_av_bounce PRIVATE src src/audio src/gpu tests)
+    target_link_libraries(test_av_bounce PRIVATE ${_audio_engine_libs})
+    add_test(NAME test_av_bounce COMMAND test_av_bounce)
+    set_tests_properties(test_av_bounce PROPERTIES LABELS "AUDIO_ENGINE")
 
     # ADR-0031 §3: RT audio-health counters + the RtScope handoff-skip gate. Unit-tests the gate +
     # over-budget accounting, then drives session_process off-RT to confirm the wired-in skip counters
