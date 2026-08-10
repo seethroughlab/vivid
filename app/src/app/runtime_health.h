@@ -41,6 +41,12 @@ struct HealthSnapshot {
     uint32_t    audio_device_latency_frames = 0;  // ADR-0032 Phase B: backend output buffering (0 = unknown)
     uint32_t    audio_max_plugin_latency_samples = 0;  // max per-track summed plugin latency (reporting only)
     bool        audio_plugin_latency_unknown = false;  // a loaded CLAP plugin doesn't report latency
+    // ADR-0032 Phase E1: playback plugin-delay compensation state (published by pdc_recompute).
+    bool        pdc_enabled = false;
+    uint32_t    pdc_applied_delay_samples = 0;         // L_max added to the compensated mix (0 = off/none)
+    int         pdc_tracks_compensated = 0;
+    int         pdc_tracks_live = 0;                   // left live (unknown-latency / live-input / cross-track)
+    bool        pdc_clamped = false;                   // a track's latency exceeded the cap (best-effort align)
 
     // ADR-0032 Phase D1 — the input (capture) side of a duplex device. `audio_input_open` false =>
     // playback-only (the default). `audio_input_level` is the live capture RMS (0..1) for the meter.

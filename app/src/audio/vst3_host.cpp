@@ -65,6 +65,10 @@ static void republish_xctl(Session* s);         // ADR-0022 P2a.2 (defined below
 static void republish_xaudio(Session* s);        // ADR-0022 P2b.4 (defined below)
 static void republish_xnote(Session* s);         // ADR-0022 P2b.5 (defined below)
 
+// ADR-0032 E1.1: (re)classify tracks and publish per-track PDC delays. Defined below (needs
+// track_plugin_latency_sum); forward-declared so the membership/graph-edit republish sites can call it.
+static void pdc_recompute(Session* s);
+
 // Republish the current track membership for the audio thread (UI/main thread only).
 // Call after any add/remove; the audio thread picks it up on its next block.
 static void rebuild_track_view(Session* s) {
@@ -75,10 +79,13 @@ static void rebuild_track_view(Session* s) {
     republish_xctl(s);
     republish_xaudio(s);
     republish_xnote(s);
-    std::lock_guard<std::mutex> lk(s->tracks_mtx);
-    s->tracks_pub.clear();
-    for (auto& tp : s->tracks) { tp->session = s; s->tracks_pub.push_back(tp.get()); }   // P2a.2 back-pointer
-    s->tracks_gen.fetch_add(1, std::memory_order_release);
+    {
+        std::lock_guard<std::mutex> lk(s->tracks_mtx);
+        s->tracks_pub.clear();
+        for (auto& tp : s->tracks) { tp->session = s; s->tracks_pub.push_back(tp.get()); }   // P2a.2 back-pointer
+        s->tracks_gen.fetch_add(1, std::memory_order_release);
+    }
+    pdc_recompute(s);   // ADR-0032 E1.1: membership changed → reclassify + republish PDC delays
 }
 
 static Vst3Handle* load_effect(const std::string& path, uint32_t sr, Vst3HostApp* host) {
@@ -343,6 +350,9 @@ static bool republish_track_graph(Track* t) {
     republish_xctl(t->session);
     republish_xaudio(t->session);
     republish_xnote(t->session);
+    // ADR-0032 E1.1: a plugin add/remove/bind or a routing edit can change a track's latency or its
+    // linear/live classification → recompute PDC. (t->session is null only during initial construction.)
+    if (t->session) pdc_recompute(t->session);
     return true;
 }
 
@@ -1074,14 +1084,26 @@ static void finalize_track(Track& t, float* slotL, bool valid, uint32_t frames, 
 // computes the master meters — bit-identical to the master block it replaces.
 static void master_mix(Session* s, float* out, uint32_t frames, uint32_t sample_rate) {
     Master& m = s->master;
+    // ADR-0032 E1: plugin-delay compensation. When enabled, a track with a published pdc_delay is summed
+    // `delay` samples late via its per-track ring, aligning it to the highest-latency track. Off, or
+    // delay<=0 (the max-latency track / an uncompensated track), takes the byte-identical fast path.
+    const bool pdc = s->pdc_enabled.load(std::memory_order_relaxed);
     for (size_t slot = 0; slot < s->render_list.size(); ++slot) {
+        Track* t = s->render_list[slot];
         // ADR-0022 P1b.4: apply the track's solo/mute multiplier here (0 silences it in the mix; its
         // own meter, computed in finalize, stays pre-mute). At the default 1.0 this is an IEEE
         // identity, so an all-audible session sums bit-identically to before.
-        const float scale = s->render_list[slot]->mix_scale.load(std::memory_order_relaxed);
+        const float scale = t->mix_scale.load(std::memory_order_relaxed);
         const float* L = s->track_out_pool.data() + slot * 2 * kGraphMaxBlock;
         const float* R = L + kGraphMaxBlock;
-        for (uint32_t i = 0; i < frames; ++i) { out[2 * i] += scale * L[i]; out[2 * i + 1] += scale * R[i]; }
+        const int D = pdc ? t->pdc_delay.load(std::memory_order_relaxed) : 0;
+        if (D <= 0 || t->pdc_ring.empty()) {
+            for (uint32_t i = 0; i < frames; ++i) { out[2 * i] += scale * L[i]; out[2 * i + 1] += scale * R[i]; }
+        } else {
+            t->pdc_w = vivid::audio::pdc_delay_accumulate(
+                t->pdc_ring.data(), t->pdc_ring.data() + vivid::audio::kPdcRingCap,
+                t->pdc_w, static_cast<uint32_t>(D), L, R, out, scale, frames);
+        }
     }
     const float mg = m.gain.load(std::memory_order_relaxed);
     const float sr = static_cast<float>(sample_rate > 0 ? sample_rate : 48000);
@@ -1246,6 +1268,105 @@ int session_any_plugin_latency_unknown(Session* s) {
     for (const auto& tp : s->tracks) track_plugin_latency_sum(*tp, &unk);
     return unk ? 1 : 0;
 }
+
+// ADR-0032 E1.1: a track is LIVE-INPUT-SOURCED if any of its native source ops is the AudioInput op —
+// such a track carries live hardware monitoring and must never be delayed (that would add latency to what
+// the performer hears). Detected by the stable op TYPE ("AudioInput"), not the display name. Main thread.
+static bool track_is_live_input_sourced(const Track& t) {
+    auto is_ai = [](const vivid::AudioOp* op) {
+        const char* ty = op ? vivid::audio_op_type(op) : nullptr;
+        return ty && std::strcmp(ty, "AudioInput") == 0;
+    };
+    if (is_ai(t.op_instrument_edit)) return true;
+    for (const auto* op : t.op_sources_edit) if (is_ai(op)) return true;
+    return false;
+}
+
+// ADR-0032 E1.1: a track is CROSS-TRACK-AUDIO involved if its stable id is an endpoint of any xaudio
+// edge — its output is routed/consumed off the track_out seam, so delaying track_out would desync it.
+// Left live in E1. Main thread (reads the UI-authoritative xaudio_edges).
+static bool track_in_xaudio(const Session* s, const Track& t) {
+    for (const XAudioEdge& e : s->xaudio_edges)
+        if (e.src_track_id == t.id || e.dst_track_id == t.id) return true;
+    return false;
+}
+
+// ADR-0032 E1.1: (re)classify every track and publish its compensating delay. Main/UI thread only.
+// COMPENSABLE = every plugin reports latency (not unknown) AND the path is linear (no cross-track audio)
+// AND it is not a live-input monitor AND within the cap. L_max is taken over the compensable set ONLY, so
+// an unknown/live track never over-delays the rest (the movie-A/V invariant). Off, or no compensable
+// track, publishes all-zero delays (master_mix then takes the byte-identical fast path).
+static void pdc_recompute(Session* s) {
+    if (!s) return;
+    const size_t n = s->tracks.size();
+    const bool on = s->pdc_enabled.load(std::memory_order_relaxed);
+    const int  cap = static_cast<int>(vivid::audio::kPdcMaxComp);
+
+    std::vector<int>           lat(n, 0);
+    std::vector<unsigned char> comp(n, 0);   // 0/1 per track; unsigned char so .data() feeds the pure helper
+    std::vector<int>           delays(n, 0);
+    bool clamped = false;
+    if (on) {
+        for (size_t i = 0; i < n; ++i) {
+            Track& t = *s->tracks[i];
+            bool unk = false;
+            int l = track_plugin_latency_sum(t, &unk);
+            const bool compensable = !unk && l >= 0
+                                   && !track_is_live_input_sourced(t)
+                                   && !track_in_xaudio(s, t);
+            if (compensable && l > cap) { l = cap; clamped = true; }
+            lat[i]  = l;
+            comp[i] = compensable ? 1 : 0;
+        }
+        const int lmax = vivid::audio::pdc_compute_delays(lat.data(), comp.data(),
+                                                          static_cast<int>(n), delays.data());
+        s->pdc_applied_delay.store(lmax, std::memory_order_relaxed);
+    } else {
+        s->pdc_applied_delay.store(0, std::memory_order_relaxed);
+    }
+
+    int n_comp = 0, n_live = 0;
+    for (size_t i = 0; i < n; ++i) {
+        Track& t = *s->tracks[i];
+        const int D = delays[i];
+        if (on) { if (comp[i]) n_comp++; else n_live++; }
+        // Allocate the ring on first non-zero use, on THIS (main) thread, while pdc_delay is still 0 so the
+        // audio thread is provably not indexing it. Allocate-once: never resized afterwards.
+        if (D > 0 && t.pdc_ring.empty())
+            t.pdc_ring.assign(2 * static_cast<size_t>(vivid::audio::kPdcRingCap), 0.f);
+        t.pdc_delay.store(D, std::memory_order_relaxed);
+    }
+    s->pdc_tracks_comp.store(n_comp, std::memory_order_relaxed);
+    s->pdc_tracks_live.store(n_live, std::memory_order_relaxed);
+    s->pdc_clamped.store(clamped, std::memory_order_relaxed);
+}
+
+// ADR-0032 E1: playback plugin-delay compensation. Main/UI thread.
+bool session_pdc_enabled(Session* s) { return s && s->pdc_enabled.load(std::memory_order_relaxed); }
+void session_set_pdc_enabled(Session* s, bool enabled) {
+    if (!s) return;
+    s->pdc_enabled.store(enabled, std::memory_order_relaxed);
+    pdc_recompute(s);   // (re)classify + publish per-track delays (or clear them all when disabling)
+}
+void session_pdc_set_track_delay(Session* s, int track, int delay_samples) {
+    if (!s || track < 0 || track >= static_cast<int>(s->tracks.size())) return;
+    Track& t = *s->tracks[static_cast<size_t>(track)];
+    int d = delay_samples < 0 ? 0 : delay_samples;
+    if (d > static_cast<int>(vivid::audio::kPdcMaxComp)) d = static_cast<int>(vivid::audio::kPdcMaxComp);
+    // Allocate the ring on first non-zero use, on THIS (main) thread, while pdc_delay is still 0 so the
+    // audio thread is provably not indexing it. Allocate-once: never resized after.
+    if (d > 0 && t.pdc_ring.empty()) t.pdc_ring.assign(2 * static_cast<size_t>(vivid::audio::kPdcRingCap), 0.f);
+    t.pdc_delay.store(d, std::memory_order_relaxed);
+}
+int session_pdc_applied_delay(Session* s)      { return s ? s->pdc_applied_delay.load(std::memory_order_relaxed) : 0; }
+int session_pdc_tracks_compensated(Session* s) { return s ? s->pdc_tracks_comp.load(std::memory_order_relaxed) : 0; }
+int session_pdc_tracks_live(Session* s)        { return s ? s->pdc_tracks_live.load(std::memory_order_relaxed) : 0; }
+int session_pdc_clamped(Session* s)            { return s && s->pdc_clamped.load(std::memory_order_relaxed) ? 1 : 0; }
+int session_pdc_track_delay(Session* s, int track) {
+    if (!s || track < 0 || track >= static_cast<int>(s->tracks.size())) return 0;
+    return s->tracks[static_cast<size_t>(track)]->pdc_delay.load(std::memory_order_relaxed);
+}
+int session_sample_rate(Session* s)            { return s ? static_cast<int>(s->sample_rate) : 0; }
 int  session_scene_count(Session* s) { return s ? s->scenes : 0; }
 
 // ADR-0022 P3.3: the default display name for scene i — A..Z, then "Scene N". UI-thread only.

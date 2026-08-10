@@ -89,6 +89,16 @@ void draw_diagnostics_panel(Renderer2D& ui, const HealthSnapshot& h, const App& 
                       in_name, in_lat, h.audio_input_level);
         line("Audio input", buf, sty.body);
     }
+    // ADR-0032 E1: plugin-delay compensation — shown only when ON (opt-in), so a default session stays
+    // clean. Reports the added latency + how many tracks are aligned vs left live; gold if clamped.
+    if (h.pdc_enabled) {
+        const double pdc_ms = h.audio_device_sr
+            ? h.pdc_applied_delay_samples * 1000.0 / h.audio_device_sr : 0.0;
+        std::snprintf(buf, sizeof buf, "on  \xC2\xB7  +%.0f ms  \xC2\xB7  %d compensated  \xC2\xB7  %d live%s",
+                      pdc_ms, h.pdc_tracks_compensated, h.pdc_tracks_live,
+                      h.pdc_clamped ? "  \xC2\xB7  clamped" : "");
+        line("PDC", buf, h.pdc_clamped ? sty.gold : sty.body);
+    }
     // ADR-0031 §4: realtime audio health — recent bail/over-budget/skip deltas + callback-µs gauges.
     std::snprintf(buf, sizeof buf, "%llu bail, %llu over-budget, %llu skips  \xC2\xB7  %uus (max %u)",
                   static_cast<unsigned long long>(h.audio_render_bailouts),

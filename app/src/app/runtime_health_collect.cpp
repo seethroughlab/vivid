@@ -81,6 +81,12 @@ HealthSnapshot collect_health(const App& app) {
             static_cast<uint32_t>(vivid::session::session_max_plugin_latency_samples(app.session));
         s.audio_plugin_latency_unknown =
             vivid::session::session_any_plugin_latency_unknown(app.session) != 0;
+        // ADR-0032 Phase E1: PDC state (published by pdc_recompute).
+        s.pdc_enabled              = vivid::session::session_pdc_enabled(app.session);
+        s.pdc_applied_delay_samples = static_cast<uint32_t>(vivid::session::session_pdc_applied_delay(app.session));
+        s.pdc_tracks_compensated   = vivid::session::session_pdc_tracks_compensated(app.session);
+        s.pdc_tracks_live          = vivid::session::session_pdc_tracks_live(app.session);
+        s.pdc_clamped              = vivid::session::session_pdc_clamped(app.session) != 0;
     }
     return s;
 }

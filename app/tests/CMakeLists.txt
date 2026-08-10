@@ -43,6 +43,8 @@ vivid_add_test(test_audio_device_resolve)  # ADR-0032 Phase A device-name resolu
 vivid_add_test(test_audio_input_bus)       # ADR-0032 Phase D2 hardware-input SPSC ring (pure, RT-safe)
 target_sources(test_audio_input_bus PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_input_bus.cpp)
+vivid_add_test(test_pdc_ring)              # ADR-0032 Phase E1 PDC delay-ring math (pure, header-only)
+vivid_add_test(test_pdc_classify)          # ADR-0032 Phase E1.1 PDC alignment/classification math (pure)
 vivid_add_test(test_port_compat)    # ADR-0047 typed-port compatibility rule (visual connection validation)
 vivid_add_test(test_operator_ports) # operator_api/ports.h authoring helpers (port builders + param readers)
 vivid_add_test(test_editor_controls)  # ADR-0048 clip/sample editor control substrate hit geometry
