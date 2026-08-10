@@ -10,8 +10,8 @@ namespace {
 class NullAVExporter final : public AVExporter {
 public:
     bool start(const std::string&, uint32_t, uint32_t, double, uint32_t) override { return false; }
-    bool write_video_frame(const uint8_t*, uint32_t, uint32_t) override { return false; }
-    bool write_audio_samples(const float*, uint64_t, uint32_t) override { return false; }
+    bool write_video_frame(const uint8_t*, uint32_t, uint32_t, double = -1.0) override { return false; }
+    bool write_audio_samples(const float*, uint64_t, uint32_t, double = -1.0) override { return false; }
     bool finish() override { return false; }
     bool is_recording() const override { return false; }
     const std::string& output_path() const override { static const std::string e; return e; }
