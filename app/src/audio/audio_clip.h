@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <cstring>
 #include <cmath>
 #include <algorithm>
 
@@ -21,6 +22,14 @@ enum class WarpMode { Complex = 0, Beats = 1, Repitch = 2 };
 
 struct AudioClip {
     std::vector<float> L, R;       // PCM (R empty => mono)
+    // UI waveform-preview cache backing peak_bins(): the peak-per-bin scan is O(N) over L, and the
+    // session view called it EVERY frame per audio clip cell — an O(N) full-sample scan per frame that
+    // dominated the render frame time. Cache the bins; invalidated when the requested bin count or the
+    // sample data (size/ptr) changes. UI-thread only — the audio thread never reads/writes these, so no
+    // synchronization is needed.
+    mutable std::vector<float> wave_bins_;
+    mutable size_t             wave_src_n_   = 0;         // L.size() when the cache was built
+    mutable const float*       wave_src_ptr_ = nullptr;   // L.data() when the cache was built
     double             loop_beats = 4.0;
     double             src_bpm = 0.0;   // source tempo (0 = generated / unknown)
     uint32_t           sr = 0;          // sample rate the PCM is at (device rate; for fades/ms)
@@ -44,6 +53,28 @@ struct AudioClip {
     std::vector<audio_clip_ed::TransientPoint> transients;
 
     bool ok() const { return !L.empty(); }
+
+    // Peak-per-bin waveform for UI previews (writes n peaks to out, returns n; 0 if empty/invalid).
+    // Cached: the scan is O(N) over L, so it recomputes ONLY when the bin count or the sample data
+    // (size/ptr, i.e. a reload) changes — never per frame. UI-thread only (the wave_* fields are
+    // mutable and never touched by the audio thread). Shared by every clip-preview draw path.
+    int peak_bins(float* out, int n) const {
+        if (L.empty() || !out || n <= 0) return 0;
+        const size_t N = L.size();
+        if (static_cast<int>(wave_bins_.size()) != n || wave_src_n_ != N || wave_src_ptr_ != L.data()) {
+            wave_bins_.assign(static_cast<size_t>(n), 0.f);
+            for (int i = 0; i < n; ++i) {
+                const size_t a = N * static_cast<size_t>(i) / n, b = N * static_cast<size_t>(i + 1) / n;
+                float peak = 0.f;
+                for (size_t j = a; j < b && j < N; ++j) peak = std::max(peak, std::fabs(L[j]));
+                wave_bins_[static_cast<size_t>(i)] = peak;
+            }
+            wave_src_n_   = N;
+            wave_src_ptr_ = L.data();
+        }
+        std::memcpy(out, wave_bins_.data(), static_cast<size_t>(n) * sizeof(float));
+        return n;
+    }
 
     // Write `frames` of audio into outL/outR for a block that starts at
     // `block_start_beats` and advances `delta` beats (phase-locked loop). The played

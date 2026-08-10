@@ -22,6 +22,7 @@ inline constexpr const char* kNotFound      = "not_found";       // named/identi
 inline constexpr const char* kIoError       = "io_error";        // file read/write failed
 inline constexpr const char* kInternal      = "internal";        // unexpected handler failure
 inline constexpr const char* kTimeout       = "timeout";         // main loop didn't drain in time
+inline constexpr const char* kConflict      = "conflict";        // optimistic-concurrency: state changed under a read-modify-write
 inline constexpr const char* kInvalidDescriptor = "invalid_descriptor";  // operator descriptor failed validation
 }  // namespace code
 

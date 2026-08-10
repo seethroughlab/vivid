@@ -11,6 +11,23 @@ been purely additive (new fields appended to the END of the context structs, or 
 appended at the numeric end), so an older dylib still finds every field it reads at the same offset.
 `VIVID_OPERATOR_ABI_MIN_LOADABLE` is the floor; bump it only for a change that is *not* additive.
 
+## Non-additive breakage classes (floor-bump events)
+
+A `MIN_LOADABLE` bump **orphans every operator dylib built below the new floor** — those files
+stop loading until rebuilt. Treat it as a user-communicated migration, never a silent change.
+Two known classes force this:
+
+- **Reordering / removing fields, or narrowing the load check to an exact match.** Covered by the
+  append-only rule above.
+- **A webgpu-native handle-layout change** (ADR-0044). `VividGpuContext`
+  (`app/src/operator_api/gpu_operator.h`) embeds `<webgpu/webgpu.h>` handles by value
+  (`WGPUDevice/Queue/CommandEncoder/Texture/TextureView/TextureFormat/Buffer`). A WGPU header ABI
+  break, or migrating off webgpu-native to another WebGPU backend (e.g. Dawn), changes those
+  layouts and is therefore a floor-bump event — **not** an additive `VERSION` bump — even though no
+  Vivid struct field moved. The coupling is accepted as intentional; if a backend migration is ever
+  seriously considered, evaluate a Vivid-owned GPU-handle indirection *first* so the change can be
+  absorbed additively.
+
 | Version | Change |
 |--------:|--------|
 | **v17** | ADR-0050. `VividThumbnailContext` gains `purpose` (`VividPreviewPurpose`), a host→op field appended at the END telling the operator WHY it is drawing a compact preview: `SESSION_CELL` / `AUDIO_NODE` (populated), plus reserved `VISUAL_NODE` / `CATALOG`. Additive — the host always fills it (a zero-init context is `DEFAULT`), and an operator built before v17 never reads it. No new export; the hook stays `vivid_draw_thumbnail`. Purpose is orthogonal to operator role (v16) and is not a layout hint (aspect/size are already in `surface_width`/`surface_height`). |

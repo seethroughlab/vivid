@@ -105,6 +105,27 @@ Every torn read is now well-defined (whole values from adjacent frames, never a 
 TSan-clean. Add a new such channel the same way — atomic array elements, not a lock — with a `THREAD`
 race test.
 
+## Realtime health counters (ADR-0031)
+
+The audio thread also **reports** when realtime went wrong, so the failure is visible instead of merely
+avoided. `audio/audio_health.h` (`vivid::audio::health`) holds process-global relaxed-atomic counters —
+callbacks, render bail-to-silence (oversized blocks), over-budget callbacks, skipped `try_lock` handoffs —
+plus last/max callback-µs gauges. Single-writer (the RT callback, and the `session_process` it calls on
+that thread) / multi-reader (the frame thread). Relaxed atomics are enough: these are monotonic tallies,
+not a synchronization channel, so every writer path stays lock/alloc/syscall-free, exactly like the
+snapshot channels above. Callback timing uses `std::chrono::steady_clock` (`mach_absolute_time` — no
+syscall), the same RT-safe timing the plugin watchdog already relies on.
+
+The one subtlety is the **RT-scope gate**: the offline bounce calls `session_process` directly, off the RT
+thread, so the in-`session_process` handoff-skip counter is gated on a `thread_local` set only by
+`audio_callback` (`health::RtScope` / `in_rt()`). A bounce never pollutes the realtime-contention metric.
+`collect_health` (`app/runtime_health_collect.cpp`) rolls per-frame deltas into `HealthSnapshot`, so the
+counters surface through the existing ADR-0019 health path (diagnostics panel + `get_health`) with no new
+surface. Budgets (max block, callback multiplier, bailout Error threshold) live in `audio/audio_budgets.h`,
+read once and warmed on the main thread like `watchdog_config()`. Add a new RT counter the same way —
+a relaxed atomic in `audio_health.h`, incremented on the RT thread — and if it needs a threshold, put it
+in `audio_budgets.h` so tests and health reporting read the same value.
+
 ## ThreadSanitizer is a gate, not a ritual (ADR-0029)
 
 TSan only finds a race on code it actually **runs with threads racing**, so the model is verified by tests
@@ -120,9 +141,11 @@ that drive a channel from two threads, not by reading the code.
   engine is macOS + heavy-dep, so this runs on the self-hosted runner: it TSan-builds only
   `test_session_concurrency` (`-DVIVID_SANITIZE_THREAD=ON`, app-ON for the audio deps) and runs
   `ctest -L AUDIO_THREAD` under `halt_on_error=1`. That harness races a **render thread** (looping
-  `session_process`) against a single **UI/mutator thread** (add/remove tracks, edit clips, mutate the
-  graph, set params, launch scenes, and read the published snapshots) — the actual gen-counter / `try_lock`
-  / SPSC / atomic-ring surface. No third-party suppression list is needed: `session_process` starts no
+  `session_process`, in `health::RtScope` so it plays the RT role) against a single **UI/mutator thread**
+  (add/remove tracks, edit clips, mutate the graph, set params, launch scenes, connect/disconnect audio +
+  control graph edges, remove nodes, and read the published snapshots) — the actual gen-counter / `try_lock`
+  / SPSC / atomic-ring surface (ADR-0031 §1 added the graph-edge churn). No third-party suppression list is
+  needed: `session_process` starts no
   device / GPU / CLAP thread, so the only threads are the harness's two. `test_session_executor` (its
   single-threaded sibling — one thread, so TSan finds nothing) stays on the plain `audio-engine-tests` job.
   A surviving report is triaged per decision #4 (real → harden; benign → a named suppression + a table row).

@@ -11,6 +11,7 @@
 #include "audio/sampler_op.h"                          // ADR-0049: SamplerInfo/SamplerSlice (read API)
 #include "audio/audio_graph.h"                        // AG-0: per-track audio signal graph (ADR-0012)
 #include "audio/plugin_hang_monitor.h"                 // ADR-0045 Tier 2a: the in-flight beacon (PluginInFlight)
+#include "audio/audio_health.h"                        // ADR-0031 §3: RT health counters (note_handoff_skip)
 #include "audio/clap_host.h"                           // CLAP plugin hosting (ClapHandle, clap_run, clap_load_plugin)
 #include "audio/plugin_catalog.h"                     // A2: PluginFormat (kFmtVST3 / kFmtCLAP)
 #include "audio/vst3_presets.h"                         // VST3 preset discovery/load (.vstpreset + Serum/Pigments adapters)
@@ -28,6 +29,10 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
+#include <cctype>
+#if defined(__APPLE__)
+#include <os/workgroup.h>   // ADR-0052: aux RT audio worker threads join the CoreAudio device workgroup
+#endif
 #include <cctype>
 #include <algorithm>
 #include <utility>
@@ -60,6 +65,10 @@ static void republish_xctl(Session* s);         // ADR-0022 P2a.2 (defined below
 static void republish_xaudio(Session* s);        // ADR-0022 P2b.4 (defined below)
 static void republish_xnote(Session* s);         // ADR-0022 P2b.5 (defined below)
 
+// ADR-0032 E1.1: (re)classify tracks and publish per-track PDC delays. Defined below (needs
+// track_plugin_latency_sum); forward-declared so the membership/graph-edit republish sites can call it.
+static void pdc_recompute(Session* s);
+
 // Republish the current track membership for the audio thread (UI/main thread only).
 // Call after any add/remove; the audio thread picks it up on its next block.
 static void rebuild_track_view(Session* s) {
@@ -70,10 +79,13 @@ static void rebuild_track_view(Session* s) {
     republish_xctl(s);
     republish_xaudio(s);
     republish_xnote(s);
-    std::lock_guard<std::mutex> lk(s->tracks_mtx);
-    s->tracks_pub.clear();
-    for (auto& tp : s->tracks) { tp->session = s; s->tracks_pub.push_back(tp.get()); }   // P2a.2 back-pointer
-    s->tracks_gen.fetch_add(1, std::memory_order_release);
+    {
+        std::lock_guard<std::mutex> lk(s->tracks_mtx);
+        s->tracks_pub.clear();
+        for (auto& tp : s->tracks) { tp->session = s; s->tracks_pub.push_back(tp.get()); }   // P2a.2 back-pointer
+        s->tracks_gen.fetch_add(1, std::memory_order_release);
+    }
+    pdc_recompute(s);   // ADR-0032 E1.1: membership changed → reclassify + republish PDC delays
 }
 
 static Vst3Handle* load_effect(const std::string& path, uint32_t sr, Vst3HostApp* host) {
@@ -338,6 +350,9 @@ static bool republish_track_graph(Track* t) {
     republish_xctl(t->session);
     republish_xaudio(t->session);
     republish_xnote(t->session);
+    // ADR-0032 E1.1: a plugin add/remove/bind or a routing edit can change a track's latency or its
+    // linear/live classification → recompute PDC. (t->session is null only during initial construction.)
+    if (t->session) pdc_recompute(t->session);
     return true;
 }
 
@@ -1069,14 +1084,26 @@ static void finalize_track(Track& t, float* slotL, bool valid, uint32_t frames, 
 // computes the master meters — bit-identical to the master block it replaces.
 static void master_mix(Session* s, float* out, uint32_t frames, uint32_t sample_rate) {
     Master& m = s->master;
+    // ADR-0032 E1: plugin-delay compensation. When enabled, a track with a published pdc_delay is summed
+    // `delay` samples late via its per-track ring, aligning it to the highest-latency track. Off, or
+    // delay<=0 (the max-latency track / an uncompensated track), takes the byte-identical fast path.
+    const bool pdc = s->pdc_enabled.load(std::memory_order_relaxed);
     for (size_t slot = 0; slot < s->render_list.size(); ++slot) {
+        Track* t = s->render_list[slot];
         // ADR-0022 P1b.4: apply the track's solo/mute multiplier here (0 silences it in the mix; its
         // own meter, computed in finalize, stays pre-mute). At the default 1.0 this is an IEEE
         // identity, so an all-audible session sums bit-identically to before.
-        const float scale = s->render_list[slot]->mix_scale.load(std::memory_order_relaxed);
+        const float scale = t->mix_scale.load(std::memory_order_relaxed);
         const float* L = s->track_out_pool.data() + slot * 2 * kGraphMaxBlock;
         const float* R = L + kGraphMaxBlock;
-        for (uint32_t i = 0; i < frames; ++i) { out[2 * i] += scale * L[i]; out[2 * i + 1] += scale * R[i]; }
+        const int D = pdc ? t->pdc_delay.load(std::memory_order_relaxed) : 0;
+        if (D <= 0 || t->pdc_ring.empty()) {
+            for (uint32_t i = 0; i < frames; ++i) { out[2 * i] += scale * L[i]; out[2 * i + 1] += scale * R[i]; }
+        } else {
+            t->pdc_w = vivid::audio::pdc_delay_accumulate(
+                t->pdc_ring.data(), t->pdc_ring.data() + vivid::audio::kPdcRingCap,
+                t->pdc_w, static_cast<uint32_t>(D), L, R, out, scale, frames);
+        }
     }
     const float mg = m.gain.load(std::memory_order_relaxed);
     const float sr = static_cast<float>(sample_rate > 0 ? sample_rate : 48000);
@@ -1199,6 +1226,147 @@ Session* session_create(uint32_t sample_rate) {
 }
 
 int  session_track_count(Session* s) { return s ? static_cast<int>(s->tracks.size()) : 0; }
+
+// ADR-0032 Phase B: sum the plugin-reported latency over ALL of a track's plugin handles. Two storage
+// models coexist — the ADR-0033 graph slots (pslots) AND the legacy linear chain (handle/effects +
+// clap_inst/clap_effects, populated by set_track_clap_instrument etc.). Iterate both and dedup by handle
+// pointer (a plugin lives in one model, but dedup is cheap insurance against a mirror). VST3 always
+// reports (getLatencySamples); a CLAP without clap.latency is "unknown" (counts 0, flags unknown).
+static int track_plugin_latency_sum(const Track& t, bool* any_unknown) {
+    int sum = 0;
+    std::vector<const void*> seen;
+    auto first_time = [&](const void* p) {
+        if (!p || std::find(seen.begin(), seen.end(), p) != seen.end()) return false;
+        seen.push_back(p); return true;
+    };
+    auto add_vst3 = [&](const Vst3Handle* h) { if (first_time(h) && h->latency_samples > 0) sum += h->latency_samples; };
+    auto add_clap = [&](const ClapHandle* h) {
+        if (!first_time(h)) return;
+        sum += static_cast<int>(h->latency_samples);
+        if (!h->latency_known && any_unknown) *any_unknown = true;
+    };
+    for (const auto& ps : t.pslots) { if (ps.dead) continue; add_vst3(ps.vst3); add_clap(ps.clap); }
+    add_vst3(t.handle);
+    for (const auto* fx : t.effects) add_vst3(fx);
+    add_clap(t.clap_inst);
+    for (const auto* fx : t.clap_effects) add_clap(fx);
+    return sum;
+}
+int session_track_latency_samples(Session* s, int track) {
+    if (!s || track < 0 || track >= static_cast<int>(s->tracks.size())) return 0;
+    return track_plugin_latency_sum(*s->tracks[static_cast<size_t>(track)], nullptr);
+}
+int session_max_plugin_latency_samples(Session* s) {
+    if (!s) return 0;
+    int mx = 0;
+    for (const auto& tp : s->tracks) { const int l = track_plugin_latency_sum(*tp, nullptr); if (l > mx) mx = l; }
+    return mx;
+}
+int session_any_plugin_latency_unknown(Session* s) {
+    if (!s) return 0;
+    bool unk = false;
+    for (const auto& tp : s->tracks) track_plugin_latency_sum(*tp, &unk);
+    return unk ? 1 : 0;
+}
+
+// ADR-0032 E1.1: a track is LIVE-INPUT-SOURCED if any of its native source ops is the AudioInput op —
+// such a track carries live hardware monitoring and must never be delayed (that would add latency to what
+// the performer hears). Detected by the stable op TYPE ("AudioInput"), not the display name. Main thread.
+static bool track_is_live_input_sourced(const Track& t) {
+    auto is_ai = [](const vivid::AudioOp* op) {
+        const char* ty = op ? vivid::audio_op_type(op) : nullptr;
+        return ty && std::strcmp(ty, "AudioInput") == 0;
+    };
+    if (is_ai(t.op_instrument_edit)) return true;
+    for (const auto* op : t.op_sources_edit) if (is_ai(op)) return true;
+    return false;
+}
+
+// ADR-0032 E1.1: a track is CROSS-TRACK-AUDIO involved if its stable id is an endpoint of any xaudio
+// edge — its output is routed/consumed off the track_out seam, so delaying track_out would desync it.
+// Left live in E1. Main thread (reads the UI-authoritative xaudio_edges).
+static bool track_in_xaudio(const Session* s, const Track& t) {
+    for (const XAudioEdge& e : s->xaudio_edges)
+        if (e.src_track_id == t.id || e.dst_track_id == t.id) return true;
+    return false;
+}
+
+// ADR-0032 E1.1: (re)classify every track and publish its compensating delay. Main/UI thread only.
+// COMPENSABLE = every plugin reports latency (not unknown) AND the path is linear (no cross-track audio)
+// AND it is not a live-input monitor AND within the cap. L_max is taken over the compensable set ONLY, so
+// an unknown/live track never over-delays the rest (the movie-A/V invariant). Off, or no compensable
+// track, publishes all-zero delays (master_mix then takes the byte-identical fast path).
+static void pdc_recompute(Session* s) {
+    if (!s) return;
+    const size_t n = s->tracks.size();
+    const bool on = s->pdc_enabled.load(std::memory_order_relaxed);
+    const int  cap = static_cast<int>(vivid::audio::kPdcMaxComp);
+
+    std::vector<int>           lat(n, 0);
+    std::vector<unsigned char> comp(n, 0);   // 0/1 per track; unsigned char so .data() feeds the pure helper
+    std::vector<int>           delays(n, 0);
+    bool clamped = false;
+    if (on) {
+        for (size_t i = 0; i < n; ++i) {
+            Track& t = *s->tracks[i];
+            bool unk = false;
+            int l = track_plugin_latency_sum(t, &unk);
+            const bool compensable = !unk && l >= 0
+                                   && !track_is_live_input_sourced(t)
+                                   && !track_in_xaudio(s, t);
+            if (compensable && l > cap) { l = cap; clamped = true; }
+            lat[i]  = l;
+            comp[i] = compensable ? 1 : 0;
+        }
+        const int lmax = vivid::audio::pdc_compute_delays(lat.data(), comp.data(),
+                                                          static_cast<int>(n), delays.data());
+        s->pdc_applied_delay.store(lmax, std::memory_order_relaxed);
+    } else {
+        s->pdc_applied_delay.store(0, std::memory_order_relaxed);
+    }
+
+    int n_comp = 0, n_live = 0;
+    for (size_t i = 0; i < n; ++i) {
+        Track& t = *s->tracks[i];
+        const int D = delays[i];
+        if (on) { if (comp[i]) n_comp++; else n_live++; }
+        // Allocate the ring on first non-zero use, on THIS (main) thread, while pdc_delay is still 0 so the
+        // audio thread is provably not indexing it. Allocate-once: never resized afterwards.
+        if (D > 0 && t.pdc_ring.empty())
+            t.pdc_ring.assign(2 * static_cast<size_t>(vivid::audio::kPdcRingCap), 0.f);
+        t.pdc_delay.store(D, std::memory_order_relaxed);
+    }
+    s->pdc_tracks_comp.store(n_comp, std::memory_order_relaxed);
+    s->pdc_tracks_live.store(n_live, std::memory_order_relaxed);
+    s->pdc_clamped.store(clamped, std::memory_order_relaxed);
+}
+
+// ADR-0032 E1: playback plugin-delay compensation. Main/UI thread.
+bool session_pdc_enabled(Session* s) { return s && s->pdc_enabled.load(std::memory_order_relaxed); }
+void session_set_pdc_enabled(Session* s, bool enabled) {
+    if (!s) return;
+    s->pdc_enabled.store(enabled, std::memory_order_relaxed);
+    pdc_recompute(s);   // (re)classify + publish per-track delays (or clear them all when disabling)
+}
+void session_pdc_set_track_delay(Session* s, int track, int delay_samples) {
+    if (!s || track < 0 || track >= static_cast<int>(s->tracks.size())) return;
+    Track& t = *s->tracks[static_cast<size_t>(track)];
+    int d = delay_samples < 0 ? 0 : delay_samples;
+    if (d > static_cast<int>(vivid::audio::kPdcMaxComp)) d = static_cast<int>(vivid::audio::kPdcMaxComp);
+    // Allocate the ring on first non-zero use, on THIS (main) thread, while pdc_delay is still 0 so the
+    // audio thread is provably not indexing it. Allocate-once: never resized after.
+    if (d > 0 && t.pdc_ring.empty()) t.pdc_ring.assign(2 * static_cast<size_t>(vivid::audio::kPdcRingCap), 0.f);
+    t.pdc_delay.store(d, std::memory_order_relaxed);
+}
+int session_pdc_applied_delay(Session* s)      { return s ? s->pdc_applied_delay.load(std::memory_order_relaxed) : 0; }
+int session_pdc_tracks_compensated(Session* s) { return s ? s->pdc_tracks_comp.load(std::memory_order_relaxed) : 0; }
+int session_pdc_tracks_live(Session* s)        { return s ? s->pdc_tracks_live.load(std::memory_order_relaxed) : 0; }
+int session_pdc_clamped(Session* s)            { return s && s->pdc_clamped.load(std::memory_order_relaxed) ? 1 : 0; }
+int session_pdc_track_delay(Session* s, int track) {
+    if (!s || track < 0 || track >= static_cast<int>(s->tracks.size())) return 0;
+    return s->tracks[static_cast<size_t>(track)]->pdc_delay.load(std::memory_order_relaxed);
+}
+int session_sample_rate(Session* s)            { return s ? static_cast<int>(s->sample_rate) : 0; }
 int  session_scene_count(Session* s) { return s ? s->scenes : 0; }
 
 // ADR-0022 P3.3: the default display name for scene i — A..Z, then "Scene N". UI-thread only.
@@ -1362,6 +1530,16 @@ void session_launch_clip(Session* s, int t, int scene) {
 void session_launch_scene(Session* s, int scene) {
     if (!s || scene < 0 || scene >= s->scenes) return;
     for (auto& tp : s->tracks) tp->queued.store(scene, std::memory_order_relaxed);
+}
+// Stop a track's playing clip: queue the -2 STOP sentinel (distinct from -1 = "nothing queued"). The RT
+// boundary applies it like a launch — the clip goes idle (active = -1) on the next launch-quantize bar,
+// releasing its held notes, and stays silent until a clip/scene is launched again.
+void session_stop_track(Session* s, int t) {
+    if (s && t >= 0 && t < static_cast<int>(s->tracks.size()))
+        s->tracks[t]->queued.store(-2, std::memory_order_relaxed);
+}
+void session_stop_all(Session* s) {
+    if (s) for (auto& tp : s->tracks) tp->queued.store(-2, std::memory_order_relaxed);
 }
 float session_track_gain(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->gain.load(std::memory_order_relaxed) : 0.f;
@@ -1776,6 +1954,15 @@ void  session_set_master_gain(Session* s, float g) { if (s) s->master.gain.store
 // Scene-launch quantization in bars (1 = next bar; typically 4 = let the phrase finish).
 int   session_launch_quantum_bars(Session* s) { return s ? s->launch_quantum_bars.load(std::memory_order_relaxed) : 1; }
 void  session_set_launch_quantum_bars(Session* s, int bars) { if (s) s->launch_quantum_bars.store(std::max(1, bars), std::memory_order_relaxed); }
+// Session music-theory context (root + scale NAME). The core stores two strings; the theory
+// vocabulary + validation live in the Python bridge (mcp/theory.py). UI/main thread only.
+const char* session_music_root(Session* s)  { return s ? s->music_root.c_str()  : "C"; }
+const char* session_music_scale(Session* s) { return s ? s->music_scale.c_str() : "major"; }
+void session_set_music(Session* s, const char* root, const char* scale) {
+    if (!s) return;
+    if (root  && *root)  s->music_root  = root;
+    if (scale && *scale) s->music_scale = scale;
+}
 // The analysis / publication READ surface (meters, note scalars, held notes, spectrum + per-node FFT
 // rings, node control-out) moved to vst3_host_analysis.cpp (ADR-0025) — cold frame-thread accessors over
 // state the render path below publishes. The capture-snapshot API stays here (it's the export ring).
@@ -1856,16 +2043,7 @@ static bool aud_valid(Session* s, int t, int sc) {
 }
 int session_audio_waveform(Session* s, int t, int sc, float* out, int n) {
     if (!aud_valid(s, t, sc) || !out || n <= 0) return 0;
-    const AudioClip& smp = s->tracks[t]->aud_clips[sc];
-    if (!smp.ok()) return 0;
-    const size_t N = smp.L.size();
-    for (int i = 0; i < n; ++i) {
-        const size_t a = N * static_cast<size_t>(i) / n, b = N * static_cast<size_t>(i + 1) / n;
-        float peak = 0.f;
-        for (size_t j = a; j < b && j < N; ++j) peak = std::max(peak, std::fabs(smp.L[j]));
-        out[i] = peak;
-    }
-    return n;
+    return s->tracks[t]->aud_clips[sc].peak_bins(out, n);   // cached; see AudioClip::peak_bins
 }
 int session_audio_copy_pcm(Session* s, int t, int sc, std::vector<float>& outL, std::vector<float>& outR,
                            uint32_t* out_sample_rate) {
@@ -2072,6 +2250,12 @@ double session_clip_length(Session* s, int t, int sc) {
     std::lock_guard<std::mutex> lk(s->tracks[t]->edit_mtx);
     return s->tracks[t]->edit_clips[sc].length;
 }
+// Optimistic-concurrency revision for a clip's note content (see MidiClip::rev). 0 for an invalid cell.
+uint64_t session_clip_rev(Session* s, int t, int sc) {
+    if (!clip_valid(s, t, sc)) return 0;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->edit_mtx);
+    return s->tracks[t]->edit_clips[sc].rev;
+}
 void session_set_clip(Session* s, int t, int sc, const ClipNote* notes, int n, double length) {
     if (!clip_valid(s, t, sc)) return;
     Track& tr = *s->tracks[t];
@@ -2081,6 +2265,7 @@ void session_set_clip(Session* s, int t, int sc, const ClipNote* notes, int n, d
         was_empty = tr.edit_clips[sc].notes.empty();
         tr.edit_clips[sc].notes.assign(notes, notes + (n > 0 ? n : 0));
         tr.edit_clips[sc].length = length > 0 ? length : tr.edit_clips[sc].length;
+        tr.edit_clips[sc].rev++;   // optimistic-concurrency: every note-content write advances the revision
         now_empty = tr.edit_clips[sc].notes.empty();
     }
     tr.edit_gen.fetch_add(1, std::memory_order_release);
@@ -2134,23 +2319,12 @@ void session_pool_remove(Session* s, int i) { if (pool_valid(s, i)) s->pool.eras
 void session_pool_clear(Session* s) { if (s) s->pool.clear(); }
 
 // --- Audio clips in the pool (Samplers). Mirrors the MIDI pool; stash = MOVE. ---
-static int sampler_waveform(const AudioClip& smp, float* out, int n) {
-    if (!smp.ok() || !out || n <= 0) return 0;
-    const size_t N = smp.L.size();
-    for (int i = 0; i < n; ++i) {
-        const size_t a = N * static_cast<size_t>(i) / n, b = N * static_cast<size_t>(i + 1) / n;
-        float peak = 0.f;
-        for (size_t j = a; j < b && j < N; ++j) peak = std::max(peak, std::fabs(smp.L[j]));
-        out[i] = peak;
-    }
-    return n;
-}
 bool session_pool_is_audio(Session* s, int i) { return pool_valid(s, i) && s->pool[i].is_audio; }
 int  session_pool_audio_bpm(Session* s, int i) {
     return (pool_valid(s, i) && s->pool[i].is_audio) ? static_cast<int>(std::lround(s->pool[i].audio.src_bpm)) : 0;
 }
 int  session_pool_audio_waveform(Session* s, int i, float* out, int n) {
-    return (pool_valid(s, i) && s->pool[i].is_audio) ? sampler_waveform(s->pool[i].audio, out, n) : 0;
+    return (pool_valid(s, i) && s->pool[i].is_audio) ? s->pool[i].audio.peak_bins(out, n) : 0;  // cached
 }
 // MOVE an audio grid clip into the pool: the source cell is cleared (under aud_mtx so the
 // audio thread never sees a torn AudioClip). Returns the new pool index, or -1.
@@ -2203,6 +2377,83 @@ static void render_sampler_block(Track& t, double beats, double delta, uint32_t 
     }
 }
 
+// One track's DSP: run its compiled-graph node steps into its OWN node-pool region, then finalize into
+// its OWN track_out slot. Each track is an island (distinct pool region + distinct output slot, no
+// cross-track writes), so this is safe to run in parallel across tracks (see the parallel executor in
+// session_process). Bit-identical to the flat-plan Node/Finalize steps it replaces.
+static void process_one_track(Session* s, uint32_t slot, uint32_t frames, uint32_t sample_rate) {
+    Track& t = *s->render_list[slot];
+    const vivid::audio::CompiledAudioGraph& cg = t.gcg;
+    // RT bail-net: decided ONCE so a track's node steps and its finalize can never disagree.
+    const bool valid =
+        t.gok && frames <= kGraphMaxBlock && cg.output_buf >= 0 && !cg.steps.empty() && t.blk.node_pool
+        && static_cast<int>(t.gbinds.size()) >= cg.buf_count
+        && static_cast<size_t>(cg.buf_count + 1) * 2 * frames <= static_cast<size_t>(kGraphMaxNodes + 1) * 2 * kGraphMaxBlock;
+    if (valid) {
+        float* pool = t.blk.node_pool + t.blk.node_base;   // its region of the session node pool
+        const VividAudioContext gctx = block_gctx(t.blk);
+        for (const vivid::audio::CompiledStep& st : cg.steps) {
+            process_step(st, t, pool, frames /*stride*/, t.gcg.buf_count /*scratch*/, t.blk, gctx, frames);
+            // ADR-0033 P4: node solo — zero a muted node's output AFTER it ran (voice/plugin state is
+            // untouched, so clearing solo restores it with no dropped note-on). ~0 mask = no-op (common).
+            const int ob = st.out_buf;
+            if (ob >= 0 && ob < 64 && !((t.node_audible_mask.load(std::memory_order_relaxed) >> ob) & 1ull)) {
+                float* oL = pool + static_cast<size_t>(ob) * 2 * frames;
+                std::memset(oL, 0, frames * sizeof(float));
+                std::memset(oL + frames, 0, frames * sizeof(float));
+            }
+        }
+    }
+    finalize_track(t, s->track_out_pool.data() + static_cast<size_t>(slot) * 2 * kGraphMaxBlock,
+                   valid, frames, sample_rate);
+}
+
+#if defined(__APPLE__)
+// A persistent audio worker (ADR-0052): waits for the master (audio callback) to post `aw_go`,
+// work-steals tracks from the shared atomic index, processes each (its own island), then decrements
+// the participant barrier — posting `aw_done` when it is the last. Joins the CoreAudio device
+// workgroup so the kernel schedules it real-time alongside the audio I/O thread (shared deadline).
+static void audio_worker_main(Session* s) {
+    os_workgroup_join_token_s tok;
+    bool joined = false;
+    if (s->aw_workgroup) joined = (os_workgroup_join(static_cast<os_workgroup_t>(s->aw_workgroup), &tok) == 0);
+    while (s->aw_running.load(std::memory_order_acquire)) {
+        dispatch_semaphore_wait(s->aw_go, DISPATCH_TIME_FOREVER);
+        if (!s->aw_running.load(std::memory_order_acquire)) break;
+        const uint32_t n = s->aw_n, frames = s->aw_frames, sr = s->aw_sr;   // published (release) before `go`
+        uint32_t slot;
+        while ((slot = s->aw_next_slot.fetch_add(1, std::memory_order_acq_rel)) < n)
+            process_one_track(s, slot, frames, sr);
+        if (s->aw_remaining.fetch_sub(1, std::memory_order_acq_rel) == 1)
+            dispatch_semaphore_signal(s->aw_done);
+    }
+    if (joined) os_workgroup_leave(static_cast<os_workgroup_t>(s->aw_workgroup), &tok);
+}
+
+// Fan the per-track DSP out to the worker pool AND the master (which also does work, to use every
+// core). Returns true if it processed the tracks (parallel path), false if the caller should run the
+// serial path — workers disabled, too few tracks to amortize dispatch, cross-track edges present, or
+// no pool. RT-safe: scalar publish + atomics + two dispatch_semaphores; no alloc, no lock.
+static bool run_tracks_parallel(Session* s, uint32_t n_tracks, uint32_t frames, uint32_t sample_rate, bool cross_track) {
+    if (!s->aw_enabled || s->aw_n_workers <= 0 || cross_track || n_tracks < 2) return false;
+    const int participants = std::min<int>(static_cast<int>(n_tracks), s->aw_n_workers + 1);
+    const int wake = participants - 1;
+    s->aw_frames = frames; s->aw_sr = sample_rate; s->aw_n = n_tracks;   // publish before posting `go`
+    s->aw_next_slot.store(0, std::memory_order_release);
+    s->aw_remaining.store(participants, std::memory_order_release);
+    for (int i = 0; i < wake; ++i) dispatch_semaphore_signal(s->aw_go);
+    uint32_t slot;                                                       // the master is a participant too
+    while ((slot = s->aw_next_slot.fetch_add(1, std::memory_order_acq_rel)) < n_tracks)
+        process_one_track(s, slot, frames, sample_rate);
+    if (s->aw_remaining.fetch_sub(1, std::memory_order_acq_rel) == 1)
+        dispatch_semaphore_signal(s->aw_done);
+    dispatch_semaphore_wait(s->aw_done, DISPATCH_TIME_FOREVER);          // wait for all participants
+    return true;
+}
+#else
+static bool run_tracks_parallel(Session*, uint32_t, uint32_t, uint32_t, bool) { return false; }
+#endif
+
 bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_rate,
                      double bpm, double beats, uint32_t beats_per_bar,
                      bool playing, bool release_all) {
@@ -2223,7 +2474,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             s->tracks_view = s->tracks_pub;
             s->tracks_gen_seen = s->tracks_gen.load(std::memory_order_acquire);
             s->tracks_mtx.unlock();
-        }
+        } else vivid::audio::health::note_handoff_skip();   // ADR-0031 §3: contention skip (kept stale)
     }
     if (s->tracks_view.empty()) return false;
     s->render_list.clear();   // ADR-0022 P1b: rebuilt each block; the master node sums it
@@ -2235,7 +2486,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             s->xctl_view.swap(s->xctl_ho);
             s->xctl_gen_seen = s->xctl_gen.load(std::memory_order_acquire);
             s->xctl_mtx.unlock();
-        }
+        } else vivid::audio::health::note_handoff_skip();   // ADR-0031 §3: contention skip (kept stale)
     }
     // ADR-0022 P2b.4: same handoff for the resolved cross-track AUDIO edges.
     if (s->xaudio_gen.load(std::memory_order_acquire) != s->xaudio_gen_seen) {
@@ -2243,7 +2494,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             s->xaudio_view.swap(s->xaudio_ho);
             s->xaudio_gen_seen = s->xaudio_gen.load(std::memory_order_acquire);
             s->xaudio_mtx.unlock();
-        }
+        } else vivid::audio::health::note_handoff_skip();   // ADR-0031 §3: contention skip (kept stale)
     }
     // ADR-0022 P2b.5: same handoff for the resolved cross-track NOTE edges.
     if (s->xnote_gen.load(std::memory_order_acquire) != s->xnote_gen_seen) {
@@ -2251,7 +2502,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             s->xnote_view.swap(s->xnote_ho);
             s->xnote_gen_seen = s->xnote_gen.load(std::memory_order_acquire);
             s->xnote_mtx.unlock();
-        }
+        } else vivid::audio::health::note_handoff_skip();   // ADR-0031 §3: contention skip (kept stale)
     }
 
     const uint32_t bpb = beats_per_bar ? beats_per_bar : 4;
@@ -2280,7 +2531,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             std::swap(t.gok, t.gok_ho);
             t.ggen_seen = t.ggen.load(std::memory_order_acquire);
             t.gmtx.unlock();
-        }
+        } else vivid::audio::health::note_handoff_skip();   // ADR-0031 §3: contention skip (kept stale)
     }
 
     // ADR-0022 P2a.1b: the modulator PRE-PASS — run every track's modulators into the session control
@@ -2345,7 +2596,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 t.sched.invalidate_active_src();
                 t.edit_gen_seen = t.edit_gen.load(std::memory_order_acquire);
                 t.edit_mtx.unlock();
-            }
+            } else vivid::audio::health::note_handoff_skip();   // ADR-0031 §3: contention skip (kept stale)
         }
         // Apply pending FX-chain edits (copy the UI's pointer list into the working
         // one; reserved capacity avoids a realloc). Only runs after an add/remove.
@@ -2354,7 +2605,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 t.effects = t.effects_edit;
                 t.fx_gen_seen = t.fx_gen.load(std::memory_order_acquire);
                 t.fx_mtx.unlock();
-            }
+            } else vivid::audio::health::note_handoff_skip();   // ADR-0031 §3: contention skip (kept stale)
         }
         // Apply pending native audio-operator edits (instrument slot + effect chain).
         if (t.op_fx_gen.load(std::memory_order_acquire) != t.op_fx_gen_seen) {
@@ -2363,14 +2614,15 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 t.op_instrument = t.op_instrument_edit;
                 t.op_fx_gen_seen = t.op_fx_gen.load(std::memory_order_acquire);
                 t.op_fx_mtx.unlock();
-            }
+            } else vivid::audio::health::note_handoff_skip();   // ADR-0031 §3: contention skip (kept stale)
         }
         if (t.is_audio) {
             // Quantized scene switch (a transport action the AudioClip graph node reads each block).
             if (new_launch) {
                 const int q = t.queued.load(std::memory_order_relaxed);
-                if (q >= 0 && q != t.active.load(std::memory_order_relaxed)) t.active.store(q, std::memory_order_relaxed);
-                if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
+                if (q == -2) t.active.store(-1, std::memory_order_relaxed);   // STOP → idle
+                else if (q >= 0 && q != t.active.load(std::memory_order_relaxed)) t.active.store(q, std::memory_order_relaxed);
+                if (q != -1) t.queued.store(-1, std::memory_order_relaxed);   // clear the queue (launch OR stop)
             }
         } else {
             t.vev.clear();   // this block's VST3 event list (on the Track so the graph node can read it)
@@ -2378,7 +2630,9 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             if (new_launch) {
                 const int q = t.queued.load(std::memory_order_relaxed);
                 const int old_scene = t.active.load(std::memory_order_relaxed);
-                if (q >= 0 && q != old_scene && q < static_cast<int>(t.clips.size())) {
+                const bool do_stop   = (q == -2);   // STOP sentinel → the track goes idle
+                const bool do_launch = (q >= 0 && q != old_scene && q < static_cast<int>(t.clips.size()));
+                if (do_launch || do_stop) {
                     t.nev.clear(); t.eev.clear(); t.sched.flush(t.nev);   // outgoing CLIP's held notes
                     // ADR-0022 P3.3: if the outgoing scene's cell is a GENERATOR, release its held
                     // voices into the same scene_rel path. Found via the audio-thread PLAN (t.gbinds),
@@ -2393,10 +2647,14 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                         }
                     emit_vst3(t.vev, t.nev, t.eev);
                     t.scene_rel.assign(t.nev.begin(), t.nev.end());   // keep the releases for CLAP (t.nev is cleared below)
-                    t.sched.reset(&t.clips[q], beats);   // anchor the launched clip to THIS bar so it starts at its beat 0
-                    t.active.store(q, std::memory_order_relaxed);
+                    if (do_launch) {
+                        t.sched.reset(&t.clips[q], beats);   // anchor the launched clip to THIS bar so it starts at its beat 0
+                        t.active.store(q, std::memory_order_relaxed);
+                    } else {
+                        t.active.store(-1, std::memory_order_relaxed);   // STOP → idle (held notes released above)
+                    }
                 }
-                if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
+                if (q != -1) t.queued.store(-1, std::memory_order_relaxed);   // clear the queue (launch OR stop)
             }
             // ADR-0022 P3.1b: split note production into two source streams that P3.1a's single
             // MidiIn used to carry together. nev_clip = the clip scheduler + play-stop release
@@ -2550,58 +2808,20 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         if (!src_rendering && xn.src_notes) xn.src_notes->clear();
     }
 
-    // ADR-0022 P2b.3b: build the FLAT session plan and drive it with ONE executor, replacing the two
-    // per-track render loops (render+meter each track, then sum the master). The plan is, in
-    // render_list order: each track's node steps (only if its plan passes the RT bail-net), then that
-    // track's finalize step (copy-out + scope tap + meters), then one trailing master step. Because
-    // that order is exactly track0's nodes → track0 finalize → track1's nodes → … → master, this is
-    // bit-identical to the loops it replaces; P2b.4 will topo-sort the list so cross-track audio edges
-    // can interleave tracks. The RT bail-net verdict is decided ONCE here (`valid`) so a track's node
-    // steps and its finalize can never disagree.
-    s->session_plan.clear();
-    for (size_t slot = 0; slot < s->render_list.size(); ++slot) {
-        Track& t = *s->render_list[slot];
-        const vivid::audio::CompiledAudioGraph& cg = t.gcg;
-        const bool valid =
-            t.gok && frames <= kGraphMaxBlock && cg.output_buf >= 0 && !cg.steps.empty() && t.blk.node_pool
-            && static_cast<int>(t.gbinds.size()) >= cg.buf_count
-            && static_cast<size_t>(cg.buf_count + 1) * 2 * frames <= static_cast<size_t>(kGraphMaxNodes + 1) * 2 * kGraphMaxBlock;
-        if (valid)
-            for (const vivid::audio::CompiledStep& st : cg.steps)
-                s->session_plan.push_back({ FlatStep::Node, &t, &st, static_cast<uint32_t>(slot), true });
-        s->session_plan.push_back({ FlatStep::Finalize, &t, nullptr, static_cast<uint32_t>(slot), valid });
+    // Per-track DSP. Each track is an island (own node-pool region + own track_out slot); master_mix
+    // then sums the slots in render_list order, so this is bit-identical regardless of the order tracks
+    // are processed in — which is what makes the parallel path below safe. Cross-track audio/note edges
+    // (xaudio_view/xnote_view) are the exception: those introduce real inter-track reads, so the
+    // parallel path is gated off when they're present (see run_tracks_parallel) and this serial path
+    // runs instead. Master_mix sums into `out` (already silent from the memset at the top); the
+    // metronome click is mixed in downstream (audio_callback).
+    const uint32_t n_tracks = static_cast<uint32_t>(s->render_list.size());
+    const bool cross_track = !s->xaudio_view.empty() || !s->xnote_view.empty();
+    if (!run_tracks_parallel(s, n_tracks, frames, sample_rate, cross_track)) {
+        for (uint32_t slot = 0; slot < n_tracks; ++slot)
+            process_one_track(s, slot, frames, sample_rate);
     }
-    s->session_plan.push_back({ FlatStep::Master, nullptr, nullptr, 0, false });
-
-    for (const FlatStep& fs : s->session_plan) {
-        switch (fs.kind) {
-        case FlatStep::Node: {
-            Track& t = *fs.t;
-            float* pool = t.blk.node_pool + t.blk.node_base;   // its region of the session node pool
-            const VividAudioContext gctx = block_gctx(t.blk);
-            process_step(*fs.node, t, pool, frames /*stride*/, t.gcg.buf_count /*scratch*/, t.blk, gctx, frames);
-            // ADR-0033 P4: node solo — zero a muted node's output AFTER it ran (its voice/plugin state is
-            // untouched, so clearing solo restores it with no dropped note-on). ~0 mask = no-op (common).
-            const int ob = fs.node->out_buf;
-            if (ob >= 0 && ob < 64 && !((t.node_audible_mask.load(std::memory_order_relaxed) >> ob) & 1ull)) {
-                float* oL = pool + static_cast<size_t>(ob) * 2 * frames;
-                std::memset(oL, 0, frames * sizeof(float));
-                std::memset(oL + frames, 0, frames * sizeof(float));
-            }
-            break;
-        }
-        case FlatStep::Finalize:
-            finalize_track(*fs.t, s->track_out_pool.data() + static_cast<size_t>(fs.slot) * 2 * kGraphMaxBlock,
-                           fs.valid, frames, sample_rate);
-            break;
-        case FlatStep::Master:
-            // Sums into `out` (already silent from the memset at the top of session_process). The
-            // metronome click is mixed in downstream (audio_callback), so it is neither gained here
-            // nor in the master meters — unchanged from the pre-P2b.3b master block.
-            master_mix(s, out, frames, sample_rate);
-            break;
-        }
-    }
+    master_mix(s, out, frames, sample_rate);
     return !s->render_list.empty();
 }
 
@@ -2610,8 +2830,48 @@ static void destroy_handle(Vst3Handle* h) {
     if (h->processing) h->processor->setProcessing(false);
     h->destroy(); delete h;
 }
+#if defined(__APPLE__)
+// Start the track-parallel worker pool (ADR-0052). Called from main() AFTER the audio device exists,
+// so the CoreAudio workgroup handle (or null) is available. `os_workgroup` must already be +1 retained
+// by the caller; we release it in stop_worker_pool. Reads VIVID_AUDIO_WORKERS once (non-RT thread).
+void session_set_audio_workgroup(Session* s, void* os_workgroup) {
+    if (!s || !s->audio_workers.empty()) return;   // start once
+    const char* env = std::getenv("VIVID_AUDIO_WORKERS");
+    s->aw_enabled = !(env && env[0] == '0');
+    if (!s->aw_enabled) { if (os_workgroup) os_release(static_cast<os_workgroup_t>(os_workgroup)); return; }
+    unsigned hw = std::thread::hardware_concurrency();
+    int n = static_cast<int>(hw > 2 ? hw - 1 : 1);       // leave a core for the master (CoreAudio I/O) thread
+    if (n > kMaxTracks - 1) n = kMaxTracks - 1;
+    if (env && std::isdigit(static_cast<unsigned char>(env[0]))) { int req = std::atoi(env); if (req >= 0) n = std::min(n, req); }
+    s->aw_n_workers = n;
+    if (n <= 0) { if (os_workgroup) os_release(static_cast<os_workgroup_t>(os_workgroup)); return; }
+    s->aw_workgroup = os_workgroup;                      // already +1 retained by the caller
+    s->aw_go   = dispatch_semaphore_create(0);
+    s->aw_done = dispatch_semaphore_create(0);
+    s->aw_running.store(true, std::memory_order_release);
+    s->audio_workers.reserve(n);
+    for (int i = 0; i < n; ++i) s->audio_workers.emplace_back(audio_worker_main, s);
+    std::fprintf(stderr, "[vivid] audio worker pool: %d worker(s), workgroup=%s\n", n, os_workgroup ? "yes" : "no");
+}
+
+static void stop_worker_pool(Session* s) {
+    if (s->audio_workers.empty()) return;
+    s->aw_running.store(false, std::memory_order_release);
+    for (size_t i = 0; i < s->audio_workers.size(); ++i) dispatch_semaphore_signal(s->aw_go);   // wake to exit
+    for (auto& th : s->audio_workers) if (th.joinable()) th.join();
+    s->audio_workers.clear();
+    if (s->aw_go)        { dispatch_release(s->aw_go);   s->aw_go = nullptr; }
+    if (s->aw_done)      { dispatch_release(s->aw_done); s->aw_done = nullptr; }
+    if (s->aw_workgroup) { os_release(static_cast<os_workgroup_t>(s->aw_workgroup)); s->aw_workgroup = nullptr; }
+}
+#else
+void session_set_audio_workgroup(Session*, void*) {}
+static void stop_worker_pool(Session*) {}
+#endif
+
 void session_destroy(Session* s) {
     if (!s) return;
+    stop_worker_pool(s);   // ADR-0052: join the audio workers (callback already stopped) before teardown
     stop_clap_loader(s);   // join the async loader + free unapplied handles before the tracks go
     auto teardown = [](Track* t) {
         for (Vst3Handle* fx : t->effects_edit) destroy_handle(fx);  // authoritative FX list
@@ -4250,6 +4510,14 @@ const char* session_generator_type(Session* s, int track, int scene) {
     Track* tr = graph_track(s, track);
     return (tr && scene >= 0 && scene < static_cast<int>(tr->gen_cells.size()) && tr->gen_cells[scene].op)
                ? tr->gen_cells[scene].type.c_str() : "";
+}
+// A cell holds nothing playable: not a generator, and (audio) no imported clip / (MIDI) no notes. The
+// session view draws these as recessed slots; a click on one STOPS the track (Ableton clip-stop idiom).
+// Mirrors the classification in session_view.cpp so the click target and the drawn look stay in agreement.
+int session_cell_is_empty(Session* s, int track, int scene) {
+    if (session_cell_is_generator(s, track, scene)) return 0;
+    if (session_track_is_audio(s, track)) return session_audio_clip_bpm(s, track, scene) <= 0 ? 1 : 0;
+    ClipNote nb; return session_get_clip(s, track, scene, &nb, 1) == 0 ? 1 : 0;
 }
 // ADR-0022 P3.3: a scene cell's generator op params (empty if the cell is a clip). Params are
 // lock-free atomics on the op, so set takes effect without a rebuild.

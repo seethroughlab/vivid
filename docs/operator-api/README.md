@@ -4,7 +4,9 @@ The public C ABI for authoring Vivid operators — the visual, audio, and frame-
 surface. Operators are `.dylib` packages loaded by the host and registered by descriptor name;
 built-ins use the same API.
 
-**Current operator ABI: v11** (see [`abi-changelog.md`](abi-changelog.md)).
+**Current operator ABI: v17.** The host loads any operator built for **[v11, v17]** — an
+additive-only range, not an exact match, so an older dylib is never orphaned. Per-version history
+and the loadable-range contract live in [`abi-changelog.md`](abi-changelog.md).
 
 ## The headers (`app/src/operator_api/`)
 

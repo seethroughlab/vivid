@@ -2,6 +2,7 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_3d.h"
 #include "operator_api/thumbnail_3d.h"
+#include <array>
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -381,6 +382,8 @@ static_assert(sizeof(ParamsData) == 112, "ParamsData must be 112 bytes");
 struct Particles3D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Particles3D";
     static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_TRANSFORM;   // ADR-0046
+    static constexpr const char* kSummary = "A GPU particle field — curl-noise motion, emission and lifetime, drawn as billboards.";
+    static constexpr std::array<const char*, 3> kKeywords = {"3d", "particles", "gpu"};
     static constexpr bool kTimeDependent = true;
 
     // Emission

@@ -20,6 +20,9 @@ struct Transport {
     std::atomic<float>  band_low{0.0f};   // 3-band energy (one-pole crossover, audio thread)
     std::atomic<float>  band_mid{0.0f};
     std::atomic<float>  band_high{0.0f};
+    // ADR-0032 Phase D1: hardware INPUT level (capture RMS, 0..1). The audio callback writes it when a
+    // duplex device is open; stays 0 in playback-only mode. Read by the diagnostics "Audio input" row.
+    std::atomic<float>  input_level{0.0f};
 
     void configure_capture(uint32_t sample_rate, double seconds = 30.0) {
         if (sample_rate == 0) return;

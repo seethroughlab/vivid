@@ -47,7 +47,11 @@ abstraction is P3 in the [roadmap](../../../docs/roadmap/reboot-readiness-roadma
   on New/close — so a shader that ships with an EXAMPLE, not the core, exists ONLY while its project
   is open. That is how the fullscreen "field" generators (`plasma`/`rings`/`noise_texture`/`gradient`/
   `tint`) were demoted out of the day-1 catalog into `examples/demos/projects/generative-fields/` —
-  they are not "core," but a fresh session is clean and opening that example brings them back.
+  they are not "core," but a fresh session is clean and opening that example brings them back. Same
+  move for the single-look effects `Fold`/`Kaleidoscope`/`Shatter` (ADR-0054): their `.wgsl` now lives
+  in `examples/operators/<Op>/shaders/`, so each op-example carries + registers its own shader on open.
+  (General-purpose shader effects — `Blur`/`Composite`/`Displace`/`Transform`/`CRT`/`NoiseField`/`Shape`
+  — stay bundled: they are reusable building blocks, the shader analogue of composable primitives.)
   **`ShaderDef` is never freed** while the app runs: `ParamBase::name` and the cached descriptors
   are raw `const char*` INTO it.
 - **`shader_op.*` / `effect_op.*`** — the OLDER fixed-four-uniform GLSL pass behind the

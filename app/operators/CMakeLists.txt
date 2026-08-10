@@ -51,14 +51,16 @@ add_vivid_operator(vivid_step_bars steps/step_bars.cpp)   # UI-4b: exports a cus
 add_vivid_operator(vivid_image packages/core-visuals/image.cpp)
 add_vivid_operator(vivid_switch packages/core-visuals/switch.cpp)
 # P8 migration: built-ins moved out of builtin_ops.cpp into packages (Bucket A).
-add_vivid_operator(vivid_shape_grid packages/core-visuals/shape_grid.cpp)
+# ShapeGrid moved OUT of the lean core (ADR-0054) — but not into a shared package: it is used only by
+# specific committed demos (geometry, surge-lead), which now each CARRY their own customizable copy as
+# a project-local operator (compiled on load_project). Same for Lines below (geometry, grid).
 add_vivid_operator(vivid_notes packages/core-visuals/notes_op.cpp)
 # Notes draws a live signal thumbnail via the shared 2D lane-thumb raster (header-only, in vivid-3d).
 target_include_directories(vivid_notes PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/packages/vivid-3d)
-add_vivid_operator(vivid_emitter packages/core-visuals/emitter.cpp)
-add_vivid_operator(vivid_instancer packages/core-visuals/instancer.cpp)
-add_vivid_operator(vivid_solids packages/core-visuals/solids.cpp)
-add_vivid_operator(vivid_lines packages/core-visuals/lines.cpp)
+# Emitter/Instancer/Solids (ADR-0046 recipes) moved OUT of the lean core (ADR-0054) into the
+# installable `packages/content-visual` package — pure operator_api + webgpu, no vendoring. No
+# committed demo uses them (the dev-only .py-generated demos are gitignored).
+# Lines moved OUT too — carried per-demo (geometry, grid) as a project-local operator (see ShapeGrid above).
 add_vivid_operator(vivid_mesh packages/core-visuals/mesh.cpp)
 # Model: a glTF/GLB loader — needs nlohmann/json (stb_image + webgpu come free with add_vivid_operator).
 add_vivid_operator(vivid_model packages/core-visuals/model.cpp)
@@ -71,6 +73,10 @@ target_link_libraries(vivid_mesh_load PRIVATE nlohmann_json::nlohmann_json)
 add_vivid_operator(vivid_mesh_render packages/core-visuals/mesh_render_op.cpp)
 add_vivid_operator(vivid_mesh_displace packages/core-visuals/mesh_displace.cpp)
 add_vivid_operator(vivid_feedback packages/core-visuals/feedback.cpp)
+add_vivid_operator(vivid_bloom packages/core-visuals/bloom.cpp)
+# TimeMachine + CosinePalette moved OUT of the lean core (ADR-0054) into the installable
+# `packages/content-visual` example package — single-look content ops, not spine. They are no longer
+# bundled into PlugIns; install the package to get them.
 # Video: a SELF-DECODING movie source op. On macOS it owns the AVFoundation + HAP decoder layer
 # (packages/core-visuals/movie/) and the vendored HAP lib (deps/hap/hap.c + snappy); the classic-
 # ported .mm files use ARC, avf_decoder.mm uses manual retain/release. Off-macOS it degrades to a
@@ -128,9 +134,17 @@ endif()
 # Vendored from ../vivid-3d onto the trunk ABI. Each op needs the package-local operator_api/
 # (gpu_3d.h, port_type_registry.h shim, instance_algorithms.h) + linmath.h, so the package dir goes
 # on the include path alongside the ../src default from add_vivid_operator.
+# instance_noise/instance_grid/deformer moved OUT of the lean core (ADR-0054) into the installable
+# `packages/content-3d` package (single-look 3D content ops). They carry a VENDORED copy of the
+# vivid-3d operator_api/ 3D headers (gpu_3d.h etc.) + linmath.h so they compile on install via the
+# package compiler (which only sees operator_api + the package's own dirs). The demos that used
+# instance_grid/deformer (lattice/crystal) now CARRY the package in their project folder (compiled on
+# load_project). particles3d stays for now — it backs the flagship blob showcase + storm/lattice.
+# instances_from_signal (ADR-0046 recipe) + particles3d (single-look content) moved OUT of core into
+# packages/content-3d (they reuse its vendored vivid-3d 3D headers). No committed demo uses them.
 foreach(_v3d render_3d scene_merge shape3d light3d
-             instancer3d instances_from_lanes instances_from_signal instance_grid instance_noise deformer
-             particles3d sdf3d audio_spectrum lane_ramp lane_palette clock switch3d)
+             instancer3d instances_from_lanes
+             sdf3d audio_spectrum reactive_master reactive_track lane_ramp lane_palette clock switch3d)
     add_vivid_operator(vivid_${_v3d} packages/vivid-3d/${_v3d}.cpp)
     target_include_directories(vivid_${_v3d} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/packages/vivid-3d)
 endforeach()

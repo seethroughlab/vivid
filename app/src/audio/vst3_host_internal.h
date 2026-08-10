@@ -7,6 +7,8 @@
 #include "audio/analysis_ring.h"   // ADR-0029: atomic-slot spectrum ring (MeterState::an_ring)
 #include "audio/node_ring_bank.h"  // ADR-0029: atomic-slot per-node capture rings (node_scope, node_an)
 #include "audio/held_note_set.h"   // ADR-0029: atomic-slot polyphonic held-note set (Track::held)
+#include "audio/audio_budgets.h"   // ADR-0031 §6: RT audio budgets (kDefaultMaxBlockFrames coupling)
+#include "audio/pdc.h"             // ADR-0032 E1: PDC ring constants + delay primitive
 #include "audio/note_event_ring.h" // discrete note on/off events (Track::note_events) for one-shot visuals
 #include "midi/midi_clip.h"
 #include "audio/audio_clip.h"
@@ -23,6 +25,9 @@
 #include <mutex>
 #include <thread>
 #include <condition_variable>
+#if defined(__APPLE__)
+#include <dispatch/dispatch.h>   // dispatch_semaphore_t for the track-parallel audio worker pool
+#endif
 #include <deque>
 
 using namespace Steinberg;
@@ -74,6 +79,15 @@ constexpr int      kGraphMaxNodes = 64;
 // node index must fit in 64 bits. Raising kGraphMaxNodes past 64 needs a wider mask.
 static_assert(kGraphMaxNodes <= 64, "node_analyze_mask is a uint64_t bitset over node indices");
 constexpr uint32_t kGraphMaxBlock = 4096;
+// ADR-0031 §6: audio_budgets().max_block_frames defaults to kDefaultMaxBlockFrames and is what the RT
+// health counters treat as "oversized". Keep it pinned to this pool-stride authority at compile time.
+static_assert(kGraphMaxBlock == vivid::audio::kDefaultMaxBlockFrames,
+              "audio_budgets max block default must track kGraphMaxBlock (pool stride)");
+// ADR-0032 E1: the PDC ring reserves one max block so the oldest read never aliases the newest write
+// (delay + frames <= kPdcRingCap for any legal block). If kGraphMaxBlock grows past the reserve, bump
+// kPdcRingCap.
+static_assert(kGraphMaxBlock <= vivid::audio::kPdcRingCap - vivid::audio::kPdcMaxComp,
+              "PDC ring reserve (kPdcRingCap - kPdcMaxComp) must cover one max audio block");
 constexpr double   kTrackCaptureSeconds = 30.0;
 // ADR-0015: capacity of ONE note buffer. Matches audio_op_runtime's kMaxNotes — a block that
 // somehow carried more notes than this would be truncated rather than allocate on the RT thread.
@@ -250,6 +264,15 @@ struct Track {
     // in the master sum. Meters stay PRE-mute — a muted track still shows its own level.
     std::atomic<bool>     mute{false}, solo{false};
     std::atomic<float>    mix_scale{1.f};
+    // ADR-0032 E1: playback plugin-delay compensation. A per-track stereo delay ring (planar: L block
+    // then R block of kPdcRingCap each), applied at the master_mix seam so a track lagging behind a
+    // higher-latency track is pulled back into alignment. `pdc_ring` stays empty (PDC inert) until a
+    // recompute allocates it on the MAIN thread while pdc_delay is still 0 — then it is never resized, so
+    // the audio thread never touches storage in flight. `pdc_w` is the audio-thread-only write cursor;
+    // `pdc_delay` is the read-behind (main writes, audio reads relaxed; 0 = passthrough).
+    std::vector<float>    pdc_ring;
+    uint32_t              pdc_w = 0;
+    std::atomic<int>      pdc_delay{0};
     // ADR-0033 P4: node solo / audition. `soloed_node_ids` is the UI-set state (stable node ids the
     // user is auditioning; guarded by gmtx like every agraph edit). `node_audible_mask` is the derived
     // per-node multiplier (bit i, i == node index == out_buf, 1 = audible): the union of each soloed
@@ -575,6 +598,23 @@ struct Session {
     // last quantum index seen on the audio thread so the boundary is detected once.
     std::atomic<int> launch_quantum_bars{1};
     long long        last_launch_q = -1;
+    // ADR-0032 E1: playback plugin-delay compensation, off by default (a live instrument stays low-latency
+    // unless the user opts in). Project-persisted like launch_quantum_bars — it changes the musical result.
+    // When true, master_mix delays each compensable track by (L_max - L_track); see Track::pdc_ring.
+    std::atomic<bool> pdc_enabled{false};
+    // Published by pdc_recompute (main thread) for the diagnostics/get_health surface: L_max applied (the
+    // whole compensated mix's added latency, samples), how many tracks are exactly compensated, how many
+    // are left live (unknown-latency / live-input / cross-track), and whether any track's latency was
+    // clamped to kPdcMaxComp. Read on the health thread (relaxed, display-only) like the Phase B numbers.
+    std::atomic<int>  pdc_applied_delay{0};
+    std::atomic<int>  pdc_tracks_comp{0};
+    std::atomic<int>  pdc_tracks_live{0};
+    std::atomic<bool> pdc_clamped{false};
+    // Session music-theory context: root note + scale NAME (e.g. "C" + "minor"). The theory
+    // vocabulary + validation live in the Python bridge (mcp/theory.py, ADR-0046); the core just
+    // stores the two strings so the key/scale round-trips with the project. UI/main thread only.
+    std::string      music_root  = "C";
+    std::string      music_scale = "major";
     uint32_t  sample_rate = 0;
     // Live MIDI input (M6): monitored/recorded notes flow through `live_in` to the armed
     // track's instrument. `armed_track` is a stable track id (-1 = none). Both are read on
@@ -613,6 +653,24 @@ struct Session {
     std::string              clap_last_error;    // main-thread only (last failed async load)
     std::vector<std::string> unresolved_instruments;  // main-thread only: display-names of instruments that
                                                        // failed to resolve on load (UX Ph6 F2); drained to a toast
+
+    // --- Track-parallel audio executor (ADR-0052): a persistent RT worker pool so per-track DSP fans
+    // out across cores instead of serializing on the one CoreAudio thread (2 heavy synths were tanking
+    // the render framerate via preemption). Created once by session_set_audio_workgroup after the
+    // device exists; joined in session_destroy. RT-safe: the per-block path only stores scalars, does
+    // atomic fetch_add/fetch_sub, and posts/waits dispatch_semaphores — no alloc, no lock. ---
+#if defined(__APPLE__)
+    std::vector<std::thread> audio_workers;
+    dispatch_semaphore_t     aw_go   = nullptr;   // master posts W times to wake W workers
+    dispatch_semaphore_t     aw_done = nullptr;   // last participant posts once; master waits once
+    std::atomic<uint32_t>    aw_next_slot{0};     // work-stealing task index into render_list
+    std::atomic<int>         aw_remaining{0};     // participant barrier countdown
+    std::atomic<bool>        aw_running{false};   // pool-alive flag (shutdown)
+    int                      aw_n_workers = 0;    // persistent worker count (0 => always serial)
+    bool                     aw_enabled   = true; // VIVID_AUDIO_WORKERS kill-switch (read once at start)
+    void*                    aw_workgroup = nullptr;  // retained os_workgroup_t (or null → no RT join)
+    uint32_t                 aw_frames = 0, aw_sr = 0, aw_n = 0;   // per-block params (published before go)
+#endif
 };
 
 // Resolve a (session, track index) to the Track (or null). Defined in vst3_host.cpp; declared here so

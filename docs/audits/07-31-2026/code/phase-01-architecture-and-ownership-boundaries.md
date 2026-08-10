@@ -262,7 +262,9 @@ registry-mutating handlers run inside `process_pending`. Clean.
 - Evidence: `app/src/operator_api/gpu_operator.h:5,35-72`.
 - Smallest acceptable fix: document as intentional external coupling + first-release
   breakage policy in **ADR-0044** (drafted). No code change.
-- Owner/status: Unassigned | ADR-0044 (proposed)
+- Owner/status: Fixed | ADR-0044 (accepted 2026-08-09) — coupling accepted as intentional;
+  breakage-class policy recorded in `docs/operator-api/abi-changelog.md` + annotated at the
+  coupling site in `gpu_operator.h`. No code change to the coupling.
 
 #### P3-04: The one genuinely public module (`operator_api/`) has no module guide
 

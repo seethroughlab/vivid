@@ -1,0 +1,24 @@
+{
+  "name": "InstanceNoise-ops",
+  "version": "0.1.0",
+  "operators": [
+    {
+      "name": "InstanceGrid",
+      "kind": "gpu_visual",
+      "source": "instance_grid.cpp"
+    },
+    {
+      "name": "InstanceNoise",
+      "kind": "gpu_visual",
+      "source": "instance_noise.cpp"
+    }
+  ],
+  "dependencies": {
+    "vendor": [
+      {
+        "name": "vivid-3d-headers",
+        "include": "vendor"
+      }
+    ]
+  }
+}

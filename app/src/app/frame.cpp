@@ -31,10 +31,12 @@
 #include "ui/preset_popover.h"
 #include "ui/clip_editor.h"
 #include "transport.h"
+#include <chrono>
 #include "audio/vst3_host.h"
 #include "audio/mini_fft.h"   // frame-side spectrum for the <src>.fft.k bridge sources
 #include "operator_api/note_bus.h"   // publish each track's held notes for the note-instancer op
 #include "operator_api/spectrum_bus.h"   // publish the master spectrum for per-band geometry ops
+#include "operator_api/reactive_bus.h"   // ADR-0053 Phase B: publish master/track signals for Reactive source ops
 #include "operator_api/note_events.h"   // publish each track's discrete note on/off events for one-shot ops
 #include "audio/vst3_plugin_window.h"
 #include "audio/clap_plugin_window.h"
@@ -284,6 +286,12 @@ void publish_bridge_sources(App& app, Window& win) {
             std::min(1.0f, win.beatPulse) };                       // beat pulse
         for (int k = 0; k < B::kNumTransportKinds; ++k)
             graph.publish(H(key(kTransport, 0, 0, k), [k] { return B::transport_source(B::kTransportKindSuffixes[k]); }), tvals[k]);
+        // ADR-0053 Phase B: publish the same nine master signals to the reactive bus, so the visible
+        // ReactiveMaster SOURCE op can read them and drive visual params through real control edges. Order
+        // MUST match VIVID_REACTIVE_MASTER_SIGNALS: 5 master scalars then 4 transport signals.
+        const float msig[VIVID_REACTIVE_MASTER_SIGNALS] = {
+            mvals[0], mvals[1], mvals[2], mvals[3], mvals[4], tvals[0], tvals[1], tvals[2], tvals[3] };
+        vivid_reactive_bus_publish_master(msig, VIVID_REACTIVE_MASTER_SIGNALS);
     }
     if (app.session) if (int nm = S::session_master_analysis_copy(app.session, an_buf, S::kAnalysisN); nm > 1) {
         do_fft(nm, [&](int k, float v) { graph.publish(H(key(kMasterFft, 0, 0, k), [k] { return B::master_fft(k); }), v); });
@@ -325,6 +333,10 @@ void publish_bridge_sources(App& app, Window& win) {
                                  std::min(1.0f, win.trkNoteHold[t]) };
         for (int k = 0; k < 8; ++k)
             graph.publish(H(key(kTrack, tid, 0, k), [tid, k] { return B::track_source(static_cast<int>(tid), B::kTrackKindSuffixes[k]); }), tvals[k]);
+        // ADR-0053 Phase B: publish the same eight track signals to the reactive bus (into slot `t`,
+        // TAGGED with the stable id `tid`, so a ReactiveTrack op addressing by stable id follows the
+        // track across reorder/delete). Order MUST match VIVID_REACTIVE_TRACK_SIGNALS.
+        vivid_reactive_bus_publish_track(t, static_cast<int>(tid), tvals, VIVID_REACTIVE_TRACK_SIGNALS);
         if (int ns = S::session_track_analysis_copy(app.session, t, an_buf, S::kAnalysisN); ns > 1)
             do_fft(ns, [&](int k, float v) { graph.publish(H(key(kTrackFft, tid, 0, k), [tid, k] { return B::track_fft(static_cast<int>(tid), k); }), v); });
         // Per-audio-graph-node sources. RMS (node_<t>_<nid>.rms) is always-on + cheap (from the scope
@@ -380,6 +392,8 @@ void publish_bridge_sources(App& app, Window& win) {
         vivid_note_bus_publish(s, -1, nullptr, 0);
         if (s < VIVID_NOTE_EVENT_TRACKS) vivid_note_event_bus_publish(s, -1, nullptr, 0);
     }
+    for (int s = ntracks; s < VIVID_REACTIVE_BUS_TRACKS; ++s)   // ADR-0053 Phase B: free stale reactive slots
+        vivid_reactive_bus_publish_track(s, -1, nullptr, 0);
     // Advance mapping smoothing (envelope followers) once per frame BEFORE resolving params, using a
     // real wall-clock delta clamped against stalls. Sources are all published above at this point.
     static double s_prev_bridge_t = glfwGetTime();
@@ -594,7 +608,7 @@ void run_frame_loop(App& app, Window& win) {
     ClipEditor&    clip_editor = *win.editor;
     ControlServer& control     = *app.control;
 
-    ControlCtx cctx{ app.session, &graph, &vgraph, &transport, &app,
+    ControlCtx cctx{ app.session, &graph, &vgraph, &transport, &app, &win,
                      &win.win_w, &win.win_h, &win.split_x, &win.dock_h };
 
     // Event polling is split from rendering and driven by a CFRunLoopTimer (see
@@ -778,9 +792,25 @@ void run_frame_loop(App& app, Window& win) {
             // current), but do NOT present yet — the output is blitted over the graph further down,
             // because the preview floats above the canvas.
             clear_pass(frame.encoder, frame.view, 0.045f, 0.05f, 0.06f);  // static dark backdrop
-            vgraph.set_metronome(static_cast<float>(transport.bpm.load(std::memory_order_relaxed)),
-                                 transport.beats_per_bar.load(std::memory_order_relaxed), beats);
-            vgraph.run_chain(frame.encoder, tsec);
+            // ADR-0032 Phase C: while an offline AV export is running, STEP IT instead of the live render.
+            // The export's own run_chain (synthetic clock, its own encoder) owns the shared VisualGraph
+            // state this tick — a live run_chain would clobber it — and the RT it leaves is shown as a live
+            // render preview. One export frame per tick keeps the UI responsive + shows progress.
+            if (vivid::av_export_active(app)) {
+                if (vivid::av_export_tick(app) == vivid::AvTick::Done) {
+                    const auto& r = app.last_av_export;
+                    char m[256];
+                    std::snprintf(m, sizeof m, "AV exported: %s (%llu frames, %.1fs%s)", r.path.c_str(),
+                                  static_cast<unsigned long long>(r.frames), r.duration_sec,
+                                  r.clipped ? ", audio CLIPPED" : "");
+                    vivid::ui::push_toast(win.toasts, vivid::LogLevel::Info, m, glfwGetTime(), 10.0);
+                }
+            } else {
+                vgraph.set_metronome(static_cast<float>(transport.bpm.load(std::memory_order_relaxed)),
+                                     transport.beats_per_bar.load(std::memory_order_relaxed), beats);
+                vgraph.run_chain(frame.encoder, tsec);
+            }
+            gpu.gpu_mark(frame.encoder, "visuals");   // GPU timing: end of the output render (vs. the editor UI that follows)
             win.preview.out_aspect = vgraph.rt_aspect();   // cache: drives the preview's height + hit-rects
             win.preview.clamp(win.visuals_panel());        // ...so a new aspect can resize it out of bounds
             // ADR-0014: WHERE the output is shown is also the Output node's business. Reconcile the
@@ -882,13 +912,21 @@ void run_frame_loop(App& app, Window& win) {
             draw_perf_hud(ui, win);   // always-on FPS / frame-time read-out, drawn last (on top)
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
             gpu.end_frame(frame);
-            // Video export (realtime): this frame's Output RT is now submitted to the queue, so
-            // read it back + drain the audio tap into the AV writer. Only touches the GPU while a
-            // recording is active. A true return means a timed export just auto-stopped — toast it.
-            if (app.recorder && app.recorder->is_recording()) {
+            // This frame's Output RT is now submitted to the queue and can be read back. TWO consumers
+            // want it: the reactive-visuals perception ring (throttled ~12fps, always-on so a single
+            // analyze_output call sees a real time-series) and the realtime video recorder (only while
+            // recording). Read back ONCE and feed both. The ring is frame-thread only — no locks.
+            const double react_now = std::chrono::duration<double>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            const bool recording = app.recorder && app.recorder->is_recording();
+            const bool sample_react = app.reactivity.due(react_now);
+            if (recording || sample_react) {
                 std::vector<uint8_t> rgba; uint32_t rw = 0, rh = 0;
                 const bool got = vgraph.read_output_pixels(rgba, rw, rh);
-                if (app.recorder->tick(got ? rgba.data() : nullptr, rw, rh, transport)) {
+                if (got && sample_react)
+                    app.reactivity.push(rgba.data(), rw, rh, transport, react_now);
+                // A true return means a timed export just auto-stopped — toast it.
+                if (recording && app.recorder->tick(got ? rgba.data() : nullptr, rw, rh, transport)) {
                     const auto st = app.recorder->status();
                     char m[192];
                     std::snprintf(m, sizeof m, "Video exported: %s (%llu frames, %.1fs)",

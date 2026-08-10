@@ -1,12 +1,15 @@
 #pragma once
 #include <functional>
 #include <memory>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "app/log.h"               // ADR-0019 (E4): the leveled logger (owned here)
 #include "app/project_state.h"
+#include "audio/audio_bounce.h"    // ADR-0032: BounceResult (File > Export Audio / export_audio MCP)
+#include "app/av_bounce.h"         // ADR-0032 Phase C: AvBounceResult (deterministic offline AV export)
 #include "gpu/op_runtime.h"        // OpRegistry (operator-based visuals)
 #include "gpu/operator_loader.h"   // OperatorLoader (dlopen'd operators; owned here)
 #include "gpu/shader_library.h"    // ShaderLibrary (ADR-0016: a shader FILE is an operator)
@@ -14,6 +17,8 @@
 #include "packages/hot_reload_manager.h"   // live operator hot-reload (opt-in/dev)
 #include "platform/midi_input.h"           // hardware MIDI input (M6.4)
 #include "audio/music_eval.h"              // ADR-0026: in-app Gemini music evaluation
+#include "audio/visual_eval.h"             // reactive-visuals loop: multimodal Gemini visual judge
+#include "app/reactivity_ring.h"           // reactive-visuals loop: reliable time-based visual perception
 
 namespace vivid {
 class GpuContext;
@@ -23,6 +28,7 @@ class EditGateway;
 class CrashRecovery;
 class VideoRecorder;
 namespace ui { class NodeGraph; class AudioNodeGraph; }
+namespace audio { class AudioDeviceManager; }   // ADR-0032 Phase A (miniaudio-free fwd decl)
 }
 namespace vivid::session { struct Session; }
 struct Transport;
@@ -48,6 +54,13 @@ struct App {
     std::function<void()> before_audio_rebuild;
     CrashRecovery*      crash_recovery = nullptr; // ADR-0018 warm-snapshot writer (a main.cpp local)
     VideoRecorder*      recorder    = nullptr;   // realtime AV video export (a main.cpp local)
+    // ADR-0032: the ma_device (owned by audio_devices below), kept OPAQUE so miniaudio.h stays out of
+    // this widely-included header. The audio-export path casts it back to ma_device* to pause/resume the
+    // device around an offline WAV bounce. Null when audio is unavailable (headless / device open failed).
+    void*               audio_device = nullptr;
+    // ADR-0032 Phase A: the audio output device model (enumerate / status / open; a main.cpp local).
+    // Reachable by the control handlers + diagnostics without pulling in miniaudio.h. Null when headless.
+    vivid::audio::AudioDeviceManager* audio_devices = nullptr;
     OpRegistry          op_registry;           // built-in + loaded operators
     // Loaders for dlopen'd operator dylibs. Owned here so each outlives the
     // registry factory that captures its raw pointer (App lives the whole run).
@@ -59,6 +72,11 @@ struct App {
     // vivid-package.json. Cleared on New/project switch so package operators are scoped like
     // project shaders, not leaked globally for the rest of the process.
     std::set<std::string> project_operator_types;
+    // Source-forward (ADR-0054): registered op name -> absolute path of the .cpp that ships with the
+    // open project. Lets a project-local operator's node right-click resolve to "Open source in
+    // editor" (the source is right there in the project), inviting the user to read/edit/fork it.
+    // Cleared alongside project_operator_types.
+    std::map<std::string, std::string> project_operator_sources;
     // Which operators accept which dropped file extensions (ADR-0021/P3). Rebuilt from op_loaders
     // after the startup scan and after each live package install.
     FileDropRegistry file_drops;
@@ -66,6 +84,12 @@ struct App {
     platform::MidiInput midi_in;   // hardware MIDI input; drained each frame to the armed track (M6.4)
     Logger              log;       // ADR-0019 leveled logger; drained each frame (drain_rt)
     MusicEval           music_eval; // ADR-0026: in-app Gemini audio evaluation (async jobs)
+    ReactivityRing      reactivity;  // reactive-visuals loop: per-frame visual+audio ring for analyze_output(av)
+    VisualEval          visual_eval; // reactive-visuals loop: multimodal Gemini judge (async jobs)
+
+    BounceResult last_audio_export;   // ADR-0032: result of the most recent offline WAV bounce (empty path => none)
+    AvBounceResult last_av_export;    // ADR-0032 Phase C: result of the most recent offline AV export (empty => none)
+    void* av_export = nullptr;        // ADR-0032 Phase C: active offline AV export job (opaque; owned by av_bounce_app.cpp)
 
     bool recovered_unsaved = false;   // ADR-0018: a launch-time autosave recovery ran; mark dirty post-baseline
     bool reduce_motion = false;       // UX Ph4 F1: app-level accessibility toggle (persisted in settings.json)

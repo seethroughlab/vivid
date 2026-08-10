@@ -39,6 +39,63 @@ private:
     void ensure_msaa(WGPUDevice dev, WGPUTextureFormat fmt, uint32_t width, uint32_t height, const char* label);
 };
 
+// Present mode for the swap chain, from the VIVID_PRESENT env var (read once):
+//   "immediate"/"off"/"0" -> Immediate (vsync OFF — uncaps the frame rate so the true render
+//                            ceiling is measurable), anything else / unset -> Fifo (vsync, default).
+// Falls back to Fifo if the surface doesn't advertise Immediate.
+WGPUPresentMode vivid_present_mode(const WGPUSurfaceCapabilities& caps);
+
+// GPU-side frame timing via timestamp queries (encoder-level writeTimestamp). Answers the question
+// CPU wall-clock can't: is a frame GPU-bound or CPU-bound? Non-blocking — each frame's timestamps are
+// resolved into a ring of readback buffers and consumed a few frames later, so the frame loop never
+// stalls on the GPU. A no-op (enabled()==false, all methods return immediately) when the adapter lacks
+// timestamp support. Resolved values are nanoseconds (wgpuCommandEncoderResolveQuerySet normalizes).
+// Main-frame only; results are published to vivid::perf for get_perf.
+class GpuTimer {
+public:
+    static constexpr uint32_t kMaxMarks = 8;   // timestamps per frame (kMaxMarks-1 segments max)
+    static constexpr uint32_t kRing     = 4;   // frames in flight before a slot is reused
+
+    bool init(WGPUDevice device, WGPUAdapter adapter);   // false (disabled) if unsupported
+    bool enabled() const { return enabled_; }
+    void shutdown();
+
+    // Per main frame, in order:
+    void begin(WGPUCommandEncoder enc);                     // opens a slot, writes mark 0
+    void mark(WGPUCommandEncoder enc, const char* label);   // ends the segment named `label`
+    void resolve(WGPUCommandEncoder enc);                   // writes the final mark, records resolve+copy
+    void after_submit();                                    // maps the readback buffer; must follow a successful submit
+
+    // Which two native features to request at device creation, iff the adapter supports BOTH.
+    // Returns the count written into `out` (0 or 2).
+    static uint32_t required_features(WGPUAdapter adapter, WGPUFeatureName* out);
+
+private:
+    void drain();   // non-blocking poll + consume any completed slots -> publish to perf
+    // Writes one GPU timestamp into query `qidx` via a tiny 1x1 render pass (beginningOfPassWriteIndex).
+    // Metal samples timestamps at pass boundaries, so this dummy pass timestamps the current point in the
+    // command stream (encoder-level writeTimestamp reads back as 0 on this wgpu-native/Metal backend).
+    void write_mark(WGPUCommandEncoder enc, uint32_t qidx);
+
+    struct Slot {
+        WGPUBuffer  resolve_buf = nullptr;   // QueryResolve | CopySrc
+        WGPUBuffer  read_buf    = nullptr;   // MapRead | CopyDst
+        uint32_t    nmarks      = 0;
+        const char* labels[kMaxMarks]{};     // labels[i] names the segment ending at mark i (labels[0] unused)
+        bool        inflight    = false;
+        std::atomic<int> mapped{0};          // set in the map callback: 0=pending, 1=ok, -1=fail
+    };
+    WGPUDevice      device_     = nullptr;
+    WGPUQuerySet    qset_       = nullptr;    // kRing*kMaxMarks timestamp slots
+    WGPUTexture     dummy_tex_  = nullptr;    // 1x1 render target for the timing passes (cheap)
+    WGPUTextureView dummy_view_ = nullptr;
+    Slot         slots_[kRing];
+    uint32_t     cur_       = 0;             // ring slot recorded this frame
+    uint32_t     nmarks_cur_= 0;
+    bool         active_    = false;         // begin() opened a slot this frame
+    bool         enabled_   = false;
+};
+
 class GpuContext {
 public:
     GpuContext() = default;
@@ -54,6 +111,11 @@ public:
     bool end_frame(const FrameState& frame);
     void discard_frame(const FrameState& frame);
     void shutdown();
+
+    // Insert a GPU-timing mark on the main frame's encoder, ending the segment named `label`
+    // (e.g. after the visual-graph render, `label` = "visuals"). No-op unless GPU timing is enabled.
+    // `label` must be a stable string literal — the timer stores the pointer, not a copy.
+    void gpu_mark(WGPUCommandEncoder encoder, const char* label) { timer_.mark(encoder, label); }
 
     // Secondary output surface — the pop-out visuals window. Shares this device/queue;
     // the visuals FBO is blitted into it (see VisualGraph::present_to). Thin delegators over
@@ -98,6 +160,7 @@ private:
     WGPUTextureFormat surface_format_ = WGPUTextureFormat_Undefined;
     bool surface_copy_src_ = false;
     bool bc_texture_compression_enabled_ = false;
+    WGPUPresentMode present_mode_ = WGPUPresentMode_Fifo;   // chosen once in init() (VIVID_PRESENT)
     bool device_lost_ = false;
     uint32_t width_ = 0;
     uint32_t height_ = 0;
@@ -113,6 +176,9 @@ private:
     // Secondary (pop-out) + editor float-out surfaces. Share device_/queue_/format via AuxSurface.
     AuxSurface aux_popout_;
     AuxSurface aux_editor_;
+
+    // GPU-side frame timing (timestamp queries). Disabled/no-op if the adapter lacks support.
+    GpuTimer timer_;
 
     // Last error captured from the uncaptured error callback (for crash diagnostics)
     std::string last_error_;

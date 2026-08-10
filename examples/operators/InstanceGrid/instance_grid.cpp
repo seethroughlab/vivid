@@ -3,6 +3,7 @@
 #include "operator_api/gpu_3d.h"
 #include "operator_api/instance_algorithms.h"
 #include "operator_api/thumbnail_3d.h"
+#include <array>
 #include <vector>
 
 // =============================================================================
@@ -24,6 +25,8 @@
 struct InstanceGrid : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName         = "InstanceGrid";
     static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
+    static constexpr const char* kSummary = "Lays out instances on a regular 3D grid — the lattice a shape is stamped across.";
+    static constexpr std::array<const char*, 3> kKeywords = {"3d", "instances", "grid"};
     static constexpr bool kTimeDependent       = false;
     static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 

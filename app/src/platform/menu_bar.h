@@ -21,11 +21,16 @@ struct MenuActions {
     std::function<void()> set_gemini_key;   // Eval > Set Gemini Key… (ADR-0026)
     std::function<void()> evaluate_output;  // Eval > Evaluate Output
     std::function<void()> export_video;     // File > Export Video (toggles start/stop a realtime AV export)
+    std::function<void()> export_audio;     // File > Export Audio (offline master-mix bounce to .wav, ADR-0032)
+    std::function<void()> export_av;        // File > Export Video (Deterministic) (offline AV render, ADR-0032 Phase C)
     std::function<void()> toggle_reduce_motion;  // View > Reduce Motion (UX Ph4 F1 accessibility toggle)
+    std::function<void(const std::string&)> select_audio_device;  // View > Audio Output > <name> (ADR-0032 Phase A; "" = system default)
 };
 
 // A menu entry for the File > Open Example submenu: a display label + the project path to open.
-struct MenuItemEntry { std::string label; std::string path; };
+// `group` is "" for a top-level item, else the name of a submenu to nest it under (e.g. "operators"
+// -> an "Operators" submenu). Entries are expected pre-sorted by (group, label).
+struct MenuItemEntry { std::string label; std::string path; std::string group; };
 
 // Insert native "File" + "Edit" menus into the app's menu bar. macOS: File gets the standard
 // ⌘N/⌘O/⌘S/⇧⌘S key equivalents; Edit's Undo/Redo are label-only (no ⌘Z key-equivalent, so AppKit
@@ -35,6 +40,10 @@ void install_menu_bar(const MenuActions& actions);
 
 // (Re)populate the File > Open Recent submenu. Call after the recent list changes.
 void set_recent_projects(const std::vector<std::string>& paths);
+
+// (Re)populate the View > Audio Output submenu (device names + a "System Default" item) and check the
+// one matching `active_name`. Call after install_menu_bar and after a device switch. (ADR-0032 Phase A)
+void set_audio_devices(const std::vector<std::string>& names, const std::string& active_name);
 
 // Populate the File > Open Example submenu (label -> path). Call once after discovery. (ADR-0021/P2)
 void set_example_projects(const std::vector<MenuItemEntry>& examples);

@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <string>
 #include <nlohmann/json.hpp>
 
@@ -17,6 +18,42 @@ struct App;
 struct HealthSnapshot {
     // audio
     bool        audio_session_active = false;   // a real multi-track session (vs test tone)
+
+    // audio realtime health (ADR-0031 §4) — counters are DELTAS since the previous snapshot (collect
+    // runs once per frame); gauges are absolute. Populated from the vivid::audio::health atomics.
+    uint64_t    audio_callbacks = 0;            // realtime callbacks since last snapshot (denominator)
+    uint64_t    audio_render_bailouts = 0;      // oversized-block bail-to-silence events (audible dropout)
+    uint64_t    audio_over_budget = 0;          // callbacks that blew the realtime time budget
+    uint64_t    audio_handoff_skips = 0;        // try_lock handoffs skipped on contention (kept stale)
+    uint32_t    audio_last_callback_us = 0;     // gauge: most-recent callback wall time
+    uint32_t    audio_max_callback_us = 0;      // gauge: high-water callback wall time since start
+    // Error threshold for render bailouts, set by collect_health from audio_budgets() so severity()
+    // stays a pure comparison (no audio_budgets link in the App-free rollup). 0 = don't raise on bailouts.
+    uint32_t    audio_bailout_error_threshold = 0;
+
+    // ADR-0032 Phase A — the active audio OUTPUT device (read-only display; not a severity input beyond
+    // the fallback flag). `audio_device_open` false => headless / no device.
+    bool        audio_device_open = false;
+    std::string audio_device_name;             // "" when opened the system default and its name is unknown
+    uint32_t    audio_device_sr = 0;           // the rate the callback runs at
+    uint32_t    audio_device_period = 0;       // requested buffer size
+    bool        audio_device_fallback = false; // the saved device was gone → opened default instead
+    uint32_t    audio_device_latency_frames = 0;  // ADR-0032 Phase B: backend output buffering (0 = unknown)
+    uint32_t    audio_max_plugin_latency_samples = 0;  // max per-track summed plugin latency (reporting only)
+    bool        audio_plugin_latency_unknown = false;  // a loaded CLAP plugin doesn't report latency
+    // ADR-0032 Phase E1: playback plugin-delay compensation state (published by pdc_recompute).
+    bool        pdc_enabled = false;
+    uint32_t    pdc_applied_delay_samples = 0;         // L_max added to the compensated mix (0 = off/none)
+    int         pdc_tracks_compensated = 0;
+    int         pdc_tracks_live = 0;                   // left live (unknown-latency / live-input / cross-track)
+    bool        pdc_clamped = false;                   // a track's latency exceeded the cap (best-effort align)
+
+    // ADR-0032 Phase D1 — the input (capture) side of a duplex device. `audio_input_open` false =>
+    // playback-only (the default). `audio_input_level` is the live capture RMS (0..1) for the meter.
+    bool        audio_input_open = false;
+    std::string audio_input_name;              // "" when opened the system default input
+    uint32_t    audio_input_latency_frames = 0;
+    float       audio_input_level = 0.0f;
 
     // gpu
     bool        gpu_ok = true;                   // device not lost

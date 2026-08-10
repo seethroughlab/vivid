@@ -63,6 +63,25 @@ VIDEO = os.path.join(_MEDIA, "loop.mp4")              # a clip for the Video op
 # placeholder. (Texture/mesh INPUTS to other ops are seeded by PreviewSources below.)
 FILE_SEED = {"Image": TEST_IMAGE, "MeshLoad": GLTF, "Model": GLTF, "Video": VIDEO}
 
+
+def dress_light3d(v, op_node, shape, render):
+    """Make Light3D's preview read as a LIGHT (ADR-0051 P4).
+
+    The audit scaffold has a light ILLUMINATE a default cube, which produces a tan cube on black —
+    a picture of a cube, not of a light. A spot pool with visible falloff on a ground plane is
+    unmistakable. Preview-only dressing: the audit's own scaffold stays neutral so its param sweep
+    is not biased by a pose chosen to look good."""
+    for k, val in dict(shape=3, scale_x=24, scale_y=1, scale_z=24, pos_y=-1.5,
+                       r=0.82, g=0.82, b=0.85, roughness=0.9).items():
+        v.set_node_param(shape, k, float(val))
+    for k, val in dict(type=2, intensity=6.0, r=1.0, g=0.86, b=0.55,
+                       pos_x=0.0, pos_y=6.0, pos_z=0.5, radius=26.0,
+                       dir_x=0.0, dir_y=-1.0, dir_z=0.0,
+                       spot_angle=30.0, spot_blend=0.45).items():
+        v.set_node_param(op_node, k, float(val))
+    for k, val in dict(cam_x=0.0, cam_y=4.2, cam_z=8.5, target_y=-1.0, fov=55.0).items():
+        v.set_node_param(render, k, float(val))
+
 def needs_signal(op) -> bool:
     """True for ops that only render once a live signal is flowing: any signal-consumer, the Notes source
     itself, and AudioSpectrum (which reads the master spectrum bus)."""
@@ -189,6 +208,9 @@ def capture_op(v, op, tmpdir) -> str:
         return f"scaffold-error: {str(e)[:80]}"
     if terminal is None:
         return "skip-blank"          # audio / unknown — nothing GPU-renderable
+    # Per-op preview dressing, where the neutral audit scaffold makes a poor PICTURE of the op.
+    if name == "Light3D":
+        dress_light3d(v, op_node, sources.get("scene"), terminal)
     # Seed a file-based source op with real content so it renders instead of a placeholder.
     if name in FILE_SEED and os.path.exists(FILE_SEED[name]):
         try:

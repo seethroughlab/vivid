@@ -65,7 +65,10 @@ class Sources:
         "signal": "Notes",
         "clock": "Clock",
         "lane": "LaneRamp",
-        "texture": "Gradient",
+        # `Gradient` is no longer in the catalog — this raised "unknown op" for EVERY texture-input
+        # op (Blur, CRT, Composite, ...), the same way audit.py's baseline did. NoiseField is the
+        # equivalent: an input-free texture source with plenty of contrast to sweep against.
+        "texture": "NoiseField",
     }
 
     def __init__(self, v):

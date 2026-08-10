@@ -54,6 +54,21 @@ void register_audio_handlers(Handlers& handlers_) {
         P::session_launch_scene(c.session, scene);
         return ok();
     };
+    // Stop a track's playing clip (the counterpart to launch_clip): the clip goes idle at the next
+    // launch-quantize bar and stays silent until a clip/scene is launched. Distinct from set_track_mute,
+    // which silences the mix while the clip keeps running.
+    handlers_["stop_track"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        P::session_stop_track(c.session, track);
+        return ok();
+    };
+    handlers_["stop_all"] = [](const ControlCtx& c, const json&) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        P::session_stop_all(c.session);
+        return ok();
+    };
     handlers_["set_track_gain"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0);
@@ -75,6 +90,46 @@ void register_audio_handlers(Handlers& handlers_) {
         if (bars < 1) return err(code::kBadArg, "bars must be >= 1");
         P::session_set_launch_quantum_bars(c.session, bars);
         json r = ok(); r["bars"] = P::session_launch_quantum_bars(c.session); return r;
+    };
+    // ADR-0032 E1 (#4): opt-in playback plugin-delay compensation. {enabled} toggles it; the reply
+    // reports the resulting state — L_max applied (samples + ms), how many tracks are exactly compensated
+    // vs left live (unknown-latency / live-input / cross-track), and whether any latency was clamped.
+    // Persisted per project (persist.cpp). Off by default so a live set stays low-latency.
+    handlers_["set_pdc"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        P::session_set_pdc_enabled(c.session, b.value("enabled", false));
+        const int sr = P::session_sample_rate(c.session);
+        const int applied = P::session_pdc_applied_delay(c.session);
+        json r = ok();
+        r["enabled"]            = P::session_pdc_enabled(c.session);
+        r["applied_delay"]      = applied;
+        r["applied_delay_ms"]   = sr > 0 ? applied * 1000.0 / sr : 0.0;
+        r["tracks_compensated"] = P::session_pdc_tracks_compensated(c.session);
+        r["tracks_live"]        = P::session_pdc_tracks_live(c.session);
+        r["clamped"]            = P::session_pdc_clamped(c.session) != 0;
+        return r;
+    };
+    // Session music-theory context: root note + scale NAME (e.g. "C"/"minor"). The theory vocabulary
+    // + validation live in the Python bridge (mcp/theory.py, ADR-0046); the core just persists the two
+    // strings so the key/scale round-trips with the project. set_music_key is a classified edit
+    // (undoable + marks the doc dirty; see edit_methods.cpp); get_music_key reads it back — the bridge
+    // reads it to default quantize_to_scale/harmonize/get_scale after a project load or bridge restart.
+    handlers_["set_music_key"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const std::string root  = b.value("root",  std::string("C"));
+        const std::string scale = b.value("scale", std::string("major"));
+        P::session_set_music(c.session, root.c_str(), scale.c_str());
+        json r = ok();
+        r["root"]  = P::session_music_root(c.session);
+        r["scale"] = P::session_music_scale(c.session);
+        return r;
+    };
+    handlers_["get_music_key"] = [](const ControlCtx& c, const json&) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        json r = ok();
+        r["root"]  = P::session_music_root(c.session);
+        r["scale"] = P::session_music_scale(c.session);
+        return r;
     };
     // ADR-0022 P1b.4: solo/mute. Silence a track in the master mix (mute), or hear only the
     // soloed track(s) (solo). The track's own meter stays pre-mute.
@@ -147,6 +202,19 @@ void register_audio_handlers(Handlers& handlers_) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0), scene = b.value("scene", 0);
         json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
+        // Optimistic concurrency: a read-modify-write caller passes the `expected_rev` it read via
+        // get_clip. If the clip's revision has advanced since, someone else wrote in between — reject
+        // the stale write (conflict) instead of clobbering. Absent => an unconditional write (REPLACE
+        // tools, and every pre-existing caller, are unchanged).
+        if (b.contains("expected_rev")) {
+            const uint64_t have = P::session_clip_rev(c.session, track, scene);
+            const uint64_t want = b.value("expected_rev", static_cast<uint64_t>(0));
+            if (have != want) {
+                json cf = err(code::kConflict, "clip changed since read (expected rev " +
+                              std::to_string(want) + ", have " + std::to_string(have) + ")");
+                cf["rev"] = have; return cf;   // hand back the current rev so the caller can re-read+retry
+            }
+        }
         std::vector<P::ClipNote> notes;
         if (b.contains("notes"))
             for (const auto& jn : b["notes"]) {
@@ -156,7 +224,8 @@ void register_audio_handlers(Handlers& handlers_) {
             }
         P::session_set_clip(c.session, track, scene,
                             notes.data(), static_cast<int>(notes.size()), b.value("length", 4.0));
-        json r = ok(); r["notes"] = static_cast<int>(notes.size()); return r;
+        json r = ok(); r["notes"] = static_cast<int>(notes.size());
+        r["rev"] = P::session_clip_rev(c.session, track, scene); return r;
     };
     // Read a MIDI clip back (the read half that read-modify-write authoring tools need).
     handlers_["get_clip"] = [](const ControlCtx& c, const json& b) {
@@ -171,7 +240,9 @@ void register_audio_handlers(Handlers& handlers_) {
             P::expr_to_json(buf[i], jn);
             notes.push_back(jn);
         }
-        json r = ok(); r["notes"] = notes; r["length"] = P::session_clip_length(c.session, track, scene); return r;
+        json r = ok(); r["notes"] = notes; r["length"] = P::session_clip_length(c.session, track, scene);
+        r["rev"] = P::session_clip_rev(c.session, track, scene);   // for optimistic-concurrency RMW writes
+        return r;
     };
     // ---------------- audio-clip warp / shaping (A2) ----------------
     handlers_["audio_set_warp"] = [](const ControlCtx& c, const json& b) {

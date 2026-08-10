@@ -5,8 +5,12 @@
 #include "audio/vst3_host.h"
 #include "operator_api/movie_audio.h"   // vivid_movie_audio_set_playing (gates the movie-audio bus)
 #include "audio/movie_audio_bus.h"      // movie_audio_begin_block / movie_audio_mix_master
+#include "audio/audio_input_bus.h"      // ADR-0032 Phase D2: publish the capture block to the input bus
+#include "audio/audio_health.h"         // ADR-0031 §3: RT health counters + RtScope
+#include "audio/audio_budgets.h"        // ADR-0031 §6: callback budget (over-budget threshold)
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 namespace { constexpr double kPi = 3.14159265358979323846; }
@@ -14,10 +18,36 @@ namespace { constexpr double kPi = 3.14159265358979323846; }
 // Real-time audio callback: render the hosted instrument's arpeggio (or a test
 // tone if no plugin), advance the transport, and publish a block RMS level.
 // device->pUserData is the shared App (never a Window).
-void audio_callback(ma_device* device, void* out, const void* /*in*/, ma_uint32 frames) {
+// `in` is non-null only when the device opened DUPLEX (ADR-0032 Phase D1 hardware input); it is
+// interleaved-stereo f32, `frames` long, at device->sampleRate.
+void audio_callback(ma_device* device, void* out, const void* in, ma_uint32 frames) {
     auto* a = static_cast<vivid::App*>(device->pUserData);
     auto* fout = static_cast<float*>(out);
     const double sr = device->sampleRate;
+
+    // ADR-0032 Phase D1/D2: hardware input. `in` is live only on a duplex device. Publish it to the
+    // input bus (D2 — the AudioInput source op drains it downstream this same block) and compute a
+    // block-RMS input level for the diagnostics meter (left channel, matching the output meter below).
+    if (in) {
+        const float* fin = static_cast<const float*>(in);
+        vivid::audio_input_write(fin, frames);   // producer: the AudioInput graph op is the consumer
+        if (a->transport) {
+            double s = 0.0;
+            for (ma_uint32 i = 0; i < frames; ++i) { const float l = fin[i * 2]; s += static_cast<double>(l) * l; }
+            a->transport->input_level.store(
+                static_cast<float>(std::sqrt(s / (frames > 0 ? frames : 1))), std::memory_order_relaxed);
+        }
+    }
+
+    // ADR-0031 §3: mark the realtime scope (gates in-session_process handoff-skip counting so the
+    // offline bounce never ticks it) and time the whole callback for the over-budget counter.
+    vivid::audio::health::RtScope rt_scope;
+    const auto cb_t0 = std::chrono::steady_clock::now();
+    vivid::audio::health::g_callbacks.fetch_add(1, std::memory_order_relaxed);
+    // An oversized block is the one place session_process fills silence and bails (frames > max supported
+    // block); count it as the render-bail-to-silence event before we hand it over.
+    if (frames > vivid::audio::audio_budgets().max_block_frames)
+        vivid::audio::health::g_render_bailouts.fetch_add(1, std::memory_order_relaxed);
 
     const double beats = a->transport ? a->transport->beats.load(std::memory_order_relaxed) : 0.0;
     const double bpm   = a->transport ? a->transport->bpm.load(std::memory_order_relaxed) : 120.0;
@@ -100,4 +130,11 @@ void audio_callback(ma_device* device, void* out, const void* /*in*/, ma_uint32 
         a->tr_baseline += (rms - a->tr_baseline) * 0.04f;
         a->transport->transient.store(std::min(1.0f, tr), std::memory_order_relaxed);
     }
+
+    // ADR-0031 §3: publish this callback's wall time + credit an over-budget block if it exceeded the
+    // block's realtime duration × the configured multiplier.
+    const auto cb_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                           std::chrono::steady_clock::now() - cb_t0).count();
+    vivid::audio::health::note_callback_us(static_cast<uint32_t>(cb_us), frames, sr,
+                                           vivid::audio::audio_budgets().callback_budget_mult);
 }

@@ -32,6 +32,11 @@ struct VividGpuContext {
     const uint8_t* input_connected;
 
     // ---- GPU-specific resources ---------------------------------------------
+    // ABI COUPLING (ADR-0044): the WGPU handles below (and WGPUBuffer further down)
+    // are embedded by value from <webgpu/webgpu.h>. Their layout is part of the
+    // operator ABI. Changing the WebGPU backend or taking a WGPU header ABI break is a
+    // MIN_LOADABLE floor bump that ORPHANS installed operator dylibs — not an additive
+    // VERSION bump. See docs/operator-api/abi-changelog.md before touching these.
     WGPUDevice         device;
     WGPUQueue          queue;
     WGPUCommandEncoder command_encoder;

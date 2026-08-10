@@ -33,7 +33,14 @@ namespace vivid { namespace platform { static MenuActions g_actions; } }
 - (void)setGeminiKey:(id)sender   { (void)sender; if (vivid::platform::g_actions.set_gemini_key)  vivid::platform::g_actions.set_gemini_key(); }
 - (void)evaluateOutput:(id)sender { (void)sender; if (vivid::platform::g_actions.evaluate_output) vivid::platform::g_actions.evaluate_output(); }
 - (void)exportVideo:(id)sender    { (void)sender; if (vivid::platform::g_actions.export_video)    vivid::platform::g_actions.export_video(); }
+- (void)exportAudio:(id)sender    { (void)sender; if (vivid::platform::g_actions.export_audio)    vivid::platform::g_actions.export_audio(); }
+- (void)exportAv:(id)sender       { (void)sender; if (vivid::platform::g_actions.export_av)       vivid::platform::g_actions.export_av(); }
 - (void)toggleReduceMotion:(id)sender { (void)sender; if (vivid::platform::g_actions.toggle_reduce_motion) vivid::platform::g_actions.toggle_reduce_motion(); }
+- (void)selectAudioDevice:(NSMenuItem*)sender {
+    NSString* n = [sender representedObject];   // nil/"" for the "System Default" item
+    if (vivid::platform::g_actions.select_audio_device)
+        vivid::platform::g_actions.select_audio_device(std::string(n ? [n UTF8String] : ""));
+}
 @end
 
 static VividMenuTarget* g_target = nil;      // kept alive for the app lifetime (intentional)
@@ -43,6 +50,7 @@ static NSMenuItem*      g_undoItem = nil;    // Edit > Undo (title updated by se
 static NSMenuItem*      g_redoItem = nil;    // Edit > Redo
 static NSMenuItem*      g_exportVideoItem = nil;  // File > Export Video (title flips via set_export_video_recording)
 static NSMenuItem*      g_reduceMotionItem = nil; // View > Reduce Motion (checkmark via set_reduce_motion_checked)
+static NSMenu*          g_audioMenu = nil;        // View > Audio Output submenu (ADR-0032 Phase A)
 
 namespace vivid { namespace platform {
 
@@ -91,6 +99,13 @@ void install_menu_bar(const MenuActions& actions) {
         g_exportVideoItem = [[NSMenuItem alloc] initWithTitle:@"Export Video…" action:@selector(exportVideo:) keyEquivalent:@""];
         [g_exportVideoItem setTarget:g_target]; [fileMenu addItem:g_exportVideoItem]; [g_exportVideoItem release];
 
+        // Export Audio — offline master-mix bounce to a .wav (ADR-0032).
+        it = [[NSMenuItem alloc] initWithTitle:@"Export Audio…" action:@selector(exportAudio:) keyEquivalent:@""];
+        [it setTarget:g_target]; [fileMenu addItem:it]; [it release];
+        // Export Video (Deterministic) — offline AV render locked to a synthetic clock (ADR-0032 Phase C).
+        it = [[NSMenuItem alloc] initWithTitle:@"Export Video (Deterministic)…" action:@selector(exportAv:) keyEquivalent:@""];
+        [it setTarget:g_target]; [fileMenu addItem:it]; [it release];
+
         NSMenuItem* fileItem = [[NSMenuItem alloc] initWithTitle:@"File" action:nil keyEquivalent:@""];
         [fileItem setSubmenu:fileMenu];
         NSInteger insertAt = ([mainMenu numberOfItems] > 0) ? 1 : 0;  // after the app menu
@@ -134,6 +149,13 @@ void install_menu_bar(const MenuActions& actions) {
         g_reduceMotionItem = [[NSMenuItem alloc] initWithTitle:@"Reduce Motion (flash limit)"
                                                         action:@selector(toggleReduceMotion:) keyEquivalent:@""];
         [g_reduceMotionItem setTarget:g_target]; [viewMenu addItem:g_reduceMotionItem]; [g_reduceMotionItem release];
+        // ADR-0032 Phase A: the audio OUTPUT device picker. Populated by set_audio_devices() after launch
+        // (and refreshed on a switch); each item hot-swaps the live device via select_audio_device.
+        [viewMenu addItem:[NSMenuItem separatorItem]];
+        g_audioMenu = [[NSMenu alloc] initWithTitle:@"Audio Output"];
+        [g_audioMenu setAutoenablesItems:NO];
+        NSMenuItem* audioItem = [[NSMenuItem alloc] initWithTitle:@"Audio Output" action:nil keyEquivalent:@""];
+        [audioItem setSubmenu:g_audioMenu]; [viewMenu addItem:audioItem]; [audioItem release];
         NSMenuItem* viewItem = [[NSMenuItem alloc] initWithTitle:@"View" action:nil keyEquivalent:@""];
         [viewItem setSubmenu:viewMenu];
         [mainMenu insertItem:viewItem atIndex:insertAt + 3];   // right after Eval
@@ -199,6 +221,32 @@ void set_recent_projects(const std::vector<std::string>& paths) {
     }
 }
 
+void set_audio_devices(const std::vector<std::string>& names, const std::string& active_name) {
+    if (!g_audioMenu) return;
+    @autoreleasepool {
+        [g_audioMenu removeAllItems];
+        // "System Default" follows the OS default device (persists an empty requested name). It is an
+        // action, not a state — the checkmark below marks whichever concrete device is actually active.
+        NSMenuItem* def = [[NSMenuItem alloc] initWithTitle:@"System Default"
+                                                     action:@selector(selectAudioDevice:) keyEquivalent:@""];
+        [def setTarget:g_target]; [def setRepresentedObject:@""];
+        [g_audioMenu addItem:def]; [def release];
+        if (names.empty()) {
+            NSMenuItem* none = [[NSMenuItem alloc] initWithTitle:@"No Output Devices" action:nil keyEquivalent:@""];
+            [none setEnabled:NO]; [g_audioMenu addItem:none]; [none release];
+            return;
+        }
+        [g_audioMenu addItem:[NSMenuItem separatorItem]];
+        for (const auto& n : names) {
+            NSString* nm = [NSString stringWithUTF8String:n.c_str()];
+            NSMenuItem* it = [[NSMenuItem alloc] initWithTitle:nm action:@selector(selectAudioDevice:) keyEquivalent:@""];
+            [it setTarget:g_target]; [it setRepresentedObject:nm];
+            if (n == active_name) [it setState:NSControlStateValueOn];   // the live device
+            [g_audioMenu addItem:it]; [it release];
+        }
+    }
+}
+
 void set_example_projects(const std::vector<MenuItemEntry>& examples) {
     if (!g_exampleMenu) return;
     @autoreleasepool {
@@ -209,13 +257,32 @@ void set_example_projects(const std::vector<MenuItemEntry>& examples) {
             [g_exampleMenu addItem:none]; [none release];
             return;
         }
+        // Entries arrive pre-sorted by (group, label): ungrouped items go on the Open Example menu
+        // directly; each non-empty group gets its own submenu (title = group, capitalized).
+        NSMutableDictionary<NSString*, NSMenu*>* groups = [NSMutableDictionary dictionary];
         for (const auto& e : examples) {
             NSString* title = [NSString stringWithUTF8String:e.label.c_str()];
             NSString* full  = [NSString stringWithUTF8String:e.path.c_str()];
             NSMenuItem* it = [[NSMenuItem alloc] initWithTitle:title action:@selector(openExample:) keyEquivalent:@""];
             [it setTarget:g_target];
             [it setRepresentedObject:full];
-            [g_exampleMenu addItem:it]; [it release];
+            if (e.group.empty()) {
+                [g_exampleMenu addItem:it];
+            } else {
+                NSString* gkey = [NSString stringWithUTF8String:e.group.c_str()];
+                NSMenu* sub = groups[gkey];
+                if (!sub) {
+                    sub = [[NSMenu alloc] initWithTitle:gkey];
+                    [sub setAutoenablesItems:NO];
+                    groups[gkey] = sub;
+                    NSMenuItem* subItem = [[NSMenuItem alloc] initWithTitle:[gkey capitalizedString]
+                                                                     action:nil keyEquivalent:@""];
+                    [subItem setSubmenu:sub];
+                    [g_exampleMenu addItem:subItem]; [subItem release]; [sub release];
+                }
+                [sub addItem:it];
+            }
+            [it release];
         }
     }
 }

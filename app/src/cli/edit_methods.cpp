@@ -36,6 +36,7 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "add_graph_track",       { "Add Track",           false } },
         { "add_scene",             { "Add Scene",           false } },
         { "set_scene_name",        { "Rename Scene",        false } },
+        { "set_music_key",         { "Set Key/Scale",       false } },
         { "place_generator",       { "Add Generator",       false } },
         { "remove_generator",      { "Remove Generator",    false } },
         { "set_generator_param",   { "Set Generator Param", true  } },

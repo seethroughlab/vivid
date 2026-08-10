@@ -4,6 +4,7 @@
 #include "gpu/op_runtime.h"          // OpRegistry / register_op (includes operator_api)
 #include "audio/audio_op_runtime.h"  // audio_op_mark_note_op (ADR-0015)
 #include "operator_api/movie_audio.h" // the movie-audio bus (MovieAudio source op)
+#include "audio/audio_input_bus.h"    // ADR-0032 Phase D2: hardware-input bus (AudioInput source op)
 #include "audio/sample_engine/voice.h" // ported sample-playback engine (ADSR/interp/loop/poly)
 
 #include <algorithm>
@@ -214,6 +215,38 @@ struct MovieAudioOp : OperatorBase, AudioProcessable {
         if (ch < 0) ch = 0; if (ch >= VIVID_MOVIE_AUDIO_CHANNELS) ch = VIVID_MOVIE_AUDIO_CHANNELS - 1;
         vivid_movie_audio_pull(ch, L, R, N);   // silence + frozen clock when the transport is paused
         const float g = c->param_values ? c->param_values[1] : gain.value;
+        if (g != 1.f) for (uint32_t i = 0; i < N; ++i) { L[i] *= g; R[i] *= g; }
+    }
+};
+
+// --- AudioInput: hardware capture (mic / line-in) as a graph source --------------------
+// ADR-0032 Phase D2. A SOURCE op that drains the hardware-input bus (audio_input_bus.h), filled by the
+// RT callback from a DUPLEX device's capture block. Because it is a real graph node, live external audio
+// flows through the graph's effects (MONITORING — route it to Output to hear it) AND drives the
+// per-track/master analysis, making live sound a REACTIVE source for visuals. Silent until audio input
+// is enabled (set_audio_input_device / the input picker); output-only devices simply feed silence.
+// Not transport-gated: a mic is live even while the transport is paused.
+struct AudioInputOp : OperatorBase, AudioProcessable {
+    VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_SOURCE; }   // ADR-0046
+    static constexpr const char* kDisplayName = "Audio Input";
+    static constexpr const char* kSummary = "Hardware audio input (mic/line-in) as a graph source — monitor + react to live sound.";
+    static constexpr std::array<const char*, 4> kKeywords = { "audio", "input", "source", "mic" };
+
+    Param<float> gain{ "gain", 1.f, 0.f, 4.f };
+
+    void collect_params(std::vector<ParamBase*>& o) override {
+        vivid::description(gain, "Input gain applied to the captured signal");
+        o.push_back(&gain);
+    }
+    void collect_ports(std::vector<VividPortDescriptor>& o) override { o.push_back(aud_out()); }
+
+    void process_audio(const VividAudioContext* c) override {
+        if (!c->output_buffers) return;
+        const uint32_t N = c->buffer_size;
+        float* L = c->output_buffers[0];
+        float* R = c->output_buffers[0] + N;
+        audio_input_pull(L, R, N);   // planar; zero-padded on underrun / no input
+        const float g = c->param_values ? c->param_values[0] : gain.value;
         if (g != 1.f) for (uint32_t i = 0; i < N; ++i) { L[i] *= g; R[i] *= g; }
     }
 };
@@ -1209,6 +1242,7 @@ void register_builtin_audio_ops(OpRegistry& reg) {
     register_op<StateVariableFilterOp>(reg, "SVFilter");
     register_op<TestToneOp>(reg, "TestTone");
     register_op<MovieAudioOp>(reg, "MovieAudio");   // audio track of a Video movie (drains the movie-audio bus)
+    register_op<AudioInputOp>(reg, "AudioInput");   // ADR-0032 Phase D2: hardware capture as a graph source
     register_op<SamplerOp>(reg, "Sampler");
     // ADR-0047: note/control roles now come from each op's declared_audio_role() (in its descriptor),
     // not a host-side name table — so built-in and loaded-dylib ops classify through the identical path.

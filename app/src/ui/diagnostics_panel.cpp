@@ -59,6 +59,56 @@ void draw_diagnostics_panel(Renderer2D& ui, const HealthSnapshot& h, const App& 
     std::snprintf(buf, sizeof buf, "%s   \xC2\xB7   v%s", h.control_running ? "control server up" : "control server DOWN",
                   h.app_version.c_str());
     line("Runtime", buf, h.control_running ? sty.body : sty.gold);
+    // ADR-0032 Phase A: the active audio OUTPUT device — name · rate · buffer. Gold when a saved device
+    // was gone and the default was substituted; dim when audio is unavailable (headless).
+    if (!h.audio_device_open) {
+        line("Audio device", "unavailable", sty.dim);
+    } else {
+        const char* dn = h.audio_device_name.empty() ? "System Default" : h.audio_device_name.c_str();
+        const double lat_ms = h.audio_device_sr
+            ? h.audio_device_latency_frames * 1000.0 / h.audio_device_sr : 0.0;
+        // ADR-0032 Phase B: append plugin-reported latency only when relevant (keeps idle sessions clean).
+        char fx[40] = "";
+        if (h.audio_plugin_latency_unknown)
+            std::snprintf(fx, sizeof fx, "  \xC2\xB7  plugins: unknown");
+        else if (h.audio_max_plugin_latency_samples > 0 && h.audio_device_sr)
+            std::snprintf(fx, sizeof fx, "  \xC2\xB7  +%.0f ms fx",
+                          h.audio_max_plugin_latency_samples * 1000.0 / h.audio_device_sr);
+        std::snprintf(buf, sizeof buf, "%.28s  \xC2\xB7  %u Hz  \xC2\xB7  %u buf  \xC2\xB7  ~%.0f ms out%s%s", dn,
+                      h.audio_device_sr, h.audio_device_period, lat_ms, fx,
+                      h.audio_device_fallback ? "  (fb)" : "");
+        line("Audio device", buf, h.audio_device_fallback ? sty.gold : sty.body);
+    }
+    // ADR-0032 Phase D1: the hardware INPUT (capture) — shown only when a duplex device is open, so a
+    // playback-only session (the default) stays clean. name · latency · live level meter.
+    if (h.audio_input_open) {
+        const char* in_name = h.audio_input_name.empty() ? "System Default" : h.audio_input_name.c_str();
+        const double in_lat = h.audio_device_sr
+            ? h.audio_input_latency_frames * 1000.0 / h.audio_device_sr : 0.0;
+        std::snprintf(buf, sizeof buf, "%.28s  \xC2\xB7  ~%.0f ms in  \xC2\xB7  level %.2f",
+                      in_name, in_lat, h.audio_input_level);
+        line("Audio input", buf, sty.body);
+    }
+    // ADR-0032 E1: plugin-delay compensation — shown only when ON (opt-in), so a default session stays
+    // clean. Reports the added latency + how many tracks are aligned vs left live; gold if clamped.
+    if (h.pdc_enabled) {
+        const double pdc_ms = h.audio_device_sr
+            ? h.pdc_applied_delay_samples * 1000.0 / h.audio_device_sr : 0.0;
+        std::snprintf(buf, sizeof buf, "on  \xC2\xB7  +%.0f ms  \xC2\xB7  %d compensated  \xC2\xB7  %d live%s",
+                      pdc_ms, h.pdc_tracks_compensated, h.pdc_tracks_live,
+                      h.pdc_clamped ? "  \xC2\xB7  clamped" : "");
+        line("PDC", buf, h.pdc_clamped ? sty.gold : sty.body);
+    }
+    // ADR-0031 §4: realtime audio health — recent bail/over-budget/skip deltas + callback-µs gauges.
+    std::snprintf(buf, sizeof buf, "%llu bail, %llu over-budget, %llu skips  \xC2\xB7  %uus (max %u)",
+                  static_cast<unsigned long long>(h.audio_render_bailouts),
+                  static_cast<unsigned long long>(h.audio_over_budget),
+                  static_cast<unsigned long long>(h.audio_handoff_skips),
+                  h.audio_last_callback_us, h.audio_max_callback_us);
+    const bool audio_err = h.audio_bailout_error_threshold > 0 &&
+                           h.audio_render_bailouts >= h.audio_bailout_error_threshold;
+    line("Audio RT", buf, audio_err ? sty.red
+                        : (h.audio_over_budget || h.audio_handoff_skips) ? sty.gold : sty.green);
 
     // Missing-operator node rows — clickable: click one to select that node in the graph.
     if (!missing.empty()) {

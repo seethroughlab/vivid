@@ -22,6 +22,11 @@ endfunction()
 
 vivid_add_test(test_mapping)
 vivid_add_test(test_mapping_request)    # MCP helper contract: audio characteristic -> visual mapping request
+vivid_add_test(test_visual_control)     # ADR-0053 Phase B: control-edge resolver == registry formula (parity + envelope)
+vivid_add_test(test_reactive_bus)       # ADR-0053 Phase B: reactive-signal bus round-trip (master + stable-id tracks)
+target_sources(test_reactive_bus PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/reactive_bus.cpp)
+vivid_add_test(test_reactive_signals)   # ADR-0053 Phase B5: reactive signal grammar == bridge suffix grammar (migration lane contract)
 vivid_add_test(test_undo_manager)   # ADR-0017/G1 undo history cursor (pure)
 target_sources(test_undo_manager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/undo_manager.cpp)
@@ -33,7 +38,15 @@ vivid_add_test(test_param_widget)   # inspector widget classifier (type/hint/enu
 vivid_add_test(test_graph_camera)   # ADR-0023 #1/#3d shared graph camera (transform + pan/zoom/reset math)
 vivid_add_test(test_graph_selection)  # ADR-0033 P1 multi-select set + marquee-resolve (pure, header-only)
 vivid_add_test(test_chooser_rank)   # ADR-0046 add-node chooser demotes recipe ops below primitives
+vivid_add_test(test_audio_budgets)  # ADR-0031 §6 RT audio-budgets config (defaults + env override, pure)
+vivid_add_test(test_audio_device_resolve)  # ADR-0032 Phase A device-name resolution (pure, no miniaudio)
+vivid_add_test(test_audio_input_bus)       # ADR-0032 Phase D2 hardware-input SPSC ring (pure, RT-safe)
+target_sources(test_audio_input_bus PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_input_bus.cpp)
+vivid_add_test(test_pdc_ring)              # ADR-0032 Phase E1 PDC delay-ring math (pure, header-only)
+vivid_add_test(test_pdc_classify)          # ADR-0032 Phase E1.1 PDC alignment/classification math (pure)
 vivid_add_test(test_port_compat)    # ADR-0047 typed-port compatibility rule (visual connection validation)
+vivid_add_test(test_operator_ports) # operator_api/ports.h authoring helpers (port builders + param readers)
 vivid_add_test(test_editor_controls)  # ADR-0048 clip/sample editor control substrate hit geometry
 vivid_add_test(test_output_preview) # ADR-0025 OutputPreview::clamp geometry (float-preview stays in-column)
 vivid_add_test(test_shader_library_view)  # ADR-0021/P1 shader-view geometry + fork-name helpers
@@ -54,6 +67,7 @@ target_sources(test_audio_op_rt PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/builtin_audio_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/movie_audio_bus.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_input_bus.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/glitch/glitch_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
@@ -64,6 +78,7 @@ target_sources(test_bridge_override PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/builtin_audio_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/movie_audio_bus.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_input_bus.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/glitch/glitch_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
@@ -72,6 +87,7 @@ target_sources(test_sampler_op PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/builtin_audio_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/movie_audio_bus.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_input_bus.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/glitch/glitch_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
@@ -82,6 +98,7 @@ target_sources(test_arp_op PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/builtin_audio_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/movie_audio_bus.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_input_bus.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/glitch/glitch_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
@@ -91,6 +108,7 @@ target_sources(test_generator_ops PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/builtin_audio_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/movie_audio_bus.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_input_bus.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/glitch/glitch_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
@@ -100,6 +118,7 @@ target_sources(test_lfo_op PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/builtin_audio_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/movie_audio_bus.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_input_bus.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/glitch/glitch_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
@@ -320,6 +339,27 @@ target_sources(test_package_compile PRIVATE
 target_link_libraries(test_package_compile PRIVATE ${CMAKE_DL_LIBS} nlohmann_json::nlohmann_json)
 target_compile_definitions(test_package_compile PRIVATE
     PKG_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pkg"
+    VIVID_PKG_CXX="${CMAKE_CXX_COMPILER}"
+    VIVID_PKG_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../src"
+    VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")
+
+# ADR-0054 Stage 1: a package op that #includes a VENDORED header declared in dependencies.vendor
+# compiles + loads (proves the vendor -I reaches the compile line); + the escape-guard rejects `../..`.
+vivid_add_test(test_package_vendor_include)
+target_sources(test_package_vendor_include PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_manifest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_compiler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_loader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/loaded_operator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_scan.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
+target_link_libraries(test_package_vendor_include PRIVATE ${CMAKE_DL_LIBS} nlohmann_json::nlohmann_json)
+target_compile_definitions(test_package_vendor_include PRIVATE
+    PKG_VENDOR_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pkg_vendor"
+    PKG_VENDOR_ESCAPE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pkg_vendor_escape"
     VIVID_PKG_CXX="${CMAKE_CXX_COMPILER}"
     VIVID_PKG_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../src"
     VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")

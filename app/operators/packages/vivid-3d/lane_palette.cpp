@@ -2,6 +2,7 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/value_view.h"
 #include "operator_api/lane_thumb.h"
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -21,6 +22,8 @@
 struct LanePalette : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName         = "LanePalette";
     static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
+    static constexpr const char* kSummary = "Emits per-lane r/g/b colour, so a band's index picks its hue.";
+    static constexpr std::array<const char*, 3> kKeywords = {"lanes", "colour", "palette"};
     static constexpr bool kTimeDependent       = false;
     static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 

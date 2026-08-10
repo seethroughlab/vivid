@@ -3,8 +3,9 @@
 Tracks [ADR-0033](../decisions/ADR-0033-composition-editing-ergonomics.md). Extends ADR-0017
 (reversible edits), ADR-0022 (session audio graph), ADR-0023 (shared graph UI substrate).
 
-Status: **Phase 1 code-complete** (2026-08-04) — builds clean, full ctest 80/80 green, app launches +
-renders. Interactive gesture confirmation (marquee/toggle/group-drag by mouse) + commit pending.
+Status: **COMPLETE** — all phases (1/2/2b/3/4/5) shipped to main via #261–#266 (2026-08-05).
+Kind-aware bypass (#265) + effective-gain-mask node-solo (#266). See ADR-0033 (the decision) for the
+accepted design.
 
 ## Grounding: what already exists
 

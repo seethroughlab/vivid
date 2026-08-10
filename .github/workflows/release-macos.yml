@@ -51,7 +51,7 @@ jobs:
           # deterministic, correctly-arch'd release build.
           rm -rf app/build
           cmake -S app -B app/build -DCMAKE_BUILD_TYPE=Release
-          cmake --build app/build -j
+          cmake --build app/build -j 10
 
       - name: Production gate (core) must pass before shipping
         run: VIVID_BUILD_DIR=app/build scripts/run_production_gate.sh core
@@ -76,6 +76,20 @@ jobs:
       # ADR-0033 P2b: audio duplicate_audio_nodes preserves params/edges (internal kept, external dropped).
       - name: Duplicate audio nodes (copy/paste contract)
         run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_duplicate_audio_nodes.py
+
+      # Session clip-stop: launch a clip, stop_track -> idle, relaunch, then stop_all across two tracks.
+      - name: Stop track (clip-stop contract)
+        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_stop_track.py
+
+      # ADR-0053 Phase B: control-edge integration — a ReactiveMaster added live to a 30-node graph
+      # doesn't crash, and deleting a track removes its ReactiveTrack node + cascades its control edges.
+      - name: Reactive control edges (large-graph add + track-drop)
+        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_reactive_edges.py
+
+      # API-cleanup Phase-7 follow-up b: optimistic-concurrency guard on clip edits — get_clip reports a
+      # per-clip rev; set_clip with a stale expected_rev is rejected ('conflict') instead of clobbering.
+      - name: Clip edit conflict (optimistic concurrency)
+        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_clip_conflict.py
 
       # Import the Developer ID cert into a dedicated temporary keychain so codesign can reach the
       # private key non-interactively (a locked/service-context login keychain gives

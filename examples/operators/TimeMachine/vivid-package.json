@@ -1,0 +1,11 @@
+{
+  "name": "TimeMachine",
+  "version": "0.1.0",
+  "operators": [
+    {
+      "name": "TimeMachine",
+      "kind": "gpu_visual",
+      "source": "time_machine.cpp"
+    }
+  ]
+}

@@ -1,0 +1,196 @@
+{
+  "audio_view": {
+    "ox": 12.0,
+    "oy": 390.0,
+    "scale": 1.0
+  },
+  "graph": {
+    "chain": [
+      {
+        "base": [
+          0.0,
+          0.0,
+          2.0,
+          1.0
+        ],
+        "id": 0,
+        "in": 4,
+        "ins": [
+          4
+        ],
+        "op_type": "Output",
+        "params": {
+          "aspect": 0.0,
+          "display": 0.0,
+          "fit": 0.0,
+          "height": 2.0,
+          "launch": 0.0,
+          "preview": 1.0
+        },
+        "x": 1332.0,
+        "y": 220.0
+      },
+      {
+        "base": [
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "id": 1,
+        "in": -1,
+        "op_type": "Light3D",
+        "params": {
+          "b": 1.0,
+          "cast_shadow": 1.0,
+          "dir_x": -0.36369600892066956,
+          "dir_y": -0.7273929715156555,
+          "dir_z": -0.5819140076637268,
+          "g": 1.0,
+          "intensity": 1.0,
+          "pos_x": 0.5,
+          "pos_y": 1.0,
+          "pos_z": 0.800000011920929,
+          "r": 1.0,
+          "radius": 10.0,
+          "spot_angle": 45.0,
+          "spot_blend": 0.10000000149011612,
+          "type": 0.0
+        },
+        "x": 732.0,
+        "y": 102.0
+      },
+      {
+        "base": [
+          0.0,
+          32.0,
+          0.800000011920929,
+          0.5
+        ],
+        "id": 2,
+        "in": -1,
+        "op_type": "Shape3D",
+        "params": {
+          "a": 1.0,
+          "b": 0.20000000298023224,
+          "detail": 32.0,
+          "emission": 0.0,
+          "g": 0.5,
+          "metallic": 0.0,
+          "pos_x": 0.0,
+          "pos_y": 0.0,
+          "pos_z": 0.0,
+          "r": 0.800000011920929,
+          "rot_x": 0.0,
+          "rot_y": 0.0,
+          "rot_z": 0.0,
+          "roughness": 0.5,
+          "scale_x": 1.0,
+          "scale_y": 1.0,
+          "scale_z": 1.0,
+          "shading": 0.0,
+          "shape": 0.0,
+          "toon_levels": 4.0,
+          "unlit": 0.0
+        },
+        "x": 732.0,
+        "y": 255.0
+      },
+      {
+        "base": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "id": 3,
+        "in": 1,
+        "in_b": 2,
+        "ins": [
+          1,
+          2
+        ],
+        "op_type": "SceneMerge",
+        "params": {},
+        "x": 932.0,
+        "y": 151.5
+      },
+      {
+        "base": [
+          0.0,
+          2.0,
+          5.0,
+          0.0
+        ],
+        "id": 4,
+        "in": 3,
+        "ins": [
+          3
+        ],
+        "op_type": "Render3D",
+        "params": {
+          "bg_a": 1.0,
+          "bg_b": 0.0,
+          "bg_g": 0.0,
+          "bg_r": 0.0,
+          "cam_x": 0.0,
+          "cam_y": 2.0,
+          "cam_z": 5.0,
+          "far": 100.0,
+          "fog_color_b": 0.18000000715255737,
+          "fog_color_g": 0.14000000059604645,
+          "fog_color_r": 0.11999999731779099,
+          "fog_density": 0.03999999910593033,
+          "fog_enabled": 0.0,
+          "fog_far": 30.0,
+          "fog_mode": 0.0,
+          "fog_near": 4.0,
+          "fov": 60.0,
+          "near": 0.10000000149011612,
+          "orbit": 0.0,
+          "orbit_height": 2.0,
+          "orbit_phase": 0.0,
+          "orbit_radius": 6.0,
+          "shadow_bias": 0.004999999888241291,
+          "shadow_enabled": 1.0,
+          "shadow_resolution": 1024.0,
+          "target_x": 0.0,
+          "target_y": 0.0,
+          "target_z": 0.0
+        },
+        "x": 1132.0,
+        "y": 169.5
+      }
+    ],
+    "mappings": [],
+    "nodes": [],
+    "shader": [
+      900.0,
+      488.0
+    ],
+    "view": {
+      "ox": 0.0,
+      "oy": 0.0,
+      "scale": 1.0
+    }
+  },
+  "launch_quantum_bars": 1,
+  "master": {
+    "gain": 1.0
+  },
+  "pool": [],
+  "scene_names": [
+    "A",
+    "B",
+    "C"
+  ],
+  "scenes": 3,
+  "tracks": [],
+  "version": 5,
+  "window": {
+    "dock": 210.0,
+    "h": 1098,
+    "split": 512.0,
+    "w": 1613
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "test-pkg-vendor",
+  "version": "0.0.1",
+  "operators": [
+    { "name": "VendorNoop", "source": "vendor_op.cpp", "gpu": false }
+  ],
+  "dependencies": {
+    "vendor": [
+      { "name": "vendorlib", "include": "vendor/inc" }
+    ]
+  }
+}

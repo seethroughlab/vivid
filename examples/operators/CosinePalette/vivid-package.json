@@ -1,0 +1,11 @@
+{
+  "name": "CosinePalette",
+  "version": "0.1.0",
+  "operators": [
+    {
+      "name": "CosinePalette",
+      "kind": "gpu_visual",
+      "source": "cosine_palette.cpp"
+    }
+  ]
+}

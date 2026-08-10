@@ -6,6 +6,22 @@
 
 namespace vivid {
 
+namespace {
+// True iff `candidate` (once normalized) is `root` or lives under it — the guard that keeps a
+// manifest-declared vendor `include` from escaping the package with `../..`. Ported from
+// vivid-classic's PackageCompiler::path_within_root.
+bool path_within_root(const std::filesystem::path& root, const std::filesystem::path& candidate) {
+    namespace fs = std::filesystem;
+    const fs::path r = fs::absolute(root).lexically_normal();
+    const fs::path c = fs::absolute(candidate).lexically_normal();
+    auto ri = r.begin();
+    auto ci = c.begin();
+    for (; ri != r.end() && ci != c.end(); ++ri, ++ci)
+        if (*ri != *ci) return false;
+    return ri == r.end();
+}
+}  // namespace
+
 PackageManifest parse_package_manifest(const std::string& package_dir) {
     namespace fs = std::filesystem;
     PackageManifest m;
@@ -52,6 +68,38 @@ PackageManifest parse_package_manifest(const std::string& package_dir) {
         m.operators.push_back(std::move(op));
     }
     if (m.operators.empty()) { m.error = "manifest lists no operators"; return m; }
+
+    // ADR-0054 Stage 1: package-level vendored-header include dirs. Resolve each package-relative
+    // `dependencies.vendor[].include` to an absolute dir, reject anything that escapes the package
+    // root or isn't a real directory (ADR-0019 loud), then fan the resolved list onto every op so it
+    // reaches the compiler through both install_package and hot_reload_manager unchanged.
+    std::vector<std::string> vendor_includes;
+    if (j.contains("dependencies") && j["dependencies"].is_object()) {
+        const auto& deps = j["dependencies"];
+        if (deps.contains("vendor")) {
+            if (!deps["vendor"].is_array()) {
+                m.error = "\"dependencies.vendor\" must be an array"; return m;
+            }
+            const fs::path root = fs::path(package_dir);
+            for (const auto& jv : deps["vendor"]) {
+                const std::string inc = jv.value("include", std::string());
+                if (inc.empty()) {
+                    m.error = "each \"dependencies.vendor\" entry needs an \"include\" path"; return m;
+                }
+                const fs::path resolved = (root / inc).lexically_normal();
+                if (!path_within_root(root, resolved)) {
+                    m.error = "vendor include \"" + inc + "\" escapes the package directory"; return m;
+                }
+                std::error_code ec;
+                if (!fs::is_directory(resolved, ec)) {
+                    m.error = "vendor include \"" + inc + "\" is not a directory in the package"; return m;
+                }
+                vendor_includes.push_back(resolved.string());
+            }
+        }
+    }
+    if (!vendor_includes.empty())
+        for (auto& op : m.operators) op.include_dirs = vendor_includes;
 
     m.ok = true;
     return m;

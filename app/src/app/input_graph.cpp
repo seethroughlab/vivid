@@ -469,6 +469,10 @@ bool graph_node_rclick(Window& win, App& app, int button, int action, double mx,
                 act = vivid::ui::NodeAction::OpenSource; target = shader_path;
             } else if (watched = app.hot_reload.source_for(op_type), !watched.empty()) {
                 act = vivid::ui::NodeAction::OpenSource; target = watched;   // cloned/user C++ op source
+            } else if (auto psrc = app.project_operator_sources.find(op_type);
+                       psrc != app.project_operator_sources.end()) {
+                // ADR-0054 source-forward: a project-local operator's .cpp ships with the project.
+                act = vivid::ui::NodeAction::OpenSource; target = psrc->second;
             } else if (asset = app.graph->op_source_path(on), !asset.empty()) {
                 act = vivid::ui::NodeAction::OpenSource; target = asset;      // CustomShader .glsl asset
             } else if (vivid::operator_has_clone_template(app.graph->op_kind_name(on))) {

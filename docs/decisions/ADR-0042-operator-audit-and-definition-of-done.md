@@ -1,6 +1,6 @@
 # ADR-0042: Operator Audit — a Per-Operator Definition of Done + Audit Harness
 
-Status: proposed
+Status: accepted (implemented — audit harness ships in `tools/operator_audit/`; baseline defects resolved: Switch3D thumbnail #185, SpikeSolid removed #272)
 
 Date: 2026-07-30
 

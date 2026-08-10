@@ -1,0 +1,19 @@
+{
+  "name": "Deformer",
+  "version": "0.1.0",
+  "operators": [
+    {
+      "name": "Deformer",
+      "kind": "gpu_visual",
+      "source": "deformer.cpp"
+    }
+  ],
+  "dependencies": {
+    "vendor": [
+      {
+        "name": "vivid-3d-headers",
+        "include": "vendor"
+      }
+    ]
+  }
+}

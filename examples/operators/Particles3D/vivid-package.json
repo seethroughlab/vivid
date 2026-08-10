@@ -1,0 +1,19 @@
+{
+  "name": "Particles3D",
+  "version": "0.1.0",
+  "operators": [
+    {
+      "name": "Particles3D",
+      "kind": "gpu_visual",
+      "source": "particles3d.cpp"
+    }
+  ],
+  "dependencies": {
+    "vendor": [
+      {
+        "name": "vivid-3d-headers",
+        "include": "vendor"
+      }
+    ]
+  }
+}

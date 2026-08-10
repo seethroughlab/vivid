@@ -6,7 +6,7 @@ app rebuild. Built-in operators use the same API, so the built-ins are your refe
 
 This guide walks from **choosing a kind** → authoring → packaging → building → testing → loading →
 exposing it to agents. The API surface itself is in [`../operator-api/`](../operator-api/) (current
-operator ABI **v11**); real-time rules are in [`../../app/docs/thread-safety.md`](../../app/docs/thread-safety.md).
+operator ABI **v17**); real-time rules are in [`../../app/docs/thread-safety.md`](../../app/docs/thread-safety.md).
 
 ## 1. Choose a kind
 
@@ -82,6 +82,31 @@ A package is a directory with a `vivid-package.json` and the source files:
 
 One package can hold several operators of different kinds (see `example-audio`, which ships an
 `audio_effect` + an `instrument`).
+
+### Vendored header libraries (`dependencies.vendor`)
+
+If an operator needs a **header-only** library (nlohmann/json, stb, linmath, …), vendor its headers
+inside the package and declare the include dir in the manifest:
+
+```json
+{
+  "name": "geometry-pack",
+  "operators": [ { "name": "MeshLoad", "kind": "gpu_visual", "source": "mesh_load.cpp" } ],
+  "dependencies": {
+    "vendor": [ { "name": "nlohmann_json", "include": "deps/json/include" } ]
+  }
+}
+```
+
+Each `dependencies.vendor[].include` is a **package-relative** directory added as a `-I` to every
+operator in the package, so `mesh_load.cpp` can `#include <nlohmann/json.hpp>`. `name` is a label
+only. This is portable — the headers ship *inside* the package, nothing is fetched or linked from the
+build machine. The path is resolved at parse time and **must stay within the package directory** and
+be a real directory, or the whole manifest is rejected (a `../..` escape is an error, not a warning).
+
+This covers header-only and single-file-source libraries. Operators that need a *compiled* library or
+a system framework (FreeType, AVFoundation, …) are not yet supported on the package compile path — see
+ADR-0054's appendix (Stages 2–3).
 
 ## 4. Build, install, load
 

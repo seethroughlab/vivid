@@ -17,6 +17,7 @@
 #include <clap/ext/note-ports.h>
 #include <clap/ext/preset-load.h>
 #include <clap/ext/gui.h>
+#include <clap/ext/latency.h>   // ADR-0032 Phase B: clap_plugin_latency_t
 #include <clap/factory/preset-discovery.h>
 
 #include "audio/base64.h"
@@ -128,6 +129,9 @@ struct ClapHandle {
     const clap_plugin_note_ports_t*  ext_note_ports = nullptr;
     const clap_plugin_preset_load_t* ext_preset_load = nullptr;
     const clap_plugin_gui_t*         ext_gui = nullptr;   // clap.gui — the native plugin editor (main-thread)
+    const clap_plugin_latency_t*     ext_latency = nullptr;  // ADR-0032 Phase B: reported processing latency
+    uint32_t latency_samples = 0;    // read once post-activate (0 if the plugin doesn't report)
+    bool     latency_known = false;  // false => plugin lacks CLAP_EXT_LATENCY (report as "unknown")
 
     bool   activated = false, processing = false, has_note_in = false, has_note_out = false;
     vivid::audio::PluginFaultState watchdog;   // ADR-0045 Tier 2a: over-budget strikes + faulted latch
@@ -329,6 +333,7 @@ inline bool clap_init_plugin(ClapHandle* h) {
     if (!h->ext_preset_load)
         h->ext_preset_load = static_cast<const clap_plugin_preset_load_t*>(h->plugin->get_extension(h->plugin, CLAP_EXT_PRESET_LOAD_COMPAT));
     h->ext_gui = static_cast<const clap_plugin_gui_t*>(h->plugin->get_extension(h->plugin, CLAP_EXT_GUI));
+    h->ext_latency = static_cast<const clap_plugin_latency_t*>(h->plugin->get_extension(h->plugin, CLAP_EXT_LATENCY));
 
     if (h->ext_note_ports) {
         h->has_note_in  = h->ext_note_ports->count(h->plugin, /*is_input*/ true) > 0;
@@ -361,6 +366,10 @@ inline bool clap_init_plugin(ClapHandle* h) {
     h->silence.assign(static_cast<size_t>(h->max_block) * 2, 0.f);
     if (!h->plugin->activate(h->plugin, h->sample_rate, 1, h->max_block)) return false;
     h->activated  = true;
+    // ADR-0032 Phase B: latency->get() is valid [being-activated | active] on the main thread. Read once
+    // here (not per block); a plugin that changes latency later (kLatencyChanged) restaling this is a follow-up.
+    h->latency_known   = (h->ext_latency != nullptr);
+    h->latency_samples = h->ext_latency ? h->ext_latency->get(h->plugin) : 0;
     h->processing = h->plugin->start_processing(h->plugin);
     h->inited     = true;
     return true;

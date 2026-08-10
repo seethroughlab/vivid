@@ -61,6 +61,11 @@ struct ExprEvent { uint32_t sample_offset; int32_t note_id; int pitch; uint8_t a
 struct MidiClip {
     std::vector<ClipNote> notes;
     double length = 4.0;      // clip length in beats
+    // Optimistic-concurrency revision: bumped on every note-content write (session_set_clip). A
+    // read-modify-write authoring tool reads this with get_clip and hands it back as `expected_rev`
+    // on set_clip; a mismatch means someone else wrote in between, so the stale write is rejected
+    // (conflict) instead of silently clobbering. Not persisted — an in-session edit counter only.
+    uint64_t rev = 0;
     // Optional in-clip loop region [loop_start, loop_end) in beats. When loop_end >
     // loop_start (a valid sub-range), playback loops within it instead of over [0,length);
     // notes outside the region are silent and a note crossing loop_end is cut. Default

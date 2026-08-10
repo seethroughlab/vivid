@@ -36,6 +36,17 @@ void load_path(GLFWwindow* w, Window& win, App& app, const std::string& path) {
         win.split_x = sxx; win.dock_h = dh; refresh_recents(app);
         if (app.edit_gateway) app.edit_gateway->mark_saved();   // ADR-0018: a freshly opened doc is clean
         VLOG_INFO(app, "opened %s", path.c_str());
+        // Source-forward (ADR-0054): a project that ships its own operator source is an invitation to
+        // author — surface it, and point at the right-click affordance that opens/forks that source.
+        if (lr.had_package && lr.registered > 0) {
+            std::string names;
+            for (const auto& o : lr.ops)
+                if (o.registered) { if (!names.empty()) names += ", "; names += o.name; }
+            ui::push_toast(win.toasts, LogLevel::Info,
+                "This project includes editable operator source (" + names +
+                "). Right-click a node \xE2\x86\x92 Open source to edit it, or Fork to make your own.",
+                glfwGetTime(), 9.0);
+        }
     } else VLOG_ERR(app, "open failed: %s \xE2\x80\x94 %s", path.c_str(), lr.error.c_str());   // ADR-0019: toasts + logs
 }
 

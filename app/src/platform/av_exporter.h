@@ -17,14 +17,21 @@ class AVExporter {
 public:
     virtual ~AVExporter() = default;
 
+    // ADR-0032 Phase C: put the exporter in DETERMINISTIC OFFLINE mode (call before start()). The two
+    // write_* methods then honor an explicit PTS, and the encoder is fed faster-than-realtime (blocking
+    // on input readiness rather than dropping). Default no-op → the realtime recorder path is unchanged.
+    virtual void begin_offline() {}
+
     // Begin writing. width/height must be even (H.264). sample_rate>0 adds an AAC audio track.
     virtual bool start(const std::string& path, uint32_t width, uint32_t height,
                        double fps, uint32_t sample_rate) = 0;
-    // Append one RGBA8 frame (tightly packed, top-left origin). Stamped with wall-clock PTS.
-    virtual bool write_video_frame(const uint8_t* rgba, uint32_t width, uint32_t height) = 0;
-    // Append interleaved float32 PCM (sample_count = frames * channels). Same PTS scheme.
+    // Append one RGBA8 frame (tightly packed, top-left origin). pts_sec < 0 (default) => wall-clock PTS
+    // (realtime capture); pts_sec >= 0 => that explicit presentation time in seconds (offline determinism).
+    virtual bool write_video_frame(const uint8_t* rgba, uint32_t width, uint32_t height,
+                                   double pts_sec = -1.0) = 0;
+    // Append interleaved float32 PCM (sample_count = frames * channels). Same pts_sec convention.
     virtual bool write_audio_samples(const float* pcm_interleaved, uint64_t sample_count,
-                                     uint32_t channels) = 0;
+                                     uint32_t channels, double pts_sec = -1.0) = 0;
     // Finalize the file (blocks up to ~10s pumping the main run loop). Main thread only.
     virtual bool finish() = 0;
     virtual bool is_recording() const = 0;

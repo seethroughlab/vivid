@@ -325,6 +325,18 @@ def suggest_mappings(intent: str = "", scene: int | None = None,
 
 
 @mcp.tool
+def list_reactive_recipes(intent: str = "") -> dict:
+    """Proven, LEGIBLE audio->visual composition recipes (the band->role convention as whole patterns:
+    punchy-drums, swelling-pads, note-bloom, beat-cut, spectral-color, camera-orbit). Each recipe gives
+    its couplings (source_intent -> dest), when to use it, the expected analyze_output(av) signature, and
+    how to build it. Apply the couplings with connect_mapping_by_intent / map_audio_to_visual_param —
+    those now bake in the legible amount + envelope defaults these recipes assume. Optional `intent`
+    filters by keyword (e.g. 'drums', 'color', 'camera', 'punctual'). Read this BEFORE wiring reactivity;
+    then measure with analyze_output(mode='av')."""
+    return _post("list_reactive_recipes", {"intent": intent})
+
+
+@mcp.tool
 def list_effects() -> dict:
     """Names of the curated FX plugins offered in the UI (for add_effect). For the FULL
     set of installed plugins use list_plugins."""
@@ -480,30 +492,42 @@ def duplicate_nodes(ids: list[int], dx: float = 24.0, dy: float = 24.0) -> dict:
 # ---------------- mapping (the bridge) ----------------
 @mcp.tool
 def connect_mapping(src: str, dst: str, amount: float = 1.0, curve: float = 0.0,
-                    invert: bool = False, lo: float = 0.0, hi: float = 1.0) -> dict:
+                    invert: bool = False, lo: float = 0.0, hi: float = 1.0,
+                    attack: float = 0.0, release: float = 0.0) -> dict:
     """Wire a source to a destination (replaces any existing wire into dst).
     src: 'master.transient' | 'track_2.low' | 'viz.warp' (a visual's value, for the return path).
     dst: 'node:<id>.<param>' (visual param) | 'param:<track>:<device>:<index>' (audio param).
-    Shaping: amount (gain), curve (-1 ease-out .. +1 ease-in), invert (polarity), [lo,hi] range."""
+    Shaping: amount (gain), curve (-1 ease-out .. +1 ease-in), invert (polarity), [lo,hi] range,
+    attack/release (envelope-follower time constants in seconds; a raw envelope is jumpy, so a fast
+    attack + slow release lets the param SNAP up on a hit then glide back). 0/0 = instantaneous."""
     return _post("connect_mapping", {"src": src, "dst": dst, "amount": amount,
-                                      "curve": curve, "invert": invert, "lo": lo, "hi": hi})
+                                      "curve": curve, "invert": invert, "lo": lo, "hi": hi,
+                                      "attack": attack, "release": release})
 
 
 @mcp.tool
 def map_audio_to_visual_param(source: str = "track", characteristic: str = "",
                               node_id: int = -1, param: str = "",
                               track: int | None = None, track_id: int | None = None,
-                              track_name: str = "", amount: float = 1.0,
-                              curve: float = 0.0, invert: bool = False,
-                              lo: float = 0.0, hi: float = 1.0) -> dict:
+                              track_name: str = "", amount: float | None = None,
+                              curve: float | None = None, invert: bool = False,
+                              lo: float | None = None, hi: float | None = None,
+                              attack: float | None = None, release: float | None = None) -> dict:
     """First-class bridge helper: map an audio characteristic to a visual param without hand-building
     raw source/destination strings. source='track' uses one of track, track_id, or track_name plus a
     characteristic (level|transient|low|mid|high|note|velocity|gate). source='master' uses
     characteristic level|transient|low|mid|high. node_id and param identify the visual destination.
+
+    Leave amount/curve/lo/hi/attack/release UNSET to get LEGIBLE defaults from the band->role convention
+    (e.g. bass->scale gets a big visible excursion + snappy envelope, not the old invisible amount=1.0
+    with no smoothing). Only set them to override. The response echoes the applied amount/attack/release.
     Returns the canonical src/dst strings plus readable source/destination info."""
     payload = {"source": source, "characteristic": characteristic, "node_id": node_id,
-               "param": param, "amount": amount, "curve": curve, "invert": invert,
-               "lo": lo, "hi": hi}
+               "param": param, "invert": invert}
+    for k, v in (("amount", amount), ("curve", curve), ("lo", lo), ("hi", hi),
+                 ("attack", attack), ("release", release)):
+        if v is not None:
+            payload[k] = v
     if track is not None:
         payload["track"] = track
     if track_id is not None:
@@ -520,15 +544,52 @@ def disconnect_mapping(dst: str) -> dict:
 
 
 @mcp.tool
-def connect_mapping_by_intent(source_intent: str, dest_intent: str, amount: float = 1.0,
-                              curve: float = 0.0, invert: bool = False) -> dict:
+def connect_control_to_param(node_id: int, param: str, src_node_id: int,
+                             signal: str = "", src_lane: int = -1,
+                             amount: float = 1.0, curve: float = 0.0, invert: bool = False,
+                             lo: float = 0.0, hi: float = 1.0,
+                             attack: float = 0.0, release: float = 0.0) -> dict:
+    """ADR-0053 Phase B: wire a SOURCE node's value-lane output into a visual op PARAMETER as a
+    first-class graph control edge (the typed replacement for the hidden string mapping). node_id/param
+    name the consumer; src_node_id is the source node (e.g. a ReactiveMaster / ReactiveTrack); identify
+    the source lane by output-port NAME (signal, e.g. 'low' / 'beat_pulse') or by ordinal (src_lane).
+    Shaping matches connect_mapping: amount (gain), curve, invert, [lo,hi] range, attack/release (s)."""
+    payload = {"node_id": node_id, "param": param, "src_node_id": src_node_id,
+               "amount": amount, "curve": curve, "invert": invert, "lo": lo, "hi": hi,
+               "attack": attack, "release": release}
+    if signal:
+        payload["signal"] = signal
+    if src_lane >= 0:
+        payload["src_lane"] = src_lane
+    return _post("connect_control_to_param", payload)
+
+
+@mcp.tool
+def disconnect_control(node_id: int, param: str) -> dict:
+    """Remove the control edge driving this visual param (ADR-0053 Phase B)."""
+    return _post("disconnect_control", {"node_id": node_id, "param": param})
+
+
+@mcp.tool
+def connect_mapping_by_intent(source_intent: str, dest_intent: str, amount: float | None = None,
+                              curve: float | None = None, invert: bool = False,
+                              lo: float | None = None, hi: float | None = None,
+                              attack: float | None = None, release: float | None = None) -> dict:
     """Wire a mapping from intent words on both sides. source_intent picks an audio characteristic
     ('kick'/'punch'/'onset' -> master.transient; 'bass'/'sub' -> master.low; 'bright'/'hat' ->
     master.high; 'mid'/'vocal' -> master.mid; else master.level). dest_intent matches a visual/audio
-    param by keyword. Conservative best-match; use list_mapping_destinations + connect_mapping for
-    exact control. Returns the resolved src/dst and their labels."""
-    return _post("connect_mapping_by_intent", {"source_intent": source_intent, "dest_intent": dest_intent,
-                                               "amount": amount, "curve": curve, "invert": invert})
+    param by keyword.
+
+    Leave amount/curve/lo/hi/attack/release UNSET for LEGIBLE defaults from the band->role convention
+    (a visible excursion + role-appropriate envelope); only set them to override. Conservative best-match;
+    use list_mapping_destinations + connect_mapping for exact control. The response echoes the applied
+    amount/attack/release."""
+    payload = {"source_intent": source_intent, "dest_intent": dest_intent, "invert": invert}
+    for k, v in (("amount", amount), ("curve", curve), ("lo", lo), ("hi", hi),
+                 ("attack", attack), ("release", release)):
+        if v is not None:
+            payload[k] = v
+    return _post("connect_mapping_by_intent", payload)
 
 
 @mcp.tool
@@ -588,6 +649,20 @@ def launch_scene(scene: int) -> dict:
 
 
 @mcp.tool
+def stop_track(track: int) -> dict:
+    """Stop a track's playing clip: it goes idle (silent) at the next bar and stays stopped until a
+    clip/scene is launched. The counterpart to launch_clip. Different from set_track_mute, which
+    silences the mix while the clip keeps running."""
+    return _post("stop_track", {"track": track})
+
+
+@mcp.tool
+def stop_all() -> dict:
+    """Stop every track's playing clip at the next bar (all tracks go idle)."""
+    return _post("stop_all", {})
+
+
+@mcp.tool
 def set_track_gain(track: int, gain: float) -> dict:
     """Set a track's mixer gain (0..1)."""
     return _post("set_track_gain", {"track": track, "gain": gain})
@@ -611,6 +686,20 @@ def set_launch_quantize(bars: int) -> dict:
     common phrase length ("let the current phrase finish before switching"). Persisted
     with the project; reported as 'launch_quantum_bars' in get_session. bars must be >= 1."""
     return _post("set_launch_quantize", {"bars": bars})
+
+
+@mcp.tool
+def set_pdc(enabled: bool = True) -> dict:
+    """Toggle playback plugin-delay compensation (PDC), ADR-0032 §4.
+
+    When on, tracks carrying high-latency plugins are time-aligned: each compensable track is delayed by
+    (L_max - its latency) so everything lines up, at the cost of adding L_max latency to the whole mix.
+    OFF by default (Vivid is a live instrument — added latency hurts live play); turn it on when mixing
+    tracks with linear-phase EQs / lookahead limiters. Only LINEAR paths with plugins that report their
+    latency are compensated; live audio-input monitors, cross-track-routed tracks, and tracks with a
+    plugin that doesn't report latency are left LIVE (uncompensated). Persisted per project. Returns
+    {enabled, applied_delay (samples), applied_delay_ms, tracks_compensated, tracks_live, clamped}."""
+    return _post("set_pdc", {"enabled": enabled})
 
 
 @mcp.tool
@@ -810,6 +899,81 @@ def video_export_status() -> dict:
     return _post("video_export_status", {})
 
 
+# ---------------- audio export (offline WAV bounce, ADR-0032) ----------------
+@mcp.tool
+def export_audio(path: str, seconds: float = 0.0, bars: float = 0.0, block: int = 0) -> dict:
+    """Bounce the session's master mix to a .wav OFFLINE and return when finished (synchronous).
+    Renders through the same session graph + transport as realtime but faster-than-realtime with the
+    audio device paused (live playback goes briefly silent), from beat 0 for an explicit length: pass
+    `seconds` (primary) OR `bars` (derived from the current tempo). `path` must be absolute and end in
+    .wav. `block` overrides the render block size (default 1024). Returns {path, frames, duration_sec,
+    peak, clipped}; `clipped` is true if any sample exceeded 0 dBFS. Note: this bounces the CURRENT
+    arming played from the top — it does not replay a timeline of scene-launch events. Deterministic
+    for native-op sessions; third-party plugins may render slightly differently offline."""
+    return _post("export_audio", {"path": path, "seconds": seconds, "bars": bars, "block": block})
+
+
+@mcp.tool
+def audio_export_status() -> dict:
+    """Poll the last offline audio export (export_audio). Returns {done, path, frames, duration_sec,
+    peak, clipped}; `done` is false until the first bounce completes. export_audio is synchronous, so
+    this mostly mirrors its return value for scripted checks."""
+    return _post("audio_export_status", {})
+
+
+@mcp.tool
+def export_av(path: str, seconds: float = 0.0, bars: float = 0.0, fps: float = 60.0, block: int = 0) -> dict:
+    """Kick off a DETERMINISTIC offline audiovisual export (H.264 video + AAC audio .mp4/.mov). ASYNC:
+    returns {started} immediately, then the render runs a frame per app tick — poll `av_export_status`
+    until `active` is false. Unlike the realtime `export_video` capture, this locks the visual graph to the
+    SAME synthetic clock as the offline audio render, so the result is reproducible and sample-accurately
+    synced. `path` must be absolute and end in .mp4/.mov. Length = `seconds` (primary) OR `bars` (from
+    tempo). `fps` = video frame rate. Renders the CURRENT arming from beat 0 (not a scene timeline); the
+    metronome click is absent (as with the WAV bounce). Live audio pauses during the render. A heavy graph
+    at high res can take minutes for a long clip — that's offline rendering."""
+    return _post("export_av", {"path": path, "seconds": seconds, "bars": bars, "fps": fps, "block": block})
+
+
+@mcp.tool
+def av_export_status() -> dict:
+    """Poll the offline AV export (export_av). Returns {active, frames_done, total_frames, done, path,
+    frames, audio_frames, duration_sec, peak, clipped}. `active` = a render is in flight (watch
+    frames_done/total_frames for progress); `done` = a completed export exists (the last-result fields)."""
+    return _post("av_export_status", {})
+
+
+# ---------------- audio output device (ADR-0032 Phase A) ----------------
+@mcp.tool
+def get_audio_devices() -> dict:
+    """List the available audio OUTPUT + INPUT devices and the active one. Returns
+    {devices:[{name,is_default}], inputs:[{name,is_default}], active:{name, sample_rate, period, open,
+    using_fallback, reason, input_open, input_name, input_latency_frames}}. `active.using_fallback` is
+    true when the saved output was unavailable and the system default was opened instead (`reason`
+    explains). `active.input_open` is true when a duplex device with hardware input (ADR-0032 Phase D)
+    is live. This is hardware I/O device selection — distinct from the plugin instrument/effect pickers."""
+    return _post("get_audio_devices", {})
+
+
+@mcp.tool
+def set_audio_device(name: str = "") -> dict:
+    """Select the audio OUTPUT device by name (from get_audio_devices) and hot-swap the live device.
+    An empty name selects the system default. The choice is persisted machine-level (settings.json) and
+    restored next launch. Live playback briefly drops out during the swap. Returns {active:{...}}; if the
+    named device can't open, falls back to the default (active.using_fallback = true)."""
+    return _post("set_audio_device", {"name": name})
+
+
+@mcp.tool
+def set_audio_input_device(name: str = "", enabled: bool = True) -> dict:
+    """Select/enable the hardware audio INPUT (mic / line-in / interface), from get_audio_devices'
+    `inputs`. Enabling opens the device DUPLEX so live external audio flows into the engine (a reactive
+    source for visuals). An empty name uses the system default input; enabled=False returns to
+    playback-only. Persisted machine-level (settings.json). Input is best-effort — if capture can't open,
+    the device stays playback-only (active.input_open = false) but the call still succeeds. Live audio
+    briefly drops out during the reopen. Returns {active:{...incl. input_open, input_name}}."""
+    return _post("set_audio_input_device", {"name": name, "enabled": enabled})
+
+
 @mcp.tool
 def analyze_frame(path: str = "") -> dict:
     """Structured perception of the active visual output (or a saved image via path). Returns
@@ -851,10 +1015,11 @@ def explain_tradeoffs(a: dict, b: dict, criteria: list[str] | None = None) -> di
 
 @mcp.tool
 def analyze_visual_motion(duration_seconds: float = 2.0) -> dict:
-    """Measure motion/change in the visual output over a short window. Each call samples the LIVE output;
-    poll it a few times across your window to accumulate samples (motion = the inter-sample change).
-    Returns motion_score (0..1), inter_frame_change, is_moving, samples, span_seconds. The first call
-    just seeds the window — call again to get a reading."""
+    """Measure motion/change in the visual output over a recent window. Reliable in a SINGLE call — the
+    app samples the output into a rolling ring at ~12fps while running, so you no longer need to poll to
+    accumulate. Returns motion_score (0..1), inter_frame_change, is_moving, samples, span_seconds. The
+    app must be PLAYING for motion to register. For audio-reactivity (not just 'is it moving'), use
+    analyze_output(mode='av')."""
     return _post("analyze_visual_motion", {"duration_seconds": duration_seconds})
 
 
@@ -864,6 +1029,64 @@ def summarize_visual_output(duration_seconds: float = 2.0) -> dict:
     contrast, activity, dominant colors, blank state) plus recent motion. A quick 'what's on screen, and
     is it moving?' check."""
     return _post("summarize_visual_output", {"duration_seconds": duration_seconds})
+
+
+@mcp.tool
+def analyze_output(mode: str = "frame", window_seconds: float = 3.0, node_id: str = "") -> dict:
+    """Analyze the live runtime output — the primary 'measure a change' tool for reactive visuals.
+
+    Modes:
+      mode="frame" — current-frame perception: brightness, contrast, activity, blank state, hash.
+      mode="audio" — windowed master energy sampled at the frame rate: rms, transient, band_low/mid/
+        high, onsets.
+      mode="av"    — three complementary reactivity lenses over the window:
+
+        1. Per-axis correlations — Pearson r between audio energy and each visual axis. Best for
+           continuous coupling (an audio envelope drives a parameter directly):
+             energy_brightness_correlation, energy_motion_correlation, energy_contrast_correlation.
+           (energy_motion_correlation catches displacement/position reactivity that doesn't change
+           brightness.)
+        2. Onset-aligned reactivity — for each detected audio onset, did the visual change within
+           ~400ms? Best for percussive / feedback-rich graphs where smoothing or visual decay shifts
+           the visual peak relative to the audio peak (Pearson breaks down there):
+             detected_onsets, onset_response_rate (0..1), reactivity_latency_ms (median onset→peak).
+        3. Per-band correlations — energy split by band (bass/mid/treble). Surfaces selective coupling
+           (e.g. bass→motion works, treble→motion doesn't):
+             band_brightness_correlations.{bass,mid,treble}, band_motion_correlations.{...},
+             band_contrast_correlations.{...}.
+
+    Use ALL THREE lenses: overall correlation ≈ 0 with a HIGH onset_response_rate does NOT mean the
+    graph is dead — it's event-driven reactivity Pearson can't see; trust onset_response_rate there.
+    Feedback/smoothing can even make correlation NEGATIVE while onset_response_rate stays valid.
+
+    Trustworthy thresholds (mechanically-working, not aesthetic pass/fail): onset_response_rate > 0.7
+    (percussive), energy_motion_correlation > 0.5 (continuous), reactivity_latency_ms < 300,
+    motion_magnitude 0.05–0.3, mean_brightness 0.05–0.4.
+
+    The app must be PLAYING and settled (~0.5–4s after load) or av mode returns
+    status='insufficient_samples' — that means "no history yet", not "dead". window_seconds defaults to
+    3 (av needs a few seconds). node_id is accepted but currently scoped to the whole output."""
+    payload: dict = {"mode": mode, "window_seconds": window_seconds}
+    if node_id:
+        payload["node_id"] = node_id
+    return _post("analyze_output", payload)
+
+
+@mcp.tool
+def set_perception_enabled(enabled: bool = True) -> dict:
+    """Master switch for the visual-perception ring. The ring does a per-frame GPU readback WHILE
+    measuring (analyze_output/analyze_visual_motion/judge arm it for a few seconds), which costs
+    framerate. Disable it so those calls can't drop the live framerate while someone is watching;
+    re-enable to measure again. Disabled: analyze_output(av|audio) returns no data. Default enabled
+    (and idle-free — it only samples while a perception tool is actively in use)."""
+    return _post("set_perception_enabled", {"enabled": enabled})
+
+
+@mcp.tool
+def perception_status() -> dict:
+    """Report the perception ring's state: {enabled, samples}. samples>0 means the ring currently holds
+    history (it was measured recently)."""
+    return _post("perception_status")
 
 
 @mcp.tool
@@ -1453,42 +1676,75 @@ def set_progression(track: int, scene: int, chords: list[str], beats_per_chord: 
 
 
 # ---------------- key context + transforms ----------------
-_key_ctx = {"root": "C", "scale": "major"}
+# The session key/scale context is PERSISTED natively (it round-trips with the project and survives a
+# bridge restart once the project is reloaded). The bridge owns the theory vocabulary (theory.py) and
+# reads/writes the native context via the get_music_key / set_music_key control handlers.
+
+def _music_key() -> tuple:
+    """The persisted (root, scale) session context; defaults to C major if unset/unreachable."""
+    st = _post("get_music_key")
+    if st.get("ok"):
+        return st.get("root", "C"), (st.get("scale", "major") or "major").lower()
+    return "C", "major"
 
 
-def _rmw(track: int, scene: int, fn) -> dict:
-    """Read a clip, transform its notes via fn(notes, length) -> notes, write it back."""
-    cur = _post("get_clip", {"track": track, "scene": scene})
-    if not cur.get("ok"):
-        return cur
-    length = cur.get("length", 4.0)
-    return _post("set_clip", {"track": track, "scene": scene,
-                              "notes": fn(cur.get("notes", []), length), "length": length})
+def _key_default(root: str, scale: str) -> tuple:
+    """Resolve an optional root/scale against the persisted session context (only fetches native
+    state when a default is actually needed)."""
+    if root and scale:
+        return root, scale.lower()
+    dr, ds = _music_key()
+    return (root or dr), (scale or ds).lower()
+
+
+def _rmw(track: int, scene: int, fn, _tries: int = 3) -> dict:
+    """Read a clip, transform its notes via fn(notes, length) -> notes, write it back.
+
+    Optimistic concurrency: the write carries the `rev` the read observed as `expected_rev`. If another
+    edit landed in between the control server rejects it (code 'conflict'); we re-read + re-apply + re-
+    write, up to `_tries` times, so two independent edits to the same clip both land instead of one
+    silently clobbering the other. A persistent conflict (a fight over the same notes) surfaces the
+    'conflict' code rather than looping forever."""
+    for _ in range(max(1, _tries)):
+        cur = _post("get_clip", {"track": track, "scene": scene})
+        if not cur.get("ok"):
+            return cur
+        length = cur.get("length", 4.0)
+        res = _post("set_clip", {"track": track, "scene": scene,
+                                 "notes": fn(cur.get("notes", []), length), "length": length,
+                                 "expected_rev": cur.get("rev", 0)})
+        if res.get("code") != "conflict":
+            return res
+    return res
 
 
 @mcp.tool
 def set_key(root: str, scale: str = "major") -> dict:
     """Set the session key/scale context (root e.g. "C"/"F#", scale e.g. major|minor|dorian|
     pentatonic_minor|blues|…). Tools with an optional key/scale (quantize_to_scale, harmonize,
-    get_scale) default to this. Bridge-side + EPHEMERAL in v1 (resets on bridge restart; not
-    saved with the session)."""
+    get_scale) default to this. PERSISTED with the project — it is saved in the session and restored
+    on load (an undoable "Set Key/Scale" edit), so it survives a bridge restart once the project is
+    reopened."""
     if scale.lower() not in theory.SCALES:
         return {"ok": False, "code": "bad_arg", "error": f"unknown scale '{scale}'"}
-    _key_ctx.update(root=root, scale=scale.lower())
-    return {"ok": True, **_key_ctx}
+    return _post("set_music_key", {"root": root, "scale": scale.lower()})
 
 
 @mcp.tool
 def get_key() -> dict:
     """The current key/scale context + its scale note names."""
-    return {"ok": True, **_key_ctx,
-            "notes": [theory.note_name(m) for m in theory.scale_notes(_key_ctx["root"], _key_ctx["scale"])]}
+    st = _post("get_music_key")
+    if not st.get("ok"):
+        return st
+    root, scale = st.get("root", "C"), (st.get("scale", "major") or "major").lower()
+    return {"ok": True, "root": root, "scale": scale,
+            "notes": [theory.note_name(m) for m in theory.scale_notes(root, scale)]}
 
 
 @mcp.tool
 def get_scale(root: str = "", scale: str = "") -> dict:
     """The MIDI notes + names of a scale (defaults to the key context), e.g. get_scale("D","dorian")."""
-    r, sc = root or _key_ctx["root"], (scale or _key_ctx["scale"]).lower()
+    r, sc = _key_default(root, scale)
     if sc not in theory.SCALES:
         return {"ok": False, "code": "bad_arg", "error": f"unknown scale '{sc}'"}
     midi = theory.scale_notes(r, sc)
@@ -1504,7 +1760,7 @@ def transpose(track: int, scene: int, semitones: int) -> dict:
 @mcp.tool
 def quantize_to_scale(track: int, scene: int, root: str = "", scale: str = "") -> dict:
     """Snap a clip's off-key notes into the scale (defaults to the key context)."""
-    r, sc = root or _key_ctx["root"], scale or _key_ctx["scale"]
+    r, sc = _key_default(root, scale)
     return _rmw(track, scene, lambda notes, L: theory.quantize_to_scale(notes, r, sc))
 
 
@@ -1512,7 +1768,7 @@ def quantize_to_scale(track: int, scene: int, root: str = "", scale: str = "") -
 def harmonize(track: int, scene: int, degree: int = 2, root: str = "", scale: str = "") -> dict:
     """Add a diatonic harmony voice `degree` scale-steps from each note (2 = a third above,
     4 = a fifth; negative = below). Defaults to the key context. Keeps the originals."""
-    r, sc = root or _key_ctx["root"], scale or _key_ctx["scale"]
+    r, sc = _key_default(root, scale)
     return _rmw(track, scene, lambda notes, L: theory.harmonize(notes, degree, r, sc))
 
 
@@ -1945,7 +2201,7 @@ def get_authoring_guide() -> dict:
         "errors": "Every reply has an 'ok' bool. Failures are {ok:false, code, error}: "
                   "branch on the stable `code` (bad_json, unknown_method, no_session, no_graph, "
                   "no_vgraph, no_transport, bad_arg, out_of_range, not_found, io_error, internal, "
-                  "timeout), not the human `error` text. An out-of-range track/scene/device index "
+                  "timeout, conflict), not the human `error` text. An out-of-range track/scene/device index "
                   "now returns out_of_range instead of silently succeeding.",
         "music_theory": {
             "notes": "Anywhere a pitch is taken, `p` accepts a MIDI int OR a name: 'C4','F#3','Bb5' "
@@ -1985,7 +2241,8 @@ def get_authoring_guide() -> dict:
             "audio_track": "note tools apply to MIDI tracks only (is_audio=false in list_tracks).",
             "full_replace": "set_clip / set_progression / arpeggiate / set_drum_pattern REPLACE the clip; "
                             "add_notes / add_chord / euclidean_fill APPEND.",
-            "key_context": "set_key is bridge-side + ephemeral (resets if the bridge restarts; not saved).",
+            "key_context": "set_key is PERSISTED with the project (saved in the session, restored on load, "
+                           "undoable); it survives a bridge restart once the project is reopened.",
         },
     }
 
@@ -2060,6 +2317,83 @@ def compare_audio_to_intent(intent: str = "", reference_path: str = "", window_s
         return r
     return {"ok": True, "match_score": r.get("match_score"),
             "key_deviations": r.get("key_deviations", []), "summary": r.get("summary")}
+
+
+# ---- Reactive-visuals loop: multimodal Gemini visual judge (the taste lens) ----
+
+def _veval_poll(job_id: int, timeout_s: float) -> dict:
+    """Poll visual_eval_result until the async Gemini job finishes (or times out)."""
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        r = _post("visual_eval_result", {"job_id": job_id})
+        if r.get("ok") is False or r.get("status") in ("done", "error"):
+            return r
+        time.sleep(1.0)
+    return {"ok": False, "status": "timeout", "error": "visual eval timed out"}
+
+
+@mcp.tool
+def configure_visual_eval_backend(backend: str = "gemini", api_key: str = "", model: str = "") -> dict:
+    """Configure the Gemini backend for the multimodal VISUAL judge. Shares the key with the music-eval
+    backend (setting it here sets it for both). Verify with visual_eval_status that has_key is true
+    before trusting any verdict."""
+    return _post("configure_visual_eval_backend", {"backend": backend, "api_key": api_key, "model": model})
+
+
+@mcp.tool
+def visual_eval_status() -> dict:
+    """Report the visual-judge backend readiness: {backend, ready, has_key, model}. has_key=false means
+    every evaluate/compare call fails closed (no fabricated verdict) until a Gemini key is configured."""
+    return _post("visual_eval_status")
+
+
+@mcp.tool
+def visual_eval_result(job_id: int) -> dict:
+    """Poll a visual-judge job: {status: pending|done|error, ...}. The evaluate_visual_reactivity /
+    compare_visual_to_intent tools poll this for you."""
+    return _post("visual_eval_result", {"job_id": job_id})
+
+
+@mcp.tool
+def evaluate_visual_reactivity(intent: str = "", window_seconds: float = 4.0, frames: int = 12,
+                               include_payload: bool = False) -> dict:
+    """The qualitative taste lens: assemble a frame-strip montage of the live output over the last
+    `window_seconds` (plus the audio-energy series) and have Gemini judge whether the visual is REACTIVE
+    (changes look caused by the audio), LEGIBLE (a viewer can see the music driving the form — punctual
+    bursts or large monotonic moves, not generic wiggle), and on-intent. Returns booleans + 0..1 scores
+    + concrete issues[] and actionable fixes[] + a summary. Pair with analyze_output(mode='av') for the
+    hard numbers. Requires a configured Gemini key (configure_visual_eval_backend); fails closed
+    otherwise — never a fabricated verdict. The app must be PLAYING. Blocks ~5-15s while Gemini runs."""
+    started = _post("evaluate_visual_reactivity",
+                    {"intent": intent, "window_seconds": window_seconds, "frames": frames})
+    if not started.get("ok") or "job_id" not in started:
+        return started
+    r = _veval_poll(started["job_id"], max(30.0, window_seconds + 90.0))
+    if include_payload or not r.get("ok", True):
+        return r
+    return {"ok": True, "reactive": r.get("reactive"), "legible": r.get("legible"),
+            "on_intent": r.get("on_intent"), "issues": r.get("issues", []),
+            "fixes": r.get("fixes", []), "summary": r.get("summary")}
+
+
+@mcp.tool
+def compare_visual_to_intent(intent: str = "", reference_path: str = "", window_seconds: float = 4.0,
+                             frames: int = 12, include_payload: bool = False) -> dict:
+    """Judge the live visual against a free-text intent and/or a REFERENCE IMAGE (the intended look) —
+    the visual analog of compare_audio_to_intent. Builds a montage of the live output and (if given)
+    sends the reference image alongside. Returns reactive/legible/on_intent booleans + scores + issues[]
+    + fixes[] + summary. Requires a configured Gemini key; fails closed otherwise. Blocks ~5-15s."""
+    started = _post("compare_visual_to_intent",
+                    {"intent": intent, "reference_path": reference_path,
+                     "window_seconds": window_seconds, "frames": frames})
+    if not started.get("ok") or "job_id" not in started:
+        return started
+    r = _veval_poll(started["job_id"], max(30.0, window_seconds + 90.0))
+    if include_payload or not r.get("ok", True):
+        return r
+    return {"ok": True, "reactive": r.get("reactive"), "legible": r.get("legible"),
+            "on_intent": r.get("on_intent"), "intent_score": r.get("intent_score"),
+            "issues": r.get("issues", []), "fixes": r.get("fixes", []), "summary": r.get("summary")}
 
 
 if __name__ == "__main__":

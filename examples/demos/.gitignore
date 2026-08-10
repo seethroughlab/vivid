@@ -8,6 +8,11 @@ projects/*
 !projects/drift/
 !projects/grid/
 !projects/signal/
-# ...but never the compiled operator dylib — it's rebuilt from petals.cpp on project open.
+# ...but never the compiled operator dylib — a demo that carries a project-local operator (ADR-0054)
+# rebuilds it from source on project open (project_io.cpp: install_package). Source (.cpp + manifest)
+# IS committed; the .dylib is a build artifact.
 projects/bloom/*.dylib
+projects/geometry/*.dylib
+projects/grid/*.dylib
+projects/surge-lead/*.dylib
 __pycache__/

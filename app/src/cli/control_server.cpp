@@ -93,6 +93,7 @@ void ControlServer::register_handlers() {
     register_introspection_handlers(handlers_);   // ---- status/version/health + discovery ----
     register_visuals_handlers(handlers_);   // ---- visuals construction ----
     register_visual_analysis_handlers(handlers_);   // ---- ADR-0024 Phase 6: visual perception ----
+    register_visual_eval_handlers(handlers_);       // ---- reactive-visuals loop: multimodal visual judge ----
 
     register_mappings_handlers(handlers_);   // ---- mapping (the bridge) ----
 
@@ -105,6 +106,9 @@ void ControlServer::register_handlers() {
     register_edit_handlers(handlers_);   // ---- ADR-0017 undo/redo ----
 
     register_video_export_handlers(handlers_);   // ---- realtime AV video export ----
+    register_audio_export_handlers(handlers_);   // ---- ADR-0032: offline master-mix WAV bounce ----
+    register_audio_io_handlers(handlers_);       // ---- ADR-0032 Phase A: output device enumerate/select ----
+    register_av_export_handlers(handlers_);      // ---- ADR-0032 Phase C: deterministic offline AV export ----
 }
 
 }  // namespace vivid

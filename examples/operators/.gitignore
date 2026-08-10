@@ -1,0 +1,6 @@
+# A per-operator example that carries a project-local operator package (ADR-0054) compiles that op
+# INTO its own folder on load (project_io.cpp: install_package(path, path)) — a regenerated build
+# artifact, never source. Ignore it.
+*.dylib
+*.so
+*.dll

@@ -47,8 +47,38 @@ void     session_set_load_progress(SessionLoadCb cb, void* user);
 Session* session_create(uint32_t sample_rate);
 void     session_destroy(Session*);
 
+// ADR-0052: start the track-parallel audio worker pool. Call ONCE from main() after the audio device
+// exists, passing the CoreAudio device's os_workgroup (+1 retained; may be null). Idempotent; honours
+// VIVID_AUDIO_WORKERS (0 = force serial). No-op on non-Apple platforms.
+void     session_set_audio_workgroup(Session* s, void* os_workgroup);
+
 int  session_track_count(Session*);
 int  session_scene_count(Session*);
+// ADR-0032 Phase B (latency reporting): plugin-reported processing latency in samples, read once at
+// plugin activation. Per-track = serial SUM over the track's owned plugin slots (VST3 + CLAP; native
+// ops contribute 0). `session_max_plugin_latency_samples` = max over tracks; `_any_plugin_latency_unknown`
+// = 1 if any loaded plugin doesn't report latency (a CLAP without clap.latency). Main/UI thread; returns
+// plain ints (no plugin-handle leak). NOT compensation — reporting only.
+int  session_track_latency_samples(Session*, int track);
+int  session_max_plugin_latency_samples(Session*);
+int  session_any_plugin_latency_unknown(Session*);
+// ADR-0032 Phase E1 (latency COMPENSATION): opt-in playback plugin-delay compensation. When enabled,
+// master_mix delays each compensable track by (L_max - L_track) via a per-track ring so tracks stay
+// time-aligned despite differing plugin latency. Off by default (a live instrument stays low-latency).
+// Main/UI thread. E1.1 adds the classification/recompute; E1.0 ships the mechanism + a direct setter.
+bool session_pdc_enabled(Session*);
+void session_set_pdc_enabled(Session*, bool enabled);
+// Set a track's compensating delay directly (samples), allocating its ring on first use. Clamped to
+// [0, kPdcMaxComp]. The primitive the E1.1 recompute drives; also the E1.0 test/verification seam.
+void session_pdc_set_track_delay(Session*, int track, int delay_samples);
+// ADR-0032 E1.2: PDC state for the set_pdc reply + get_health/diagnostics surface (published by
+// pdc_recompute). applied_delay = L_max samples added to the compensated mix (0 when off/none).
+int  session_pdc_applied_delay(Session*);
+int  session_pdc_tracks_compensated(Session*);
+int  session_pdc_tracks_live(Session*);
+int  session_pdc_clamped(Session*);           // 1 if a track's latency exceeded kPdcMaxComp (best-effort)
+int  session_pdc_track_delay(Session*, int track);  // the track's published compensating delay (samples)
+int  session_sample_rate(Session*);           // the session render rate (Hz); 0 if unknown
 // Append a scene (grid row): grows every track's clip vector by one empty clip. Returns the
 // new scene index, or -1 if already at kMaxScenes. UI/main thread only (append is RT-safe
 // because clip vectors are reserved to kMaxScenes, so no reallocation occurs).
@@ -67,6 +97,7 @@ const char* session_available_generator_name(Session*, int idx);
 int         session_place_generator(Session*, int track, int scene, const char* type);
 int         session_remove_generator(Session*, int track, int scene);
 int         session_cell_is_generator(Session*, int track, int scene);
+int         session_cell_is_empty(Session*, int track, int scene);   // no generator + no clip/notes → a stop-slot
 const char* session_generator_type(Session*, int track, int scene);
 int         session_generator_param_count(Session*, int track, int scene);
 const char* session_generator_param_name(Session*, int track, int scene, int i);
@@ -126,6 +157,8 @@ int  session_queued_clip(Session*, int track);   // -1 if nothing pending
 // Launch (main thread, applied on the next bar).
 void session_launch_clip(Session*, int track, int scene);
 void session_launch_scene(Session*, int scene);   // launches scene on every track
+void session_stop_track(Session*, int track);     // stop the track's clip → idle at the next launch bar
+void session_stop_all(Session*);                  // stop every track's clip
 
 // Mixer.
 float session_track_gain(Session*, int track);
@@ -189,6 +222,12 @@ void  session_set_master_gain(Session*, float gain);
 // (1 = next bar, the default; typically 4 = let the current phrase finish). Clamped to >= 1.
 int   session_launch_quantum_bars(Session*);
 void  session_set_launch_quantum_bars(Session*, int bars);
+// Session music-theory context: root note + scale NAME (e.g. "C" + "minor"). The theory vocabulary
+// + validation live in the Python bridge (mcp/theory.py); the core just persists the two strings so
+// the key/scale round-trips with the project. UI/main thread only.
+const char* session_music_root(Session*);
+const char* session_music_scale(Session*);
+void        session_set_music(Session*, const char* root, const char* scale);
 int   session_master_gnid(Session*);                // ADR-0022 P2b.3c: the master's global node id (0)
 float session_master_level(Session*);               // master output RMS (meters)
 float session_master_transient(Session*);           // master onset detector (0..1)
@@ -282,6 +321,7 @@ bool        session_pool_place_audio(Session*, int index, int track, int scene);
 int    session_clip_note_count(Session*, int track, int scene);
 int    session_get_clip(Session*, int track, int scene, ClipNote* out, int max);  // returns count
 double session_clip_length(Session*, int track, int scene);
+uint64_t session_clip_rev(Session*, int track, int scene);   // optimistic-concurrency revision of note content
 void   session_set_clip(Session*, int track, int scene, const ClipNote* notes, int n, double length);
 // In-clip loop region (beats). loop_end <= loop_start disables it (loop the whole clip).
 void   session_set_clip_loop(Session*, int track, int scene, double loop_start, double loop_end);

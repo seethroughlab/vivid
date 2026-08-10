@@ -2,6 +2,7 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_3d.h"
 #include "operator_api/thumbnail_3d.h"
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -28,6 +29,8 @@
 struct InstanceNoise : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName         = "InstanceNoise";
     static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_TRANSFORM;   // ADR-0046
+    static constexpr const char* kSummary = "Perturbs instance transforms with noise, breaking a rigid layout into something organic.";
+    static constexpr std::array<const char*, 3> kKeywords = {"3d", "instances", "noise"};
     static constexpr bool kTimeDependent       = true;
     // POINTWISE → Map is the default multiplicity behavior; no explicit declaration needed.
 

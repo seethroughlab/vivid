@@ -1,11 +1,32 @@
 #include "gpu_context.h"
 #include "gpu_util.h"
+#include "app/perf_stats.h"     // publish GPU timing for get_perf
 #include <glfw3webgpu.h>
+#include <webgpu/wgpu.h>        // WGPUNativeFeature_TimestampQueryInsideEncoders, wgpuDevicePoll
 #include <cstdio>
+#include <cstdlib>              // getenv
 #include <cstring>
 #include <cassert>
+#include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace vivid {
+
+// --- Present mode: default Fifo (vsync); VIVID_PRESENT=immediate/off/0 selects Immediate to uncap
+// the frame rate (so the true render ceiling is measurable). Falls back to Fifo if unsupported. ---
+WGPUPresentMode vivid_present_mode(const WGPUSurfaceCapabilities& caps) {
+    const char* env = std::getenv("VIVID_PRESENT");
+    bool want_immediate = env && (std::strcmp(env, "immediate") == 0 ||
+                                  std::strcmp(env, "off") == 0 || std::strcmp(env, "0") == 0);
+    if (want_immediate) {
+        for (size_t i = 0; i < caps.presentModeCount; ++i)
+            if (caps.presentModes[i] == WGPUPresentMode_Immediate) return WGPUPresentMode_Immediate;
+        std::fprintf(stderr, "[vivid] VIVID_PRESENT=immediate requested but surface lacks Immediate; using Fifo\n");
+    }
+    return WGPUPresentMode_Fifo;
+}
 
 // ---------------------------------------------------------------------------
 // Synchronous request wrappers (wgpu-native v24 / WebGPU spec 2024+)
@@ -103,20 +124,23 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
     WGPUDeviceDescriptor device_desc{};
     device_desc.nextInChain = nullptr;
     device_desc.label = to_sv("Vivid Device");
+    // Build the required-feature list: optional TextureCompressionBC (HAP) + the timestamp-query pair
+    // (GPU timing). Each is requested only if the adapter advertises it, so a missing feature disables
+    // that capability rather than failing device creation.
+    std::vector<WGPUFeatureName> features;
     bc_texture_compression_enabled_ =
         wgpuAdapterHasFeature(adapter_, WGPUFeatureName_TextureCompressionBC);
     if (bc_texture_compression_enabled_) {
-        static WGPUFeatureName kRequiredFeatures[] = {
-            WGPUFeatureName_TextureCompressionBC
-        };
-        device_desc.requiredFeatureCount = 1;
-        device_desc.requiredFeatures = kRequiredFeatures;
+        features.push_back(WGPUFeatureName_TextureCompressionBC);
         std::fprintf(stderr, "[vivid] GPU feature enabled: TextureCompressionBC (HAP direct BC path available)\n");
     } else {
-        device_desc.requiredFeatureCount = 0;
-        device_desc.requiredFeatures = nullptr;
         std::fprintf(stderr, "[vivid] GPU feature unavailable: TextureCompressionBC (HAP direct BC path disabled)\n");
     }
+    WGPUFeatureName ts_feats[2];
+    const uint32_t n_ts = GpuTimer::required_features(adapter_, ts_feats);
+    for (uint32_t i = 0; i < n_ts; ++i) features.push_back(ts_feats[i]);
+    device_desc.requiredFeatureCount = features.size();
+    device_desc.requiredFeatures = features.empty() ? nullptr : features.data();
     device_desc.requiredLimits = nullptr;
     device_desc.defaultQueue.nextInChain = nullptr;
     device_desc.defaultQueue.label = to_sv("Vivid Queue");
@@ -172,9 +196,12 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
         usage |= WGPUTextureUsage_CopySrc;
     }
 
+    present_mode_ = vivid_present_mode(caps);   // VIVID_PRESENT (needs caps.presentModes; before free)
+    perf::g_present_uncapped.store(present_mode_ == WGPUPresentMode_Immediate, std::memory_order_relaxed);
     wgpuSurfaceCapabilitiesFreeMembers(caps);
-    std::fprintf(stderr, "[vivid] Surface format: %d (CopySrc: %s)\n",
-                 static_cast<int>(surface_format_), surface_copy_src_ ? "yes" : "no");
+    std::fprintf(stderr, "[vivid] Surface format: %d (CopySrc: %s), present: %s\n",
+                 static_cast<int>(surface_format_), surface_copy_src_ ? "yes" : "no",
+                 present_mode_ == WGPUPresentMode_Immediate ? "Immediate (vsync OFF)" : "Fifo (vsync)");
 
     // 7. Configure surface
     WGPUSurfaceConfiguration config{};
@@ -185,7 +212,7 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
     config.alphaMode = WGPUCompositeAlphaMode_Auto;
     config.width = width;
     config.height = height;
-    config.presentMode = WGPUPresentMode_Fifo;
+    config.presentMode = present_mode_;
     config.viewFormatCount = 0;
     config.viewFormats = nullptr;
     wgpuSurfaceConfigure(surface_, &config);
@@ -193,8 +220,11 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
     width_ = width;
     height_ = height;
     ensure_msaa(width, height);   // 4x MSAA color target (resolves to the surface)
-    std::fprintf(stderr, "[vivid] GPU context initialized (%ux%u, %ux MSAA)\n",
-                 width, height, kMsaaSamples);
+
+    timer_.init(device_, adapter_);   // GPU-side frame timing (opt-in via VIVID_GPU_TIMING)
+    std::fprintf(stderr, "[vivid] GPU context initialized (%ux%u, %ux MSAA), gpu-timing: %s\n",
+                 width, height, kMsaaSamples,
+                 timer_.enabled() ? "on" : "off (set VIVID_GPU_TIMING=1)");
     return true;
 }
 
@@ -239,7 +269,7 @@ void GpuContext::resize(uint32_t width, uint32_t height) {
     config.alphaMode = WGPUCompositeAlphaMode_Auto;
     config.width = width;
     config.height = height;
-    config.presentMode = WGPUPresentMode_Fifo;
+    config.presentMode = present_mode_;
     wgpuSurfaceConfigure(surface_, &config);
     width_ = width;
     height_ = height;
@@ -281,7 +311,7 @@ bool AuxSurface::open(WGPUInstance inst, WGPUDevice dev, WGPUTextureFormat fmt, 
     WGPUSurfaceConfiguration config{};
     config.device = dev; config.format = fmt;
     config.usage = WGPUTextureUsage_RenderAttachment; config.alphaMode = WGPUCompositeAlphaMode_Auto;
-    config.width = width; config.height = height; config.presentMode = WGPUPresentMode_Fifo;
+    config.width = width; config.height = height; config.presentMode = WGPUPresentMode_Fifo;  // aux windows stay vsync'd
     wgpuSurfaceConfigure(surface, &config);
     w = width; h = height;
     ensure_msaa(dev, fmt, width, height, label);
@@ -295,7 +325,7 @@ void AuxSurface::resize(WGPUDevice dev, WGPUTextureFormat fmt, uint32_t width, u
     WGPUSurfaceConfiguration config{};
     config.device = dev; config.format = fmt;
     config.usage = WGPUTextureUsage_RenderAttachment; config.alphaMode = WGPUCompositeAlphaMode_Auto;
-    config.width = width; config.height = height; config.presentMode = WGPUPresentMode_Fifo;
+    config.width = width; config.height = height; config.presentMode = WGPUPresentMode_Fifo;  // aux windows stay vsync'd
     wgpuSurfaceConfigure(surface, &config);
     w = width; h = height;
     ensure_msaa(dev, fmt, width, height, "Aux MSAA");
@@ -454,6 +484,8 @@ bool GpuContext::begin_frame(FrameState& frame) {
 
     frame.resolve_view = surface_view;   // resolves here in end_frame, then presents
     frame.view = msaa_view_;             // gpu_context-owned; NOT released per frame
+
+    timer_.begin(frame.encoder);         // GPU timing: opens a slot + writes the frame-start mark
     return true;
 }
 
@@ -481,6 +513,8 @@ bool GpuContext::end_frame(const FrameState& frame) {
         wgpuRenderPassEncoderRelease(pass);
     }
 
+    timer_.resolve(frame.encoder);   // GPU timing: final mark + resolve/copy (before finish/submit)
+
     if (!gpu_submit(device_, queue_, frame.encoder, "Frame Commands")) {
         // Encoder was in an error state (e.g. surface texture invalidated mid-frame
         // during resize, fullscreen, or macOS drag-tracking transitions).
@@ -490,6 +524,8 @@ bool GpuContext::end_frame(const FrameState& frame) {
         wgpuTextureRelease(frame.texture);
         return false;
     }
+
+    timer_.after_submit();   // GPU timing: map the readback buffer (submit succeeded)
 
     // Present BEFORE releasing the surface texture/view. frame.view (MSAA) is
     // gpu_context-owned and reused — only the per-frame surface view/texture go.
@@ -511,6 +547,7 @@ void GpuContext::discard_frame(const FrameState& frame) {
 void GpuContext::shutdown() {
     close_secondary();
     close_editor_surface();
+    timer_.shutdown();
     if (msaa_view_) { wgpuTextureViewRelease(msaa_view_); msaa_view_ = nullptr; }
     if (msaa_tex_)  { wgpuTextureRelease(msaa_tex_);      msaa_tex_  = nullptr; }
     if (surface_) {
@@ -563,6 +600,182 @@ bool gpu_submit(WGPUDevice device, WGPUQueue queue, WGPUCommandEncoder encoder,
     // PushErrorScope/PopErrorScope here because wgpu-native panics (abort)
     // if PushErrorScope is called on a lost device.
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// GpuTimer — GPU-side frame timing via encoder-level timestamp queries.
+// ---------------------------------------------------------------------------
+
+uint32_t GpuTimer::required_features(WGPUAdapter adapter, WGPUFeatureName* out) {
+    // We timestamp via render-pass descriptor timestampWrites (beginningOfPassWriteIndex). That is
+    // standard WebGPU and needs ONLY the TimestampQuery feature — NOT the wgpu-native InsidePasses
+    // extension (which is for mid-pass wgpuRenderPassEncoderWriteTimestamp, absent on this Metal
+    // backend). The encoder-level writeTimestamp path reads back as 0 here, so we use passes instead.
+    if (wgpuAdapterHasFeature(adapter, WGPUFeatureName_TimestampQuery)) {
+        out[0] = WGPUFeatureName_TimestampQuery;
+        return 1;
+    }
+    return 0;
+}
+
+// Timestamp the current point in the command stream: a 1x1 render pass whose beginningOfPassWriteIndex
+// samples the GPU counter. The pass does no draws and clears/discards a 1x1 target, so it's ~free.
+void GpuTimer::write_mark(WGPUCommandEncoder enc, uint32_t qidx) {
+    WGPUPassTimestampWrites tw{};
+    tw.querySet                 = qset_;
+    tw.beginningOfPassWriteIndex = qidx;
+    tw.endOfPassWriteIndex       = WGPU_QUERY_SET_INDEX_UNDEFINED;
+    WGPURenderPassColorAttachment att{};
+    att.view       = dummy_view_;
+    att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+    att.loadOp     = WGPULoadOp_Clear;
+    att.storeOp    = WGPUStoreOp_Discard;
+    att.clearValue = WGPUColor{ 0, 0, 0, 0 };
+    WGPURenderPassDescriptor rp{};
+    rp.colorAttachmentCount = 1;
+    rp.colorAttachments     = &att;
+    rp.timestampWrites      = &tw;
+    WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(enc, &rp);
+    wgpuRenderPassEncoderEnd(pass);
+    wgpuRenderPassEncoderRelease(pass);
+}
+
+bool GpuTimer::init(WGPUDevice device, WGPUAdapter adapter) {
+    // Opt-in: GPU timing adds a few tiny passes + a non-blocking poll per frame, so it's off unless
+    // profiling (VIVID_GPU_TIMING=1). Normal runs pay nothing.
+    const char* env = std::getenv("VIVID_GPU_TIMING");
+    if (!(env && env[0] && env[0] != '0')) { enabled_ = false; return false; }
+    WGPUFeatureName tmp[2];
+    if (required_features(adapter, tmp) == 0) { enabled_ = false; return false; }
+    device_ = device;
+
+    WGPUQuerySetDescriptor qd{};
+    qd.type  = WGPUQueryType_Timestamp;
+    qd.count = kRing * kMaxMarks;
+    qset_ = wgpuDeviceCreateQuerySet(device_, &qd);
+    if (!qset_) { enabled_ = false; return false; }
+
+    const uint64_t bytes = static_cast<uint64_t>(kMaxMarks) * sizeof(uint64_t);
+    for (uint32_t r = 0; r < kRing; ++r) {
+        WGPUBufferDescriptor rd{};
+        rd.usage = WGPUBufferUsage_QueryResolve | WGPUBufferUsage_CopySrc;
+        rd.size  = bytes;
+        slots_[r].resolve_buf = wgpuDeviceCreateBuffer(device_, &rd);
+        WGPUBufferDescriptor md{};
+        md.usage = WGPUBufferUsage_MapRead | WGPUBufferUsage_CopyDst;
+        md.size  = bytes;
+        slots_[r].read_buf = wgpuDeviceCreateBuffer(device_, &md);
+        if (!slots_[r].resolve_buf || !slots_[r].read_buf) { shutdown(); return false; }
+    }
+
+    // 1x1 render target for the timing passes.
+    WGPUTextureDescriptor td{};
+    td.usage         = WGPUTextureUsage_RenderAttachment;
+    td.dimension     = WGPUTextureDimension_2D;
+    td.size          = WGPUExtent3D{ 1, 1, 1 };
+    td.format        = WGPUTextureFormat_RGBA8Unorm;
+    td.mipLevelCount = 1;
+    td.sampleCount   = 1;
+    dummy_tex_ = wgpuDeviceCreateTexture(device_, &td);
+    if (!dummy_tex_) { shutdown(); return false; }
+    dummy_view_ = wgpuTextureCreateView(dummy_tex_, nullptr);
+    if (!dummy_view_) { shutdown(); return false; }
+
+    enabled_ = true;
+    return true;
+}
+
+void GpuTimer::begin(WGPUCommandEncoder enc) {
+    if (!enabled_) return;
+    drain();                                  // consume finished readbacks, publish to perf
+    cur_ = (cur_ + 1) % kRing;
+    if (slots_[cur_].inflight) { active_ = false; return; }   // readback not yet consumed — skip this frame
+    active_ = true;
+    nmarks_cur_ = 0;
+    write_mark(enc, cur_ * kMaxMarks + nmarks_cur_);   // mark 0 = frame start
+    slots_[cur_].labels[nmarks_cur_] = "frame";        // labels[0] is the start (not itself a segment)
+    nmarks_cur_++;
+}
+
+void GpuTimer::mark(WGPUCommandEncoder enc, const char* label) {
+    if (!enabled_ || !active_) return;
+    if (nmarks_cur_ >= kMaxMarks - 1) return;   // keep one slot for the final (resolve) mark
+    write_mark(enc, cur_ * kMaxMarks + nmarks_cur_);
+    slots_[cur_].labels[nmarks_cur_] = label;   // names the segment ending at this mark
+    nmarks_cur_++;
+}
+
+void GpuTimer::resolve(WGPUCommandEncoder enc) {
+    if (!enabled_ || !active_) return;
+    // Final mark: everything after the last app mark (UI + composite + MSAA resolve) up to submit.
+    write_mark(enc, cur_ * kMaxMarks + nmarks_cur_);
+    slots_[cur_].labels[nmarks_cur_] = "ui";
+    nmarks_cur_++;
+    Slot& s = slots_[cur_];
+    s.nmarks = nmarks_cur_;
+    wgpuCommandEncoderResolveQuerySet(enc, qset_, cur_ * kMaxMarks, s.nmarks, s.resolve_buf, 0);
+    wgpuCommandEncoderCopyBufferToBuffer(enc, s.resolve_buf, 0, s.read_buf, 0,
+                                         static_cast<uint64_t>(s.nmarks) * sizeof(uint64_t));
+}
+
+void GpuTimer::after_submit() {
+    if (!enabled_ || !active_) return;
+    Slot& s = slots_[cur_];
+    s.inflight = true;
+    s.mapped.store(0, std::memory_order_release);
+    WGPUBufferMapCallbackInfo ci{};
+    ci.mode = WGPUCallbackMode_AllowProcessEvents;   // fires during wgpuDevicePoll
+    ci.callback = [](WGPUMapAsyncStatus status, WGPUStringView, void* u1, void*) {
+        auto* slot = static_cast<Slot*>(u1);
+        slot->mapped.store(status == WGPUMapAsyncStatus_Success ? 1 : -1, std::memory_order_release);
+    };
+    ci.userdata1 = &s;
+    wgpuBufferMapAsync(s.read_buf, WGPUMapMode_Read, 0,
+                       static_cast<size_t>(s.nmarks) * sizeof(uint64_t), ci);
+    active_ = false;
+}
+
+void GpuTimer::drain() {
+    if (!enabled_) return;
+    wgpuDevicePoll(device_, false, nullptr);   // non-blocking: let pending map callbacks fire
+    for (uint32_t r = 0; r < kRing; ++r) {
+        Slot& s = slots_[r];
+        if (!s.inflight) continue;
+        const int m = s.mapped.load(std::memory_order_acquire);
+        if (m == 0) continue;                  // still pending
+        if (m == 1) {
+            const size_t n = static_cast<size_t>(s.nmarks) * sizeof(uint64_t);
+            const uint64_t* ts = static_cast<const uint64_t*>(
+                wgpuBufferGetConstMappedRange(s.read_buf, 0, n));
+            if (ts && s.nmarks >= 2) {
+                auto ms = [](uint64_t a, uint64_t b) { return b >= a ? static_cast<double>(b - a) / 1e6 : 0.0; };
+                std::vector<std::pair<std::string, double>> regions;
+                for (uint32_t i = 1; i < s.nmarks; ++i)
+                    regions.emplace_back(s.labels[i] ? s.labels[i] : "?", ms(ts[i - 1], ts[i]));
+                perf::g_gpu_ms.store(ms(ts[0], ts[s.nmarks - 1]), std::memory_order_relaxed);
+                perf::set_gpu_regions(std::move(regions));
+            }
+            wgpuBufferUnmap(s.read_buf);
+        }
+        s.inflight = false;
+        s.mapped.store(0, std::memory_order_release);
+    }
+}
+
+void GpuTimer::shutdown() {
+    for (uint32_t r = 0; r < kRing; ++r) {
+        Slot& s = slots_[r];
+        if (s.inflight && s.mapped.load(std::memory_order_acquire) == 1 && s.read_buf)
+            wgpuBufferUnmap(s.read_buf);
+        if (s.resolve_buf) { wgpuBufferRelease(s.resolve_buf); s.resolve_buf = nullptr; }
+        if (s.read_buf)    { wgpuBufferRelease(s.read_buf);    s.read_buf    = nullptr; }
+        s.inflight = false;
+        s.mapped.store(0, std::memory_order_relaxed);
+    }
+    if (dummy_view_) { wgpuTextureViewRelease(dummy_view_); dummy_view_ = nullptr; }
+    if (dummy_tex_)  { wgpuTextureRelease(dummy_tex_);      dummy_tex_  = nullptr; }
+    if (qset_) { wgpuQuerySetRelease(qset_); qset_ = nullptr; }
+    enabled_ = false;
 }
 
 } // namespace vivid
