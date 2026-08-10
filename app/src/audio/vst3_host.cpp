@@ -1358,6 +1358,11 @@ void session_pdc_set_track_delay(Session* s, int track, int delay_samples) {
     if (d > 0 && t.pdc_ring.empty()) t.pdc_ring.assign(2 * static_cast<size_t>(vivid::audio::kPdcRingCap), 0.f);
     t.pdc_delay.store(d, std::memory_order_relaxed);
 }
+int session_pdc_applied_delay(Session* s)      { return s ? s->pdc_applied_delay.load(std::memory_order_relaxed) : 0; }
+int session_pdc_tracks_compensated(Session* s) { return s ? s->pdc_tracks_comp.load(std::memory_order_relaxed) : 0; }
+int session_pdc_tracks_live(Session* s)        { return s ? s->pdc_tracks_live.load(std::memory_order_relaxed) : 0; }
+int session_pdc_clamped(Session* s)            { return s && s->pdc_clamped.load(std::memory_order_relaxed) ? 1 : 0; }
+int session_sample_rate(Session* s)            { return s ? static_cast<int>(s->sample_rate) : 0; }
 int  session_scene_count(Session* s) { return s ? s->scenes : 0; }
 
 // ADR-0022 P3.3: the default display name for scene i — A..Z, then "Scene N". UI-thread only.

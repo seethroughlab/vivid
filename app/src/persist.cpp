@@ -262,6 +262,9 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     j["master"] = { {"gain", vivid::session::session_master_gain(s)} };
     // Scene-launch quantization in bars (optional; absent in older files => 1 = next-bar switching).
     j["launch_quantum_bars"] = vivid::session::session_launch_quantum_bars(s);
+    // ADR-0032 E1: opt-in playback plugin-delay compensation (optional; absent => off). Persisted per
+    // project like launch_quantum_bars — it changes the musical result (track time-alignment).
+    j["pdc_enabled"] = vivid::session::session_pdc_enabled(s);
     // Session music-theory context (root + scale NAME). Bridge-owned vocabulary (mcp/theory.py),
     // persisted here so the key/scale round-trips with the project (optional; older files => C major).
     j["music"] = { {"root",  vivid::session::session_music_root(s)},
@@ -752,6 +755,10 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
     // Scene-launch quantization (optional; absent in older files => 1 = next-bar switching).
     if (restore_audio && !params_only && j.contains("launch_quantum_bars"))
         vivid::session::session_set_launch_quantum_bars(s, j.value("launch_quantum_bars", 1));
+    // ADR-0032 E1: PDC toggle (optional; absent in older files => off). Restores under the audio tier
+    // (it affects the rendered result); session_set_pdc_enabled reclassifies + republishes delays.
+    if (restore_audio && !params_only && j.contains("pdc_enabled") && j["pdc_enabled"].is_boolean())
+        vivid::session::session_set_pdc_enabled(s, j.value("pdc_enabled", false));
     // Session music-theory context (optional; absent => C major). Pure metadata (two strings, no
     // audio state), so it restores under ANY tier — including a ParamsOnly/Skip undo restore — which
     // keeps a key/scale change undoable in lockstep with the rest of the document.
