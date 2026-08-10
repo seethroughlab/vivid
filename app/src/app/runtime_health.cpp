@@ -55,6 +55,12 @@ nlohmann::json to_json(const HealthSnapshot& s) {
                      {"max_plugin_latency_ms", s.audio_device_sr
                           ? s.audio_max_plugin_latency_samples * 1000.0 / s.audio_device_sr : 0.0},
                      {"plugin_latency_unknown", s.audio_plugin_latency_unknown},
+                     {"input_open", s.audio_input_open},
+                     {"input_name", s.audio_input_name},
+                     {"input_latency_frames", s.audio_input_latency_frames},
+                     {"input_latency_ms", s.audio_device_sr
+                          ? s.audio_input_latency_frames * 1000.0 / s.audio_device_sr : 0.0},
+                     {"input_level", s.audio_input_level},
                      {"pdc_enabled", s.pdc_enabled},
                      {"pdc_applied_delay_ms", s.audio_device_sr
                           ? s.pdc_applied_delay_samples * 1000.0 / s.audio_device_sr : 0.0},

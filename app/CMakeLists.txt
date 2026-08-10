@@ -251,6 +251,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/audio/audio_bounce.cpp
     src/audio/audio_bounce_app.cpp
     src/audio/movie_audio_bus.cpp
+    src/audio/audio_input_bus.cpp
     src/audio/note_bus.cpp
     src/audio/spectrum_bus.cpp
     src/audio/reactive_bus.cpp
@@ -529,6 +530,7 @@ if(VIVID_BUILD_TESTS AND APPLE)
         src/audio/audio_op_runtime.cpp
         src/audio/builtin_audio_ops.cpp
         src/audio/movie_audio_bus.cpp
+        src/audio/audio_input_bus.cpp
         src/audio/note_bus.cpp
         src/audio/spectrum_bus.cpp
         src/audio/reactive_bus.cpp

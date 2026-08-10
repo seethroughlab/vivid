@@ -79,6 +79,16 @@ void draw_diagnostics_panel(Renderer2D& ui, const HealthSnapshot& h, const App& 
                       h.audio_device_fallback ? "  (fb)" : "");
         line("Audio device", buf, h.audio_device_fallback ? sty.gold : sty.body);
     }
+    // ADR-0032 Phase D1: the hardware INPUT (capture) — shown only when a duplex device is open, so a
+    // playback-only session (the default) stays clean. name · latency · live level meter.
+    if (h.audio_input_open) {
+        const char* in_name = h.audio_input_name.empty() ? "System Default" : h.audio_input_name.c_str();
+        const double in_lat = h.audio_device_sr
+            ? h.audio_input_latency_frames * 1000.0 / h.audio_device_sr : 0.0;
+        std::snprintf(buf, sizeof buf, "%.28s  \xC2\xB7  ~%.0f ms in  \xC2\xB7  level %.2f",
+                      in_name, in_lat, h.audio_input_level);
+        line("Audio input", buf, sty.body);
+    }
     // ADR-0032 E1: plugin-delay compensation — shown only when ON (opt-in), so a default session stays
     // clean. Reports the added latency + how many tracks are aligned vs left live; gold if clamped.
     if (h.pdc_enabled) {

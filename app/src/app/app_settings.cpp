@@ -36,6 +36,10 @@ AppSettings load_app_settings(const std::string& path) {
         s.audio_period_frames = j["audio_period_frames"].get<uint32_t>();
     if (j.contains("audio_fallback_to_default") && j["audio_fallback_to_default"].is_boolean())
         s.audio_fallback_to_default = j["audio_fallback_to_default"].get<bool>();
+    if (j.contains("audio_input_enabled") && j["audio_input_enabled"].is_boolean())
+        s.audio_input_enabled = j["audio_input_enabled"].get<bool>();
+    if (j.contains("audio_input_name") && j["audio_input_name"].is_string())
+        s.audio_input_name = j["audio_input_name"].get<std::string>();
     return s;
 }
 
@@ -45,13 +49,26 @@ bool save_app_settings(const AppSettings& s, const std::string& path) {
                {"audio_device_name", s.audio_device_name},
                {"audio_sample_rate", s.audio_sample_rate},
                {"audio_period_frames", s.audio_period_frames},
-               {"audio_fallback_to_default", s.audio_fallback_to_default} };
+               {"audio_fallback_to_default", s.audio_fallback_to_default},
+               {"audio_input_enabled", s.audio_input_enabled},
+               {"audio_input_name", s.audio_input_name} };
     std::error_code ec;
     std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
     std::ofstream out(path, std::ios::trunc);
     if (!out) return false;
     out << j.dump(2);
     return static_cast<bool>(out);
+}
+
+audio::DevicePrefs device_prefs_from(const AppSettings& s) {
+    audio::DevicePrefs p;
+    p.requested_name      = s.audio_device_name;       // "" => system default output
+    p.sample_rate         = s.audio_sample_rate;       // 0  => device native rate
+    p.period_frames       = s.audio_period_frames;
+    p.fallback_to_default = s.audio_fallback_to_default;
+    p.enable_input        = s.audio_input_enabled;     // ADR-0032 Phase D1
+    p.input_name          = s.audio_input_name;        // "" => system default input
+    return p;
 }
 
 }  // namespace vivid
