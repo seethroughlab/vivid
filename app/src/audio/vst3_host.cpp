@@ -1362,6 +1362,10 @@ int session_pdc_applied_delay(Session* s)      { return s ? s->pdc_applied_delay
 int session_pdc_tracks_compensated(Session* s) { return s ? s->pdc_tracks_comp.load(std::memory_order_relaxed) : 0; }
 int session_pdc_tracks_live(Session* s)        { return s ? s->pdc_tracks_live.load(std::memory_order_relaxed) : 0; }
 int session_pdc_clamped(Session* s)            { return s && s->pdc_clamped.load(std::memory_order_relaxed) ? 1 : 0; }
+int session_pdc_track_delay(Session* s, int track) {
+    if (!s || track < 0 || track >= static_cast<int>(s->tracks.size())) return 0;
+    return s->tracks[static_cast<size_t>(track)]->pdc_delay.load(std::memory_order_relaxed);
+}
 int session_sample_rate(Session* s)            { return s ? static_cast<int>(s->sample_rate) : 0; }
 int  session_scene_count(Session* s) { return s ? s->scenes : 0; }
 

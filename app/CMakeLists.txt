@@ -621,6 +621,17 @@ if(VIVID_BUILD_TESTS AND APPLE)
     add_test(NAME test_clap_plugin_roundtrip COMMAND test_clap_plugin_roundtrip)
     set_tests_properties(test_clap_plugin_roundtrip PROPERTIES LABELS "AUDIO_ENGINE")
 
+    # ADR-0032 E1.3: end-to-end PDC verification — the latency fixture (reports + delays by N) drives a
+    # real session; asserts master_mix applies the ring AND classification reads the plugin's latency.
+    add_executable(test_pdc_alignment tests/test_pdc_alignment.cpp ${_audio_engine_srcs})
+    target_include_directories(test_pdc_alignment PRIVATE src src/audio src/gpu tests)
+    target_link_libraries(test_pdc_alignment PRIVATE ${_audio_engine_libs})
+    add_dependencies(test_pdc_alignment vivid_test_clap)
+    target_compile_definitions(test_pdc_alignment PRIVATE
+        VIVID_TEST_CLAP_PATH="$<TARGET_BUNDLE_DIR:vivid_test_clap>")
+    add_test(NAME test_pdc_alignment COMMAND test_pdc_alignment)
+    set_tests_properties(test_pdc_alignment PROPERTIES LABELS "AUDIO_ENGINE")
+
     # ADR-0045 Tier 2a: the plugin watchdog, driven through the real render path with a deliberately-slow
     # build of the same CLAP fixture (VIVID_TEST_CLAP_SLOW_MS).
     add_executable(test_plugin_watchdog tests/test_plugin_watchdog.cpp ${_audio_engine_srcs})
