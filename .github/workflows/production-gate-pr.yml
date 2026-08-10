@@ -24,7 +24,7 @@ jobs:
         run: |
           cmake -S app -B app/build -DVIVID_BUILD_APP=OFF -DVIVID_BUILD_TESTS=ON \
                 -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          cmake --build app/build -j
+          cmake --build app/build -j 10
       - name: Run production gate (core)
         id: gate
         run: VIVID_BUILD_DIR=app/build scripts/run_production_gate.sh core
@@ -69,7 +69,7 @@ jobs:
           # a new AUDIO_ENGINE test not added to it was registered but never built, so `ctest -L
           # AUDIO_ENGINE` reported it Not Run and this job went red. Building all removes the list, so
           # every AUDIO_ENGINE test (and any future one) is picked up automatically — no YAML edit needed.
-          cmake --build app/build-audio -j
+          cmake --build app/build-audio -j 10
       - name: Run the audio-engine tests (native ops + real in-tree CLAP plugin)
         # --no-tests=error (Ph6 P2-01): a label that matches nothing is a FAILURE, not a silent pass.
         # test_session_concurrency is TSan-only and runs in the audio-thread-sanitizer job below.
@@ -89,7 +89,7 @@ jobs:
         run: |
           cmake -S app -B app/build-tsan-audio -DVIVID_BUILD_APP=ON -DVIVID_BUILD_TESTS=ON \
                 -DVIVID_SANITIZE_THREAD=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          cmake --build app/build-tsan-audio --target test_session_concurrency -j
+          cmake --build app/build-tsan-audio --target test_session_concurrency -j 10
       - name: Run the audio↔UI harness under ThreadSanitizer
         # --no-tests=error (Ph6 P2-01): the AUDIO_THREAD label must match at least one test.
         run: ctest --test-dir app/build-tsan-audio -L AUDIO_THREAD --no-tests=error --output-on-failure
