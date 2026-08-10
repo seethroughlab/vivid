@@ -602,6 +602,14 @@ struct Session {
     // unless the user opts in). Project-persisted like launch_quantum_bars — it changes the musical result.
     // When true, master_mix delays each compensable track by (L_max - L_track); see Track::pdc_ring.
     std::atomic<bool> pdc_enabled{false};
+    // Published by pdc_recompute (main thread) for the diagnostics/get_health surface: L_max applied (the
+    // whole compensated mix's added latency, samples), how many tracks are exactly compensated, how many
+    // are left live (unknown-latency / live-input / cross-track), and whether any track's latency was
+    // clamped to kPdcMaxComp. Read on the health thread (relaxed, display-only) like the Phase B numbers.
+    std::atomic<int>  pdc_applied_delay{0};
+    std::atomic<int>  pdc_tracks_comp{0};
+    std::atomic<int>  pdc_tracks_live{0};
+    std::atomic<bool> pdc_clamped{false};
     // Session music-theory context: root note + scale NAME (e.g. "C" + "minor"). The theory
     // vocabulary + validation live in the Python bridge (mcp/theory.py, ADR-0046); the core just
     // stores the two strings so the key/scale round-trips with the project. UI/main thread only.
