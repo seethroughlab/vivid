@@ -26,10 +26,16 @@ struct DeviceInfo {
 
 // Machine-level preferences (persisted in AppSettings → settings.json), NOT per-project.
 struct DevicePrefs {
-    std::string requested_name;          // "" => follow the system default device
+    std::string requested_name;          // "" => follow the system default OUTPUT device
     uint32_t    sample_rate = 0;         // 0 => open at the device's native rate (today's behavior)
     uint32_t    period_frames = 1024;    // requested buffer size (== kDefaultDevicePeriod)
     bool        fallback_to_default = true;
+    // ADR-0032 Phase D1 — hardware audio INPUT (capture). Off by default => a pure playback device,
+    // identical to today. When enabled, the device opens DUPLEX (one clock, one callback) so `in` is
+    // live in the same callback as `out`. Input is best-effort: if the duplex open fails the device
+    // falls back to playback-only so output always works (see DeviceStatus.input_open).
+    bool        enable_input = false;
+    std::string input_name;              // "" => system default INPUT device (only used when enable_input)
 };
 
 // How the last open resolved — feeds the health/log surfacing + the diagnostics "Audio Device" row.
@@ -43,6 +49,12 @@ struct DeviceStatus {
     uint32_t    output_latency_frames = 0;
     bool        using_fallback = false;  // the requested device was unavailable → opened default instead
     std::string reason;                  // human-readable fallback/failure text (VLOG + panel)
+    // ADR-0032 Phase D1 — the input (capture) side of a duplex device. input_open is false whenever the
+    // device is playback-only (input disabled, or a duplex open that fell back to output-only). The
+    // capture latency is the backend's internal input buffering (0 when unknown/none).
+    bool        input_open = false;
+    std::string input_active_name;       // the input device actually opened ("" => system default)
+    uint32_t    input_latency_frames = 0;
 };
 
 // PURE, headless-testable resolution: the index into `devices` whose name equals `requested_name`, or
@@ -66,6 +78,11 @@ public:
     // Available playback outputs. Empty (never throws/crashes) when the context failed to init or the
     // machine has no output device — the caller then runs headless exactly as before this class existed.
     std::vector<DeviceInfo> enumerate();
+
+    // ADR-0032 Phase D1 — available capture INPUTS (mic / line-in / interface). Same tolerance as
+    // enumerate(): empty when the context failed or the machine has no input. resolve_device_index works
+    // on this list unchanged (name → index, -1 => system default).
+    std::vector<DeviceInfo> enumerate_inputs();
 
     // Resolve `p` against the current devices and open it (or the default on miss/failure, when
     // p.fallback_to_default). Sets the callback + pUserData=&app. Returns true iff a device is open.

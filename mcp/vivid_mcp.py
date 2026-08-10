@@ -689,6 +689,20 @@ def set_launch_quantize(bars: int) -> dict:
 
 
 @mcp.tool
+def set_pdc(enabled: bool = True) -> dict:
+    """Toggle playback plugin-delay compensation (PDC), ADR-0032 §4.
+
+    When on, tracks carrying high-latency plugins are time-aligned: each compensable track is delayed by
+    (L_max - its latency) so everything lines up, at the cost of adding L_max latency to the whole mix.
+    OFF by default (Vivid is a live instrument — added latency hurts live play); turn it on when mixing
+    tracks with linear-phase EQs / lookahead limiters. Only LINEAR paths with plugins that report their
+    latency are compensated; live audio-input monitors, cross-track-routed tracks, and tracks with a
+    plugin that doesn't report latency are left LIVE (uncompensated). Persisted per project. Returns
+    {enabled, applied_delay (samples), applied_delay_ms, tracks_compensated, tracks_live, clamped}."""
+    return _post("set_pdc", {"enabled": enabled})
+
+
+@mcp.tool
 def set_track_mute(track: int, mute: bool = True) -> dict:
     """Mute/unmute a track in the master mix. The track's own meter stays pre-mute.
 
@@ -931,10 +945,12 @@ def av_export_status() -> dict:
 # ---------------- audio output device (ADR-0032 Phase A) ----------------
 @mcp.tool
 def get_audio_devices() -> dict:
-    """List the available audio OUTPUT devices and the active one. Returns {devices:[{name,is_default}],
-    active:{name, sample_rate, period, open, using_fallback, reason}}. `active.using_fallback` is true when
-    the saved device was unavailable and the system default was opened instead (`reason` explains). This is
-    hardware I/O device selection — distinct from the plugin instrument/effect pickers."""
+    """List the available audio OUTPUT + INPUT devices and the active one. Returns
+    {devices:[{name,is_default}], inputs:[{name,is_default}], active:{name, sample_rate, period, open,
+    using_fallback, reason, input_open, input_name, input_latency_frames}}. `active.using_fallback` is
+    true when the saved output was unavailable and the system default was opened instead (`reason`
+    explains). `active.input_open` is true when a duplex device with hardware input (ADR-0032 Phase D)
+    is live. This is hardware I/O device selection — distinct from the plugin instrument/effect pickers."""
     return _post("get_audio_devices", {})
 
 
@@ -945,6 +961,17 @@ def set_audio_device(name: str = "") -> dict:
     restored next launch. Live playback briefly drops out during the swap. Returns {active:{...}}; if the
     named device can't open, falls back to the default (active.using_fallback = true)."""
     return _post("set_audio_device", {"name": name})
+
+
+@mcp.tool
+def set_audio_input_device(name: str = "", enabled: bool = True) -> dict:
+    """Select/enable the hardware audio INPUT (mic / line-in / interface), from get_audio_devices'
+    `inputs`. Enabling opens the device DUPLEX so live external audio flows into the engine (a reactive
+    source for visuals). An empty name uses the system default input; enabled=False returns to
+    playback-only. Persisted machine-level (settings.json). Input is best-effort — if capture can't open,
+    the device stays playback-only (active.input_open = false) but the call still succeeds. Live audio
+    briefly drops out during the reopen. Returns {active:{...incl. input_open, input_name}}."""
+    return _post("set_audio_input_device", {"name": name, "enabled": enabled})
 
 
 @mcp.tool

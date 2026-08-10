@@ -311,11 +311,9 @@ int main(int argc, char** argv) {
     vivid::audio::AudioDeviceManager audio_mgr;
     app.audio_devices = &audio_mgr;
     vivid::audio::PluginHangMonitor hang_monitor;   // ADR-0045 Tier 2a: watches for a plugin stuck in process()
-    vivid::audio::DevicePrefs dev_prefs;
-    dev_prefs.requested_name      = app_settings.audio_device_name;      // "" => system default
-    dev_prefs.sample_rate         = app_settings.audio_sample_rate;      // 0  => device native rate
-    dev_prefs.period_frames       = app_settings.audio_period_frames;
-    dev_prefs.fallback_to_default = app_settings.audio_fallback_to_default;
+    // ADR-0032 Phase D1: device_prefs_from carries BOTH output and input prefs (a persisted, enabled
+    // input opens the device duplex — best-effort, falling back to playback-only if capture can't open).
+    vivid::audio::DevicePrefs dev_prefs = vivid::device_prefs_from(app_settings);
     bool audio_ok = audio_mgr.open(app, dev_prefs);
     if (audio_ok) {
         app.audio_device = audio_mgr.device_handle();   // ADR-0032: stable ma_device* for the offline bounce
@@ -510,13 +508,11 @@ int main(int argc, char** argv) {
         // persists the choice, and refreshes the submenu checkmark. Captures only long-lived main() locals.
         ma.select_audio_device = [&](const std::string& name) {
             if (!app.audio_devices) return;
-            vivid::audio::DevicePrefs p;
-            p.requested_name      = name;             // "" => system default
-            p.sample_rate         = 0;                // reopen pins to the session rate
-            p.period_frames       = app_settings.audio_period_frames;
-            p.fallback_to_default = app_settings.audio_fallback_to_default;
+            // ADR-0032 Phase D1: carry the full prefs (incl. any enabled input) so a device switch keeps
+            // input; then override the output name. reopen() pins the sample rate to the session rate.
+            app_settings.audio_device_name = name;    // "" => system default
+            vivid::audio::DevicePrefs p = vivid::device_prefs_from(app_settings);
             const bool ok = app.audio_devices->reopen(app, p);
-            app_settings.audio_device_name = name;
             vivid::save_app_settings(app_settings, vivid::app_settings_path());
             const auto& st = app.audio_devices->status();
             std::vector<std::string> names;

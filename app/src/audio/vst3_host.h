@@ -62,6 +62,23 @@ int  session_scene_count(Session*);
 int  session_track_latency_samples(Session*, int track);
 int  session_max_plugin_latency_samples(Session*);
 int  session_any_plugin_latency_unknown(Session*);
+// ADR-0032 Phase E1 (latency COMPENSATION): opt-in playback plugin-delay compensation. When enabled,
+// master_mix delays each compensable track by (L_max - L_track) via a per-track ring so tracks stay
+// time-aligned despite differing plugin latency. Off by default (a live instrument stays low-latency).
+// Main/UI thread. E1.1 adds the classification/recompute; E1.0 ships the mechanism + a direct setter.
+bool session_pdc_enabled(Session*);
+void session_set_pdc_enabled(Session*, bool enabled);
+// Set a track's compensating delay directly (samples), allocating its ring on first use. Clamped to
+// [0, kPdcMaxComp]. The primitive the E1.1 recompute drives; also the E1.0 test/verification seam.
+void session_pdc_set_track_delay(Session*, int track, int delay_samples);
+// ADR-0032 E1.2: PDC state for the set_pdc reply + get_health/diagnostics surface (published by
+// pdc_recompute). applied_delay = L_max samples added to the compensated mix (0 when off/none).
+int  session_pdc_applied_delay(Session*);
+int  session_pdc_tracks_compensated(Session*);
+int  session_pdc_tracks_live(Session*);
+int  session_pdc_clamped(Session*);           // 1 if a track's latency exceeded kPdcMaxComp (best-effort)
+int  session_pdc_track_delay(Session*, int track);  // the track's published compensating delay (samples)
+int  session_sample_rate(Session*);           // the session render rate (Hz); 0 if unknown
 // Append a scene (grid row): grows every track's clip vector by one empty clip. Returns the
 // new scene index, or -1 if already at kMaxScenes. UI/main thread only (append is RT-safe
 // because clip vectors are reserved to kMaxScenes, so no reallocation occurs).
