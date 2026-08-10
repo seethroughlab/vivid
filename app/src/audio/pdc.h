@@ -40,4 +40,20 @@ inline uint32_t pdc_delay_accumulate(float* ringL, float* ringR, uint32_t w, uin
     return (w + frames) & kPdcRingMask;
 }
 
+// The PDC alignment math (pure, so the classification invariant is unit-tested without a session). Given
+// each track's plugin latency and whether it is COMPENSABLE (all plugins report latency AND the path is
+// linear AND it is not a live-input monitor), compute each track's compensating delay: L_max - latency
+// for compensable tracks, 0 for the rest. L_max is the max latency over the COMPENSABLE SET ONLY — an
+// unknown/live track must never raise L_max, or compensable tracks would be over-delayed past the
+// pre-PDC worst case and the post-master movie mix would drift. Returns L_max. out_delays sized n.
+// `compensable` is a 0/1 byte flag per track (not bool*, so std::vector<unsigned char>::data() works).
+inline int pdc_compute_delays(const int* latency, const unsigned char* compensable, int n, int* out_delays) {
+    int lmax = 0;
+    for (int i = 0; i < n; ++i)
+        if (compensable[i] && latency[i] > lmax) lmax = latency[i];
+    for (int i = 0; i < n; ++i)
+        out_delays[i] = compensable[i] ? (lmax - latency[i]) : 0;
+    return lmax;
+}
+
 }  // namespace vivid::audio
