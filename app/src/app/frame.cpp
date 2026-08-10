@@ -608,7 +608,7 @@ void run_frame_loop(App& app, Window& win) {
     ClipEditor&    clip_editor = *win.editor;
     ControlServer& control     = *app.control;
 
-    ControlCtx cctx{ app.session, &graph, &vgraph, &transport, &app,
+    ControlCtx cctx{ app.session, &graph, &vgraph, &transport, &app, &win,
                      &win.win_w, &win.win_h, &win.split_x, &win.dock_h };
 
     // Event polling is split from rendering and driven by a CFRunLoopTimer (see

@@ -481,7 +481,7 @@ int main(int argc, char** argv) {
             if (path.empty()) return;   // cancelled
             vivid::AvBounceRequest req; req.path = path; req.seconds = 30.0; req.fps = 60.0;
             std::string err;
-            if (vivid::av_export_start(app, req, &err)) {
+            if (vivid::av_export_start(app, &win, req, &err)) {   // pass the live Window for offline reactivity
                 vivid::ui::push_toast(win.toasts, vivid::LogLevel::Info,
                     "Rendering deterministic video… (audio pauses during export)", glfwGetTime(), 6.0);
             } else {
