@@ -8,6 +8,7 @@
 #include "audio/node_ring_bank.h"  // ADR-0029: atomic-slot per-node capture rings (node_scope, node_an)
 #include "audio/held_note_set.h"   // ADR-0029: atomic-slot polyphonic held-note set (Track::held)
 #include "audio/audio_budgets.h"   // ADR-0031 §6: RT audio budgets (kDefaultMaxBlockFrames coupling)
+#include "audio/pdc.h"             // ADR-0032 E1: PDC ring constants + delay primitive
 #include "audio/note_event_ring.h" // discrete note on/off events (Track::note_events) for one-shot visuals
 #include "midi/midi_clip.h"
 #include "audio/audio_clip.h"
@@ -82,6 +83,11 @@ constexpr uint32_t kGraphMaxBlock = 4096;
 // health counters treat as "oversized". Keep it pinned to this pool-stride authority at compile time.
 static_assert(kGraphMaxBlock == vivid::audio::kDefaultMaxBlockFrames,
               "audio_budgets max block default must track kGraphMaxBlock (pool stride)");
+// ADR-0032 E1: the PDC ring reserves one max block so the oldest read never aliases the newest write
+// (delay + frames <= kPdcRingCap for any legal block). If kGraphMaxBlock grows past the reserve, bump
+// kPdcRingCap.
+static_assert(kGraphMaxBlock <= vivid::audio::kPdcRingCap - vivid::audio::kPdcMaxComp,
+              "PDC ring reserve (kPdcRingCap - kPdcMaxComp) must cover one max audio block");
 constexpr double   kTrackCaptureSeconds = 30.0;
 // ADR-0015: capacity of ONE note buffer. Matches audio_op_runtime's kMaxNotes — a block that
 // somehow carried more notes than this would be truncated rather than allocate on the RT thread.
@@ -258,6 +264,15 @@ struct Track {
     // in the master sum. Meters stay PRE-mute — a muted track still shows its own level.
     std::atomic<bool>     mute{false}, solo{false};
     std::atomic<float>    mix_scale{1.f};
+    // ADR-0032 E1: playback plugin-delay compensation. A per-track stereo delay ring (planar: L block
+    // then R block of kPdcRingCap each), applied at the master_mix seam so a track lagging behind a
+    // higher-latency track is pulled back into alignment. `pdc_ring` stays empty (PDC inert) until a
+    // recompute allocates it on the MAIN thread while pdc_delay is still 0 — then it is never resized, so
+    // the audio thread never touches storage in flight. `pdc_w` is the audio-thread-only write cursor;
+    // `pdc_delay` is the read-behind (main writes, audio reads relaxed; 0 = passthrough).
+    std::vector<float>    pdc_ring;
+    uint32_t              pdc_w = 0;
+    std::atomic<int>      pdc_delay{0};
     // ADR-0033 P4: node solo / audition. `soloed_node_ids` is the UI-set state (stable node ids the
     // user is auditioning; guarded by gmtx like every agraph edit). `node_audible_mask` is the derived
     // per-node multiplier (bit i, i == node index == out_buf, 1 = audible): the union of each soloed
@@ -583,6 +598,10 @@ struct Session {
     // last quantum index seen on the audio thread so the boundary is detected once.
     std::atomic<int> launch_quantum_bars{1};
     long long        last_launch_q = -1;
+    // ADR-0032 E1: playback plugin-delay compensation, off by default (a live instrument stays low-latency
+    // unless the user opts in). Project-persisted like launch_quantum_bars — it changes the musical result.
+    // When true, master_mix delays each compensable track by (L_max - L_track); see Track::pdc_ring.
+    std::atomic<bool> pdc_enabled{false};
     // Session music-theory context: root note + scale NAME (e.g. "C" + "minor"). The theory
     // vocabulary + validation live in the Python bridge (mcp/theory.py, ADR-0046); the core just
     // stores the two strings so the key/scale round-trips with the project. UI/main thread only.
