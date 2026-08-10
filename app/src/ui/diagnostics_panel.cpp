@@ -79,6 +79,16 @@ void draw_diagnostics_panel(Renderer2D& ui, const HealthSnapshot& h, const App& 
                       h.audio_device_fallback ? "  (fb)" : "");
         line("Audio device", buf, h.audio_device_fallback ? sty.gold : sty.body);
     }
+    // ADR-0032 Phase D1: the hardware INPUT (capture) — shown only when a duplex device is open, so a
+    // playback-only session (the default) stays clean. name · latency · live level meter.
+    if (h.audio_input_open) {
+        const char* in_name = h.audio_input_name.empty() ? "System Default" : h.audio_input_name.c_str();
+        const double in_lat = h.audio_device_sr
+            ? h.audio_input_latency_frames * 1000.0 / h.audio_device_sr : 0.0;
+        std::snprintf(buf, sizeof buf, "%.28s  \xC2\xB7  ~%.0f ms in  \xC2\xB7  level %.2f",
+                      in_name, in_lat, h.audio_input_level);
+        line("Audio input", buf, sty.body);
+    }
     // ADR-0031 §4: realtime audio health — recent bail/over-budget/skip deltas + callback-µs gauges.
     std::snprintf(buf, sizeof buf, "%llu bail, %llu over-budget, %llu skips  \xC2\xB7  %uus (max %u)",
                   static_cast<unsigned long long>(h.audio_render_bailouts),

@@ -42,6 +42,13 @@ struct HealthSnapshot {
     uint32_t    audio_max_plugin_latency_samples = 0;  // max per-track summed plugin latency (reporting only)
     bool        audio_plugin_latency_unknown = false;  // a loaded CLAP plugin doesn't report latency
 
+    // ADR-0032 Phase D1 — the input (capture) side of a duplex device. `audio_input_open` false =>
+    // playback-only (the default). `audio_input_level` is the live capture RMS (0..1) for the meter.
+    bool        audio_input_open = false;
+    std::string audio_input_name;              // "" when opened the system default input
+    uint32_t    audio_input_latency_frames = 0;
+    float       audio_input_level = 0.0f;
+
     // gpu
     bool        gpu_ok = true;                   // device not lost
     unsigned    gpu_errors = 0;                  // uncaptured WebGPU errors since start
