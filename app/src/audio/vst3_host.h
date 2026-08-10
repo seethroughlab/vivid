@@ -77,6 +77,7 @@ int  session_pdc_applied_delay(Session*);
 int  session_pdc_tracks_compensated(Session*);
 int  session_pdc_tracks_live(Session*);
 int  session_pdc_clamped(Session*);           // 1 if a track's latency exceeded kPdcMaxComp (best-effort)
+int  session_pdc_track_delay(Session*, int track);  // the track's published compensating delay (samples)
 int  session_sample_rate(Session*);           // the session render rate (Hz); 0 if unknown
 // Append a scene (grid row): grows every track's clip vector by one empty clip. Returns the
 // new scene index, or -1 if already at kMaxScenes. UI/main thread only (append is RT-safe

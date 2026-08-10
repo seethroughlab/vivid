@@ -21,10 +21,28 @@ namespace {
 
 constexpr clap_id kGainId = 0;
 
+// ADR-0032 E1.3: an optional reported+real processing latency, gated on VIVID_TEST_CLAP_LATENCY (samples,
+// read once; unset/0 => the plugin advertises NO latency extension exactly as before, so the Phase B
+// "unknown" path and every other consumer are unchanged). When >0 the plugin BOTH advertises
+// CLAP_EXT_LATENCY returning N AND actually delays its audio by N samples — a faithful latency plugin, so
+// the PDC alignment test can prove reported latency == real delay and that PDC realigns it.
+int test_clap_latency() {
+    static const int n = [] {
+        const char* e = std::getenv("VIVID_TEST_CLAP_LATENCY");
+        const int v = e ? std::atoi(e) : 0;
+        return v > 0 ? v : 0;
+    }();
+    return n;
+}
+
 struct TestClap {
     clap_plugin_t plugin{};
     const clap_host_t* host = nullptr;
     double gain = 0.5;   // authoritative param value (plain == normalized here, 0..1)
+    // E1.3 delay line (only used when test_clap_latency() > 0): per-channel ring of N samples + a shared
+    // write cursor, giving an exact N-sample delay so the reported latency matches the real one.
+    float    dl[2][1 << 16] = {};   // >= max tested latency (kPdcMaxComp = 61440 < 65536)
+    uint32_t dpos = 0;
 };
 
 // --- params extension ---------------------------------------------------------------------------
@@ -123,21 +141,46 @@ clap_process_status plug_process(const clap_plugin_t* p, const clap_process_t* p
     // Apply param events (sample-accurate enough for a fixture: honor them at block start).
     if (proc->in_events) params_flush(p, proc->in_events, proc->out_events);
     const float g = static_cast<float>(self->gain);
+    const int lat = test_clap_latency();
     if (proc->audio_inputs_count && proc->audio_outputs_count &&
         proc->audio_inputs[0].data32 && proc->audio_outputs[0].data32) {
         const uint32_t ch = proc->audio_outputs[0].channel_count;
-        for (uint32_t c = 0; c < ch; ++c) {
-            const float* in = proc->audio_inputs[0].data32[c];
-            float* out = proc->audio_outputs[0].data32[c];
-            for (uint32_t i = 0; i < proc->frames_count; ++i) out[i] = in[i] * g;
+        if (lat <= 0) {
+            for (uint32_t c = 0; c < ch; ++c) {
+                const float* in = proc->audio_inputs[0].data32[c];
+                float* out = proc->audio_outputs[0].data32[c];
+                for (uint32_t i = 0; i < proc->frames_count; ++i) out[i] = in[i] * g;
+            }
+        } else {
+            // E1.3: exact N-sample delay per channel (out[i] = the sample written N frames ago), so the
+            // reported latency (N) is the real latency. Shared write cursor across channels.
+            const uint32_t N = static_cast<uint32_t>(lat);
+            for (uint32_t c = 0; c < ch && c < 2; ++c) {
+                const float* in = proc->audio_inputs[0].data32[c];
+                float* out = proc->audio_outputs[0].data32[c];
+                uint32_t p = self->dpos;
+                for (uint32_t i = 0; i < proc->frames_count; ++i) {
+                    const float x = in[i] * g;
+                    out[i] = self->dl[c][p];
+                    self->dl[c][p] = x;
+                    p = (p + 1) % N;
+                }
+                if (c + 1 == ch || c == 1) self->dpos = p;   // advance the shared cursor once (last channel)
+            }
         }
     }
     return CLAP_PROCESS_CONTINUE;
 }
+// ADR-0032 E1.3: the latency extension (only advertised when VIVID_TEST_CLAP_LATENCY > 0).
+uint32_t latency_get(const clap_plugin_t*) { return static_cast<uint32_t>(test_clap_latency()); }
+const clap_plugin_latency_t s_latency = { latency_get };
+
 const void* plug_get_extension(const clap_plugin_t*, const char* id) {
     if (!std::strcmp(id, CLAP_EXT_PARAMS))      return &s_params;
     if (!std::strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &s_aports;
     if (!std::strcmp(id, CLAP_EXT_STATE))       return &s_state;
+    // Advertise latency ONLY when configured — unset => no ext => "unknown" latency, unchanged.
+    if (test_clap_latency() > 0 && !std::strcmp(id, CLAP_EXT_LATENCY)) return &s_latency;
     return nullptr;
 }
 void plug_on_main_thread(const clap_plugin_t*) {}
