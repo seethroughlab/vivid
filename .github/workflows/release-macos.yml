@@ -51,7 +51,7 @@ jobs:
           # deterministic, correctly-arch'd release build.
           rm -rf app/build
           cmake -S app -B app/build -DCMAKE_BUILD_TYPE=Release
-          cmake --build app/build -j
+          cmake --build app/build -j 10
 
       - name: Production gate (core) must pass before shipping
         run: VIVID_BUILD_DIR=app/build scripts/run_production_gate.sh core
