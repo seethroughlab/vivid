@@ -1,5 +1,6 @@
 #include "audio/audio_device_manager.h"
 #include "audio/audio_callback.h"   // audio_callback (the RT data callback)
+#include "audio/audio_input_bus.h"  // ADR-0032 Phase D2: flush the input ring across a reopen
 #include "miniaudio.h"
 
 #include <string>
@@ -171,6 +172,7 @@ bool AudioDeviceManager::open(App& app, const DevicePrefs& p) {
 bool AudioDeviceManager::reopen(App& app, DevicePrefs p) {
     if (session_rate_ != 0) p.sample_rate = session_rate_;   // keep the callback at the pinned session rate
     stop();                                                  // blocks until the in-flight callback returns
+    audio_input_reset();                                     // drop any stale capture so the new stream starts clean
     if (!open(app, p)) return false;                         // close()s the old device, inits + resolves the new
     return start();
     // The worker-pool workgroup is intentionally NOT re-handed here — session_set_audio_workgroup is

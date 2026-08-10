@@ -5,6 +5,7 @@
 #include "audio/vst3_host.h"
 #include "operator_api/movie_audio.h"   // vivid_movie_audio_set_playing (gates the movie-audio bus)
 #include "audio/movie_audio_bus.h"      // movie_audio_begin_block / movie_audio_mix_master
+#include "audio/audio_input_bus.h"      // ADR-0032 Phase D2: publish the capture block to the input bus
 #include "audio/audio_health.h"         // ADR-0031 §3: RT health counters + RtScope
 #include "audio/audio_budgets.h"        // ADR-0031 §6: callback budget (over-budget threshold)
 
@@ -24,16 +25,18 @@ void audio_callback(ma_device* device, void* out, const void* in, ma_uint32 fram
     auto* fout = static_cast<float*>(out);
     const double sr = device->sampleRate;
 
-    // ADR-0032 Phase D1: hardware input. `in` is live only on a duplex device. Publish a block-RMS
-    // input level for the diagnostics meter (left channel, matching the output meter below). The
-    // per-block input PCM will additionally be handed to a lock-free ring for the AudioInput source op
-    // in Phase D2 — this is that producer site.
-    if (in && a->transport) {
+    // ADR-0032 Phase D1/D2: hardware input. `in` is live only on a duplex device. Publish it to the
+    // input bus (D2 — the AudioInput source op drains it downstream this same block) and compute a
+    // block-RMS input level for the diagnostics meter (left channel, matching the output meter below).
+    if (in) {
         const float* fin = static_cast<const float*>(in);
-        double s = 0.0;
-        for (ma_uint32 i = 0; i < frames; ++i) { const float l = fin[i * 2]; s += static_cast<double>(l) * l; }
-        a->transport->input_level.store(
-            static_cast<float>(std::sqrt(s / (frames > 0 ? frames : 1))), std::memory_order_relaxed);
+        vivid::audio_input_write(fin, frames);   // producer: the AudioInput graph op is the consumer
+        if (a->transport) {
+            double s = 0.0;
+            for (ma_uint32 i = 0; i < frames; ++i) { const float l = fin[i * 2]; s += static_cast<double>(l) * l; }
+            a->transport->input_level.store(
+                static_cast<float>(std::sqrt(s / (frames > 0 ? frames : 1))), std::memory_order_relaxed);
+        }
     }
 
     // ADR-0031 §3: mark the realtime scope (gates in-session_process handoff-skip counting so the
