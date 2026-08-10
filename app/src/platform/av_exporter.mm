@@ -43,11 +43,13 @@ public:
         }
     }
 
+    void begin_offline() override { offline_ = true; }
     bool start(const std::string& path, uint32_t width, uint32_t height,
                double fps, uint32_t sample_rate) override;
-    bool write_video_frame(const uint8_t* rgba, uint32_t width, uint32_t height) override;
+    bool write_video_frame(const uint8_t* rgba, uint32_t width, uint32_t height,
+                           double pts_sec = -1.0) override;
     bool write_audio_samples(const float* pcm_interleaved, uint64_t sample_count,
-                             uint32_t channels) override;
+                             uint32_t channels, double pts_sec = -1.0) override;
     bool finish() override;
     bool is_recording() const override { return impl_ && impl_->recording; }
     const std::string& output_path() const override {
@@ -80,6 +82,18 @@ private:
         bool recording = false;
     };
     Impl* impl_ = nullptr;
+    bool offline_ = false;   // ADR-0032 Phase C: deterministic offline mode (explicit PTS + block-on-ready)
+
+    // Offline feed can outrun the encoder; block (briefly pumping the run loop) until the input is ready
+    // instead of dropping the frame. Realtime mode keeps its drop-on-not-ready tuning (returns immediately).
+    bool wait_ready(AVAssetWriterInput* input) {
+        if ([input isReadyForMoreMediaData]) return true;
+        if (!offline_) return false;
+        for (int i = 0; i < 5000 && ![input isReadyForMoreMediaData]; ++i)
+            [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
+                                     beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.002]];
+        return [input isReadyForMoreMediaData];
+    }
 };
 
 std::unique_ptr<AVExporter> make_platform_av_exporter() {
@@ -135,7 +149,7 @@ bool AVFExporter::start(const std::string& path, uint32_t width, uint32_t height
         impl_->video_input = [[AVAssetWriterInput alloc]
             initWithMediaType:AVMediaTypeVideo
                outputSettings:video_settings];
-        impl_->video_input.expectsMediaDataInRealTime = YES;
+        impl_->video_input.expectsMediaDataInRealTime = offline_ ? NO : YES;   // offline: faster-than-realtime
 
         // Pixel buffer adaptor for efficient frame submission.
         NSDictionary* pb_attrs = @{
@@ -170,7 +184,7 @@ bool AVFExporter::start(const std::string& path, uint32_t width, uint32_t height
             impl_->audio_input = [[AVAssetWriterInput alloc]
                 initWithMediaType:AVMediaTypeAudio
                    outputSettings:audio_settings];
-            impl_->audio_input.expectsMediaDataInRealTime = YES;
+            impl_->audio_input.expectsMediaDataInRealTime = offline_ ? NO : YES;   // offline: faster-than-realtime
 
             if ([impl_->writer canAddInput:impl_->audio_input])
                 [impl_->writer addInput:impl_->audio_input];
@@ -195,11 +209,12 @@ bool AVFExporter::start(const std::string& path, uint32_t width, uint32_t height
     }
 }
 
-bool AVFExporter::write_video_frame(const uint8_t* rgba, uint32_t width, uint32_t height) {
+bool AVFExporter::write_video_frame(const uint8_t* rgba, uint32_t width, uint32_t height,
+                                    double pts_sec) {
     if (!impl_ || !impl_->recording) return false;
 
     @autoreleasepool {
-        if (![impl_->video_input isReadyForMoreMediaData])
+        if (!wait_ready(impl_->video_input))
             return false;
 
         CVPixelBufferRef pixel_buffer = nullptr;
@@ -227,8 +242,9 @@ bool AVFExporter::write_video_frame(const uint8_t* rgba, uint32_t width, uint32_
         }
         CVPixelBufferUnlockBaseAddress(pixel_buffer, 0);
 
-        double elapsed = CACurrentMediaTime() - impl_->start_time;
-        CMTime pts = CMTimeMakeWithSeconds(elapsed, 90000);   // 90kHz timescale (standard)
+        // Explicit PTS in offline mode (deterministic); wall-clock in realtime capture.
+        const double t = (pts_sec >= 0.0) ? pts_sec : (CACurrentMediaTime() - impl_->start_time);
+        CMTime pts = CMTimeMakeWithSeconds(t, 90000);   // 90kHz timescale (standard)
         bool ok = [impl_->pixel_adaptor appendPixelBuffer:pixel_buffer
                                      withPresentationTime:pts];
         CVPixelBufferRelease(pixel_buffer);
@@ -239,13 +255,13 @@ bool AVFExporter::write_video_frame(const uint8_t* rgba, uint32_t width, uint32_
 }
 
 bool AVFExporter::write_audio_samples(const float* pcm_interleaved, uint64_t sample_count,
-                                      uint32_t channels) {
+                                      uint32_t channels, double pts_sec) {
     if (!impl_ || !impl_->recording) return false;
     if (sample_count == 0) return true;
     if (!impl_->audio_input) return false;
 
     @autoreleasepool {
-        if (![impl_->audio_input isReadyForMoreMediaData])
+        if (!wait_ready(impl_->audio_input))
             return false;
 
         uint64_t frame_count = sample_count / channels;
@@ -286,9 +302,9 @@ bool AVFExporter::write_audio_samples(const float* pcm_interleaved, uint64_t sam
             return false;
         }
 
-        // Monotonic wall-clock PTS keeps audio aligned with video.
-        double elapsed = CACurrentMediaTime() - impl_->start_time;
-        CMTime pts = CMTimeMakeWithSeconds(elapsed, 90000);
+        // Explicit sample-position PTS in offline mode; monotonic wall-clock in realtime capture.
+        const double t = (pts_sec >= 0.0) ? pts_sec : (CACurrentMediaTime() - impl_->start_time);
+        CMTime pts = CMTimeMakeWithSeconds(t, 90000);
 
         CMSampleBufferRef sample_buffer = nullptr;
         status = CMAudioSampleBufferCreateReadyWithPacketDescriptions(

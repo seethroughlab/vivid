@@ -30,20 +30,23 @@ struct MockAVExporter : public AVExporter {
     uint32_t last_frame_w = 0, last_frame_h = 0;
     uint64_t audio_samples = 0;   // total interleaved samples forwarded
     double   fake_elapsed = 0.0;  // drives the deadline check
+    bool     offline = false;     // ADR-0032 Phase C: begin_offline() was called
+    double   last_video_pts = -2.0, last_audio_pts = -2.0;   // last pts_sec forwarded
     std::string path_;
 
+    void begin_offline() override { offline = true; }
     bool start(const std::string& p, uint32_t w, uint32_t h, double fps, uint32_t sr) override {
         started = true; recording = true;
         path_ = p; start_w = w; start_h = h; start_fps = fps; start_sr = sr;
         return true;
     }
-    bool write_video_frame(const uint8_t*, uint32_t w, uint32_t h) override {
+    bool write_video_frame(const uint8_t*, uint32_t w, uint32_t h, double pts = -1.0) override {
         if (!recording) return false;
-        ++video_frames; last_frame_w = w; last_frame_h = h; return true;
+        ++video_frames; last_frame_w = w; last_frame_h = h; last_video_pts = pts; return true;
     }
-    bool write_audio_samples(const float*, uint64_t n, uint32_t) override {
+    bool write_audio_samples(const float*, uint64_t n, uint32_t, double pts = -1.0) override {
         if (!recording) return false;
-        audio_samples += n; return true;
+        audio_samples += n; last_audio_pts = pts; return true;
     }
     bool finish() override { finished = true; recording = false; return true; }
     bool is_recording() const override { return recording; }
@@ -172,6 +175,25 @@ int main() {
         CHECK(got == 1000 * 2);
         CHECK(tr.available_recorded_samples() == 0);
         tr.stop_recording_tap();
+    }
+
+    // 7. ADR-0032 Phase C: explicit-PTS forwarding + realtime-path-unchanged (the C0 muxer plumbing).
+    {
+        MockAVExporter m;
+        CHECK(!m.offline);
+        m.begin_offline();
+        CHECK(m.offline);
+        m.start("/tmp/av.mp4", 64, 64, 60.0, 48000);
+        // Realtime default (no pts arg) forwards -1 (wall-clock).
+        m.write_video_frame(nullptr, 64, 64);
+        m.write_audio_samples(nullptr, 128, 2);
+        CHECK(m.last_video_pts == -1.0);
+        CHECK(m.last_audio_pts == -1.0);
+        // Explicit deterministic PTS is forwarded verbatim.
+        m.write_video_frame(nullptr, 64, 64, 0.5);
+        m.write_audio_samples(nullptr, 128, 2, 0.25);
+        CHECK(m.last_video_pts == 0.5);
+        CHECK(m.last_audio_pts == 0.25);
     }
 
     if (g_failures == 0) std::fprintf(stderr, "test_video_recorder: OK\n");
