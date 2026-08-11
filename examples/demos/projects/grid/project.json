@@ -14,9 +14,9 @@
           1.0
         ],
         "id": 0,
-        "in": 26,
+        "in": 23,
         "ins": [
-          26
+          23
         ],
         "op_type": "Output",
         "params": {
@@ -27,7 +27,7 @@
           "launch": 0.0,
           "preview": 1.0
         },
-        "x": 2732.0,
+        "x": 2132.0,
         "y": 1269.4375
       },
       {
@@ -36,6 +36,56 @@
           8.0,
           0.8199999928474426,
           0.9200000166893005
+        ],
+        "control_edges": [
+          {
+            "amount": 0.550000011920929,
+            "attack": 0.00800000037997961,
+            "curve": 0.0,
+            "hi": 1.0,
+            "invert": false,
+            "lo": 0.0,
+            "param": "scale_x",
+            "release": 0.1599999964237213,
+            "src_lane": 2,
+            "src_node": 24
+          },
+          {
+            "amount": 0.550000011920929,
+            "attack": 0.00800000037997961,
+            "curve": 0.0,
+            "hi": 1.0,
+            "invert": false,
+            "lo": 0.0,
+            "param": "scale_y",
+            "release": 0.1599999964237213,
+            "src_lane": 2,
+            "src_node": 24
+          },
+          {
+            "amount": 0.550000011920929,
+            "attack": 0.00800000037997961,
+            "curve": 0.0,
+            "hi": 1.0,
+            "invert": false,
+            "lo": 0.0,
+            "param": "scale_z",
+            "release": 0.1599999964237213,
+            "src_lane": 2,
+            "src_node": 24
+          },
+          {
+            "amount": 1.0,
+            "attack": 0.00800000037997961,
+            "curve": 0.0,
+            "hi": 1.0,
+            "invert": false,
+            "lo": 0.0,
+            "param": "emission",
+            "release": 0.1599999964237213,
+            "src_lane": 2,
+            "src_node": 24
+          }
         ],
         "id": 1,
         "in": -1,
@@ -72,6 +122,20 @@
           3.0,
           3.4000000953674316,
           0.0
+        ],
+        "control_edges": [
+          {
+            "amount": 0.1599999964237213,
+            "attack": 0.004000000189989805,
+            "curve": 0.0,
+            "hi": 1.0,
+            "invert": false,
+            "lo": 0.0,
+            "param": "spacing",
+            "release": 0.23999999463558197,
+            "src_lane": 7,
+            "src_node": 24
+          }
         ],
         "id": 2,
         "in": -1,
@@ -127,6 +191,56 @@
           8.0,
           0.8199999928474426,
           0.9200000166893005
+        ],
+        "control_edges": [
+          {
+            "amount": 0.25,
+            "attack": 0.006000000052154064,
+            "curve": 0.0,
+            "hi": 1.0,
+            "invert": false,
+            "lo": 0.0,
+            "param": "scale_x",
+            "release": 0.10000000149011612,
+            "src_lane": 4,
+            "src_node": 24
+          },
+          {
+            "amount": 0.550000011920929,
+            "attack": 0.00800000037997961,
+            "curve": 0.0,
+            "hi": 1.0,
+            "invert": false,
+            "lo": 0.0,
+            "param": "scale_y",
+            "release": 0.1599999964237213,
+            "src_lane": 2,
+            "src_node": 24
+          },
+          {
+            "amount": 0.550000011920929,
+            "attack": 0.00800000037997961,
+            "curve": 0.0,
+            "hi": 1.0,
+            "invert": false,
+            "lo": 0.0,
+            "param": "scale_z",
+            "release": 0.1599999964237213,
+            "src_lane": 2,
+            "src_node": 24
+          },
+          {
+            "amount": 1.0,
+            "attack": 0.00800000037997961,
+            "curve": 0.0,
+            "hi": 1.0,
+            "invert": false,
+            "lo": 0.0,
+            "param": "emission",
+            "release": 0.1599999964237213,
+            "src_lane": 2,
+            "src_node": 24
+          }
         ],
         "id": 5,
         "in": -1,
@@ -215,8 +329,8 @@
       {
         "base": [
           40.0,
-          7.0,
-          0.8999999761581421,
+          1.5,
+          0.4000000059604645,
           1.0
         ],
         "id": 9,
@@ -225,10 +339,10 @@
         "params": {
           "attack": 0.019999999552965164,
           "bands": 40.0,
-          "gain": 7.0,
+          "gain": 1.5,
           "normalize": 1.0,
-          "release": 0.1599999964237213,
-          "tilt": 0.8999999761581421
+          "release": 0.2199999988079071,
+          "tilt": 0.4000000059604645
         },
         "x": 732.0,
         "y": 714.0
@@ -236,8 +350,8 @@
       {
         "base": [
           40.0,
-          -20.0,
-          20.0,
+          -13.0,
+          13.0,
           0.0
         ],
         "id": 10,
@@ -245,8 +359,8 @@
         "op_type": "LaneRamp",
         "params": {
           "count": 40.0,
-          "hi": 20.0,
-          "lo": -20.0,
+          "hi": 13.0,
+          "lo": -13.0,
           "mode": 0.0
         },
         "x": 732.0,
@@ -280,6 +394,56 @@
           0.8199999928474426,
           0.9200000166893005
         ],
+        "control_edges": [
+          {
+            "amount": 0.550000011920929,
+            "attack": 0.00800000037997961,
+            "curve": 0.0,
+            "hi": 1.0,
+            "invert": false,
+            "lo": 0.0,
+            "param": "scale_x",
+            "release": 0.1599999964237213,
+            "src_lane": 2,
+            "src_node": 24
+          },
+          {
+            "amount": 0.550000011920929,
+            "attack": 0.00800000037997961,
+            "curve": 0.0,
+            "hi": 1.0,
+            "invert": false,
+            "lo": 0.0,
+            "param": "scale_y",
+            "release": 0.1599999964237213,
+            "src_lane": 2,
+            "src_node": 24
+          },
+          {
+            "amount": 0.550000011920929,
+            "attack": 0.00800000037997961,
+            "curve": 0.0,
+            "hi": 1.0,
+            "invert": false,
+            "lo": 0.0,
+            "param": "scale_z",
+            "release": 0.1599999964237213,
+            "src_lane": 2,
+            "src_node": 24
+          },
+          {
+            "amount": 1.0,
+            "attack": 0.00800000037997961,
+            "curve": 0.0,
+            "hi": 1.0,
+            "invert": false,
+            "lo": 0.0,
+            "param": "emission",
+            "release": 0.1599999964237213,
+            "src_lane": 2,
+            "src_node": 24
+          }
+        ],
         "id": 12,
         "in": -1,
         "op_type": "Shape3D",
@@ -287,7 +451,7 @@
           "a": 1.0,
           "b": 1.0,
           "detail": 8.0,
-          "emission": 0.8999999761581421,
+          "emission": 0.3499999940395355,
           "g": 0.9200000166893005,
           "metallic": 0.0,
           "pos_x": 0.0,
@@ -298,9 +462,9 @@
           "rot_y": 0.0,
           "rot_z": 0.0,
           "roughness": 0.5,
-          "scale_x": 0.41999998688697815,
-          "scale_y": 1.2000000476837158,
-          "scale_z": 0.41999998688697815,
+          "scale_x": 0.30000001192092896,
+          "scale_y": 8.0,
+          "scale_z": 0.30000001192092896,
           "shading": 0.0,
           "shape": 0.0,
           "toon_levels": 4.0,
@@ -400,6 +564,56 @@
           12.0,
           1.0,
           0.6200000047683716
+        ],
+        "control_edges": [
+          {
+            "amount": 0.800000011920929,
+            "attack": 0.0020000000949949026,
+            "curve": 0.0,
+            "hi": 1.0,
+            "invert": false,
+            "lo": 0.0,
+            "param": "scale_x",
+            "release": 0.18000000715255737,
+            "src_lane": 7,
+            "src_node": 25
+          },
+          {
+            "amount": 0.800000011920929,
+            "attack": 0.0020000000949949026,
+            "curve": 0.0,
+            "hi": 1.0,
+            "invert": false,
+            "lo": 0.0,
+            "param": "scale_y",
+            "release": 0.18000000715255737,
+            "src_lane": 7,
+            "src_node": 25
+          },
+          {
+            "amount": 0.800000011920929,
+            "attack": 0.0020000000949949026,
+            "curve": 0.0,
+            "hi": 1.0,
+            "invert": false,
+            "lo": 0.0,
+            "param": "scale_z",
+            "release": 0.18000000715255737,
+            "src_lane": 7,
+            "src_node": 25
+          },
+          {
+            "amount": 0.8999999761581421,
+            "attack": 0.0020000000949949026,
+            "curve": 0.0,
+            "hi": 1.0,
+            "invert": false,
+            "lo": 0.0,
+            "param": "emission",
+            "release": 0.18000000715255737,
+            "src_lane": 7,
+            "src_node": 25
+          }
         ],
         "id": 17,
         "in": -1,
@@ -505,6 +719,7 @@
         "op_type": "Light3D",
         "params": {
           "b": 1.0,
+          "cast_shadow": 1.0,
           "dir_x": -0.30000001192092896,
           "dir_y": -0.6000000238418579,
           "dir_z": -0.5,
@@ -574,6 +789,10 @@
           "fog_near": 4.0,
           "fov": 54.0,
           "near": 0.10000000149011612,
+          "orbit": 0.0,
+          "orbit_height": 2.0,
+          "orbit_phase": 0.0,
+          "orbit_radius": 6.0,
           "shadow_bias": 0.004999999888241291,
           "shadow_enabled": 0.0,
           "shadow_resolution": 1024.0,
@@ -586,133 +805,36 @@
       },
       {
         "base": [
-          0.41999998688697815,
+          0.0,
           0.0,
           0.0,
           0.0
         ],
         "id": 24,
-        "in": 23,
-        "ins": [
-          23
-        ],
-        "op_type": "Feedback",
-        "params": {
-          "decay": 0.41999998688697815
-        },
-        "x": 2132.0,
-        "y": 1227.9375
+        "in": -1,
+        "op_type": "ReactiveMaster",
+        "params": {},
+        "x": 540.0,
+        "y": 108.0
       },
       {
         "base": [
-          0.3499999940395355,
+          0.0,
           0.0,
           0.0,
           0.0
         ],
         "id": 25,
-        "in": 24,
-        "ins": [
-          24
-        ],
-        "op_type": "Blur",
+        "in": -1,
+        "op_type": "ReactiveTrack",
         "params": {
-          "radius": 0.3499999940395355
+          "track_id": 0.0
         },
-        "x": 2332.0,
-        "y": 1227.9375
-      },
-      {
-        "base": [
-          3.0,
-          0.2800000011920929,
-          0.0,
-          0.0
-        ],
-        "id": 26,
-        "in": 24,
-        "in_b": 25,
-        "ins": [
-          24,
-          25
-        ],
-        "op_type": "Composite",
-        "params": {
-          "mode": 3.0,
-          "opacity": 0.2800000011920929
-        },
-        "x": 2532.0,
-        "y": 1218.9375
+        "x": 540.0,
+        "y": 204.0
       }
     ],
-    "mappings": [
-      {
-        "amt": 0.3499999940395355,
-        "attack": 0.004000000189989805,
-        "curve": 0.0,
-        "dst": "node:1.emission",
-        "hi": 1.0,
-        "inv": false,
-        "lo": 0.0,
-        "release": 0.2199999988079071,
-        "src": "transport.downbeat"
-      },
-      {
-        "amt": 0.14000000059604645,
-        "attack": 0.019999999552965164,
-        "curve": 0.0,
-        "dst": "node:5.emission",
-        "hi": 1.0,
-        "inv": false,
-        "lo": 0.0,
-        "release": 0.18000000715255737,
-        "src": "master.high"
-      },
-      {
-        "amt": 0.2199999988079071,
-        "attack": 0.009999999776482582,
-        "curve": 0.0,
-        "dst": "node:12.emission",
-        "hi": 1.0,
-        "inv": false,
-        "lo": 0.0,
-        "release": 0.14000000059604645,
-        "src": "master.low"
-      },
-      {
-        "amt": 0.05000000074505806,
-        "attack": 0.029999999329447746,
-        "curve": 0.0,
-        "dst": "node:2.spacing",
-        "hi": 1.0,
-        "inv": false,
-        "lo": 0.0,
-        "release": 0.25,
-        "src": "master.low"
-      },
-      {
-        "amt": -0.019999999552965164,
-        "attack": 0.05000000074505806,
-        "curve": 0.0,
-        "dst": "node:23.cam_z",
-        "hi": 1.0,
-        "inv": false,
-        "lo": 0.0,
-        "release": 0.30000001192092896,
-        "src": "master.low"
-      },
-      {
-        "amt": 0.4000000059604645,
-        "attack": 0.004000000189989805,
-        "curve": 0.0,
-        "dst": "node:17.emission",
-        "hi": 1.0,
-        "inv": false,
-        "lo": 0.0,
-        "release": 0.18000000715255737,
-        "src": "track_0.gate"
-      }
-    ],
+    "mappings": [],
     "nodes": [],
     "shader": [
       900.0,
@@ -728,6 +850,11 @@
   "master": {
     "gain": 0.6000000238418579
   },
+  "music": {
+    "root": "C",
+    "scale": "major"
+  },
+  "pdc_enabled": false,
   "pool": [],
   "scene_names": [
     "intro",
@@ -1367,12 +1494,82 @@
           "base_note": 36.0,
           "decay": 0.0,
           "gain": 1.0,
-          "gate": 1.0,
+          "gate": 0.0,
           "release": 0.05000000074505806,
           "sustain": 1.0,
           "transpose": 0.0,
           "tune": 0.0,
           "voices": 16.0
+        },
+        "sampler": {
+          "base": 36,
+          "path": "media/amen-break-frenzy-jazzy_174bpm_G#_major.wav",
+          "slices": [
+            [
+              0,
+              15254
+            ],
+            [
+              15254,
+              30509
+            ],
+            [
+              30509,
+              45763
+            ],
+            [
+              45763,
+              61018
+            ],
+            [
+              61018,
+              76272
+            ],
+            [
+              76272,
+              91527
+            ],
+            [
+              91527,
+              106781
+            ],
+            [
+              106781,
+              122036
+            ],
+            [
+              122036,
+              137291
+            ],
+            [
+              137291,
+              152545
+            ],
+            [
+              152545,
+              167800
+            ],
+            [
+              167800,
+              183054
+            ],
+            [
+              183054,
+              198309
+            ],
+            [
+              198309,
+              213563
+            ],
+            [
+              213563,
+              228818
+            ],
+            [
+              228818,
+              244073
+            ]
+          ]
         }
       },
       "clips": [
@@ -1890,7 +2087,7 @@
           ]
         }
       ],
-      "gain": 0.949999988079071,
+      "gain": 1.0,
       "id": 3,
       "instrument": "Audio Slices",
       "is_audio": false,
@@ -1900,7 +2097,7 @@
       "solo": false
     }
   ],
-  "version": 4,
+  "version": 5,
   "window": {
     "dock": 210.0,
     "h": 1098,
