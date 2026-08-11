@@ -65,7 +65,7 @@ struct TypeOp : vivid::OperatorBase, vivid::GpuProcessable {
 
     vivid::FtFont font_; bool font_tried_ = false;
     std::string text_, baked_text_ = "\x01";
-    bool tried_ = false;
+    bool tried_ = false; std::string err_;   // ADR-0019: surfaced per-frame via report_if_no_pipeline
     WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
     WGPURenderPipeline stencil_pipe_ = nullptr, cover_pipe_ = nullptr;
     WGPUBuffer ubo_ = nullptr; WGPUBindGroup bg_ = nullptr;
@@ -167,7 +167,7 @@ struct TypeOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     bool lazy_init(const VividGpuContext* c) {
         std::string err; sh_ = vivid::gpu::create_shader_checked(c->device, kWGSL, "Type", err);
-        if (!sh_ || !err.empty()) { vivid_report_gpu_error(c, ("Type WGSL: " + err).c_str()); return false; }
+        if (!sh_ || !err.empty()) { err_ = "Type WGSL: " + vivid::gpu::concise_gpu_error(err); return false; }
         ubo_ = vivid::gpu::create_uniform_buffer(c->device, 48, "Type U");
         WGPUBindGroupLayoutEntry e{}; e.binding = 0; e.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
         e.buffer.type = WGPUBufferBindingType_Uniform; e.buffer.minBindingSize = 48;
@@ -184,7 +184,10 @@ struct TypeOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     void process_gpu(const VividGpuContext* c) override {
         if (!tried_) { tried_ = true; lazy_init(c); }
-        if (!stencil_pipe_ || !cover_pipe_) return;
+        if (!stencil_pipe_ || !cover_pipe_) {   // ADR-0019: surface the init failure, don't render silent
+            vivid_report_gpu_error(c, err_.empty() ? "GPU pipeline failed to initialize" : err_.c_str());
+            return;
+        }
         const float* p = c->param_values; auto pv = [&](int i, float d) { return p ? p[i] : d; };
         text_ = build_text(vivid::elements::input_signal(c, 0), static_cast<int>(std::lround(pv(9, mode.value))));
         if (!vbo_ || text_ != baked_text_) rebuild_geometry(c);

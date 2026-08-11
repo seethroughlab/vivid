@@ -65,7 +65,7 @@ struct TimeMachineOp : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<int>   frames {"frames", 30, 2, 120};       // history length
     vivid::Param<float> offset {"offset", 0.f, 0.f, 1.f};    // shift the whole read-head back in time
 
-    bool tried_ = false;
+    bool tried_ = false; std::string err_;   // ADR-0019: surfaced per-frame via report_if_no_pipeline
     WGPUShaderModule sh_blit_ = nullptr, sh_slit_ = nullptr;
     WGPUBindGroupLayout bgl_blit_ = nullptr, bgl_slit_ = nullptr;
     WGPUPipelineLayout pl_blit_ = nullptr, pl_slit_ = nullptr;
@@ -139,7 +139,7 @@ struct TimeMachineOp : vivid::OperatorBase, vivid::GpuProcessable {
         std::string err;
         sh_blit_ = vivid::gpu::create_shader_checked(c->device, kBlitWGSL, "TimeMachine.blit", err);
         sh_slit_ = vivid::gpu::create_shader_checked(c->device, kSlitWGSL, "TimeMachine.slit", err);
-        if (!sh_blit_ || !sh_slit_ || !err.empty()) return false;
+        if (!sh_blit_ || !sh_slit_ || !err.empty()) { err_ = vivid::gpu::concise_gpu_error(err); return false; }
         ubo_ = vivid::gpu::create_uniform_buffer(c->device, 32, "TimeMachine U");
         // blit BGL: sampler(0), tex(1)
         WGPUBindGroupLayoutEntry be[2]{};
@@ -173,7 +173,7 @@ struct TimeMachineOp : vivid::OperatorBase, vivid::GpuProcessable {
 
     void process_gpu(const VividGpuContext* c) override {
         if (!tried_) { tried_ = true; lazy_init(c); }
-        if (!pipe_slit_) return;
+        if (vivid::gpu::report_if_no_pipeline(c, pipe_slit_, err_)) return;
         auto pv = [&](int i, float def) { return c->param_values ? c->param_values[i] : def; };
         const int frames_req = c->param_values ? static_cast<int>(c->param_values[1])
                                                 : static_cast<int>(frames.value);

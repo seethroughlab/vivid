@@ -106,6 +106,12 @@ int VisualGraph::missing_op_count() const {
     return n;
 }
 
+int VisualGraph::errored_op_count() const {
+    int n = 0;
+    for (const auto& nd : nodes_) if (!nd.runtime_error.empty()) ++n;
+    return n;
+}
+
 std::vector<int> VisualGraph::missing_op_node_indices() const {
     std::vector<int> out;
     for (int i = 0; i < static_cast<int>(nodes_.size()); ++i) if (nodes_[i].op_missing()) out.push_back(i);

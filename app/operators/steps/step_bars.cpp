@@ -57,7 +57,7 @@ struct StepBarsOp : vivid::OperatorBase, vivid::GpuProcessable {
 
     int editor_sel_ = 0;   // keyboard-selected column (editor-only UI state, lives on the instance)
 
-    bool tried_ = false;
+    bool tried_ = false; std::string err_;   // ADR-0019: surfaced per-frame via report_if_no_pipeline
     WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
     WGPURenderPipeline pipe_ = nullptr; WGPUBuffer ubo_ = nullptr; WGPUBindGroup bg_ = nullptr;
 
@@ -76,7 +76,7 @@ struct StepBarsOp : vivid::OperatorBase, vivid::GpuProcessable {
     bool lazy_init(const VividGpuContext* c) {
         std::string err;
         sh_ = vivid::gpu::create_shader_checked(c->device, kBarsWGSL, "StepBars", err);
-        if (!sh_ || !err.empty()) return false;
+        if (!sh_ || !err.empty()) { err_ = vivid::gpu::concise_gpu_error(err); return false; }
         ubo_ = vivid::gpu::create_uniform_buffer(c->device, 32, "StepBars U");
         WGPUBindGroupLayoutEntry e{};
         e.binding = 0; e.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
@@ -94,7 +94,7 @@ struct StepBarsOp : vivid::OperatorBase, vivid::GpuProcessable {
 
     void process_gpu(const VividGpuContext* c) override {
         if (!tried_) { tried_ = true; lazy_init(c); }
-        if (!pipe_) return;
+        if (vivid::gpu::report_if_no_pipeline(c, pipe_, err_)) return;
         float u[8];
         for (int i = 0; i < kSteps; ++i) u[i] = c->param_values ? c->param_values[i] : s[i].value;
         wgpuQueueWriteBuffer(c->queue, ubo_, 0, u, sizeof(u));

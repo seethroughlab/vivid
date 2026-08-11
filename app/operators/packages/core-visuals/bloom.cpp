@@ -92,7 +92,7 @@ struct BloomOp : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> intensity{"intensity", 0.8f, 0.f, 3.f};
     vivid::Param<float> radius{"radius", 1.5f, 0.f, 6.f};
 
-    bool tried_ = false;
+    bool tried_ = false; std::string err_;   // ADR-0019: surfaced per-frame via report_if_no_pipeline
     WGPUShaderModule sh_bright_ = nullptr, sh_blurh_ = nullptr, sh_blurv_ = nullptr, sh_comp_ = nullptr;
     WGPUBindGroupLayout bgl1_ = nullptr, bgl2_ = nullptr;
     WGPUPipelineLayout pl1_ = nullptr, pl2_ = nullptr;
@@ -166,7 +166,7 @@ struct BloomOp : vivid::OperatorBase, vivid::GpuProcessable {
         sh_blurh_  = vivid::gpu::create_shader_checked(c->device, blurh.c_str(),  "Bloom.blurH", err);
         sh_blurv_  = vivid::gpu::create_shader_checked(c->device, blurv.c_str(),  "Bloom.blurV", err);
         sh_comp_   = vivid::gpu::create_shader_checked(c->device, kCompositeWGSL, "Bloom.composite", err);
-        if (!sh_bright_ || !sh_blurh_ || !sh_blurv_ || !sh_comp_ || !err.empty()) return false;
+        if (!sh_bright_ || !sh_blurh_ || !sh_blurv_ || !sh_comp_ || !err.empty()) { err_ = vivid::gpu::concise_gpu_error(err); return false; }
         ubo_ = vivid::gpu::create_uniform_buffer(c->device, 32, "Bloom U");
         bgl1_ = make_bgl(c->device, 1);   // bright + blur: one source texture
         bgl2_ = make_bgl(c->device, 2);   // composite: original + bloom
@@ -198,7 +198,7 @@ struct BloomOp : vivid::OperatorBase, vivid::GpuProcessable {
 
     void process_gpu(const VividGpuContext* c) override {
         if (!tried_) { tried_ = true; lazy_init(c); }
-        if (!pipe_comp_) return;
+        if (vivid::gpu::report_if_no_pipeline(c, pipe_comp_, err_)) return;
         ensure_tex(c);
         release_frame_bgs();
 

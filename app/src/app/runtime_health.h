@@ -64,6 +64,7 @@ struct HealthSnapshot {
     int         op_nodes = 0;                    // op nodes in the visuals chain
     int         op_types = 0;                    // registered operator types (built-in + loaded)
     int         missing_ops = 0;                 // chain nodes whose op type isn't registered (BROKEN)
+    int         errored_ops = 0;                 // chain nodes reporting a runtime_error this frame (ADR-0019)
     int         packages_loaded = 0;             // dlopen'd operator dylibs
     // Structural blank-vs-empty signal (P2-03): true = a producer feeds the active Output; false =
     // nothing is wired to Output ("empty by design"). A benign, intended state — NOT a failure — so

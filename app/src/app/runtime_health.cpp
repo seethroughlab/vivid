@@ -13,9 +13,11 @@ Severity severity(const HealthSnapshot& s) {
     // Only oversized blocks feed this — an idle/empty session's by-design silence is not a bailout.
     if (s.audio_bailout_error_threshold > 0 && s.audio_render_bailouts >= s.audio_bailout_error_threshold)
         return Severity::Error;
-    // Recoverable-but-noteworthy: the GPU reported (and survived) errors, or the agent
-    // control surface isn't up.
-    if (s.gpu_errors > 0 || !s.control_running) return Severity::Warning;
+    // Recoverable-but-noteworthy: the GPU reported (and survived) errors, an operator reported a
+    // runtime problem (a failed-init op rendering black, or a soft notice like Render3D's light
+    // ceiling), or the agent control surface isn't up. Warning, not Error — the app keeps running and
+    // the channel carries soft notices too, so it must not spuriously red-alert a whole session.
+    if (s.gpu_errors > 0 || s.errored_ops > 0 || !s.control_running) return Severity::Warning;
     // ADR-0031: over-budget callbacks or skipped try_lock handoffs are recoverable realtime pressure —
     // a passive Warning (frame.cpp only promotes Error to a toast, so this never nags).
     if (s.audio_over_budget > 0 || s.audio_handoff_skips > 0) return Severity::Warning;
@@ -70,7 +72,8 @@ nlohmann::json to_json(const HealthSnapshot& s) {
     j["gpu"]     = { {"ok", s.gpu_ok}, {"errors", s.gpu_errors} };
     if (!s.gpu_last_error.empty()) j["gpu"]["last_error"] = s.gpu_last_error;
     j["graph"]   = { {"op_nodes", s.op_nodes}, {"op_types", s.op_types},
-                     {"missing_ops", s.missing_ops}, {"output_fed", s.output_fed} };
+                     {"missing_ops", s.missing_ops}, {"errored_ops", s.errored_ops},
+                     {"output_fed", s.output_fed} };
     j["packages"] = { {"loaded", s.packages_loaded} };
     j["control"]  = { {"running", s.control_running} };
     return j;

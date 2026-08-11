@@ -40,7 +40,7 @@ struct FeedbackOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kSummary = "Frame feedback / trails: blends the input with a decaying history texture.";
     static constexpr std::array<const char*, 3> kKeywords = {"effect", "feedback", "trails"};
     vivid::Param<float> decay{"decay", 0.5f, 0.f, 1.f};
-    bool tried_ = false;
+    bool tried_ = false; std::string err_;   // ADR-0019: surfaced per-frame via report_if_no_pipeline
     WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
     WGPURenderPipeline pipe_ = nullptr; WGPUBuffer ubo_ = nullptr; WGPUSampler samp_ = nullptr; WGPUBindGroup bg_ = nullptr;
     WGPUTexture hist_ = nullptr; WGPUTextureView hist_view_ = nullptr; uint32_t hw_ = 0, hh_ = 0;
@@ -73,7 +73,7 @@ struct FeedbackOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     bool lazy_init(const VividGpuContext* c) {
         std::string err; sh_ = vivid::gpu::create_shader_checked(c->device, kFeedbackWGSL, "Feedback", err);
-        if (!sh_ || !err.empty()) return false;
+        if (!sh_ || !err.empty()) { err_ = vivid::gpu::concise_gpu_error(err); return false; }
         ubo_ = vivid::gpu::create_uniform_buffer(c->device, 32, "Feedback U");
         WGPUBindGroupLayoutEntry e[4]{};
         e[0].binding = 0; e[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
@@ -95,7 +95,7 @@ struct FeedbackOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     void process_gpu(const VividGpuContext* c) override {
         if (!tried_) { tried_ = true; lazy_init(c); }
-        if (!pipe_) return;
+        if (vivid::gpu::report_if_no_pipeline(c, pipe_, err_)) return;
         ensure_hist(c);
         const float d = 0.82f + (c->param_values ? c->param_values[0] : decay.value) * 0.16f;   // 0.82..0.98
         float u[8] = { float(c->output_width), float(c->output_height), float(c->time), d, 0.f, 0.f, 0.f, 0.f };
