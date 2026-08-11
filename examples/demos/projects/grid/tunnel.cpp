@@ -46,27 +46,18 @@ struct U { res: vec2f, time: f32, speed: f32, pulse: f32, warp: f32,
     let ring  = abs(fract(depth * u.rings) - 0.5) * 2.0;
     let spoke = abs(fract(a * u.spokes * 0.15915494) - 0.5) * 2.0;   // *1/TAU
     // Bright gridlines: 1 ON a gridline, 0 between. smoothstep(edge0<edge1) — the reversed form is
-    // UNDEFINED in WGSL, so build it as 1 - smoothstep(0, w, x). Wide-ish so the corridor reads clearly
-    // even downsampled (thin lines average to near-black and become illegible).
-    let lw = 0.28;
-    let ringL  = 1.0 - smoothstep(0.0, lw, ring);
-    let spokeL = 1.0 - smoothstep(0.0, lw, spoke);
-    let line = max(ringL, spokeL);
+    // UNDEFINED in WGSL, so build it as 1 - smoothstep(0, w, x).
+    let lw = 0.16;
+    let line = max(1.0 - smoothstep(0.0, lw, ring), 1.0 - smoothstep(0.0, lw, spoke));
     // Fade the vanishing centre toward black; keep the near walls bright and legible.
-    let fade = smoothstep(0.03, 0.62, rad);
-    // Clamp pulse: a control edge can drive it past 1, which would blow the whole corridor to solid
-    // white. A saturating response keeps a big kick legible without clipping to a featureless frame.
+    let fade = smoothstep(0.03, 0.55, rad);
+    // Clamp pulse (a control edge can overshoot past 1). glow = dark-at-rest structure; pulse = audio
+    // bloom (lines flare + a whole-corridor lift so a kick reads even on the dark gaps between lines).
     let pz = clamp(u.pulse, 0.0, 1.0);
-    // The corridor is ALWAYS a legible mid-grey grid (never full black, never full white):
-    //  - a visible floor so the rest state reads as a structured tunnel, not an empty frame;
-    //  - the gridlines carry the form;
-    //  - pulse LIFTS brightness on a kick but the ceiling stays below white so structure survives.
-    let ambient = fade * 0.22;                         // always-on corridor wash (visible rest)
-    let grid    = line * fade;                          // the gridline structure
-    let restLum = ambient * (0.5 + u.glow * 0.5) + grid * (0.20 + u.glow * 0.35);
-    let bloomLum = (ambient * 0.5 + grid * 0.6) * pz;  // kick lift, bounded
-    let lum = clamp(restLum + bloomLum, 0.0, 0.92);    // ceiling < 1 so it never whites out
-    let col = vec3f(u.r, u.g, u.b) * lum;
+    let base  = line * fade * u.glow;
+    let flash = line * fade * pz * 2.0;
+    let fill  = fade * pz * 0.22;
+    let col = vec3f(u.r, u.g, u.b) * clamp(base + flash + fill, 0.0, 1.0);
     return vec4f(col, 1.0);
 }
 )";
