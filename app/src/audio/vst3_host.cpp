@@ -4251,11 +4251,13 @@ int session_slice_to_midi(Session* s, int src_track, int src_scene, int slice_mo
     std::vector<float> L, R;
     std::vector<uint32_t> ss, se;
     double loop_beats = 4.0; uint32_t sr = 0, N = 0;
+    std::string src_path;   // the source clip's WAV path — retained on the sampler so it persists
     {
         std::lock_guard<std::mutex> lk(s->tracks[src_track]->aud_mtx);
         const AudioClip& c = s->tracks[src_track]->aud_clips[src_scene];
         if (c.L.empty()) return -1;
         L = c.L; R = c.R; N = static_cast<uint32_t>(c.L.size()); sr = c.sr;
+        src_path = c.src_path;   // snapshot the WAV path under the same lock as the PCM/slices
         loop_beats = c.loop_beats > 0 ? c.loop_beats : 4.0;
         const int m = (slice_mode == 3) ? 3 : 1;   // transients unless 16-grid asked
         for (const auto& rg : audio_clip_ed::compile_slices(m, c.transients, {}, 0, N)) {
@@ -4277,6 +4279,12 @@ int session_slice_to_midi(Session* s, int src_track, int src_scene, int slice_mo
         if (vivid::audio_op_is_source(op) &&
             vivid::audio_op_load_sampler(op, L.data(), R.empty() ? nullptr : R.data(), N, sr,
                                          ss.data(), se.data(), static_cast<int>(ss.size()), base_note)) {
+            // Retain the WAV path so the sliced sampler PERSISTS: sampler_save_block writes it, and on
+            // reload sampler_restore reloads the SAME raw wav + re-applies the saved slice boundaries.
+            // AudioClip.L is the raw imported PCM (warp is a playback-time transform, never baked in),
+            // so reslicing the reloaded wav with those boundaries is exact regardless of warp/tempo.
+            // Empty path (a generated source clip) degrades to today's behaviour — no persistence.
+            vivid::audio_op_set_sampler_source(op, src_path.c_str());
             std::lock_guard<std::mutex> lk(tr.op_fx_mtx);
             tr.op_instrument_edit = op;
         } else {
