@@ -13,7 +13,7 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
-#include <filesystem>
+#include <unordered_map>
 
 namespace vivid::ui {
 
@@ -258,13 +258,32 @@ void NodeGraph::layout_nodes() {
     const int n = int(vg_->nodes().size());
     if (n == 0) return;
 
+    // Layout predecessors = TEXTURE inputs AND reactive CONTROL edges (a param driven by a source node's
+    // value lane). Factoring control edges into both the rank and the barycenter places a reactive SOURCE
+    // (ReactiveMaster / ReactiveTrack) to the LEFT of and vertically NEAR the params it drives, so the
+    // reactive wires read as left→right flow instead of sprawling across the graph. Texture-only before
+    // this left those wires unmanaged. src_node is a stable id, so resolve it through an id→index map.
+    std::vector<std::vector<int>> preds(n);
+    {
+        std::unordered_map<int, int> id2idx;
+        for (int i = 0; i < n; ++i) id2idx[vg_->nodes()[i].id] = i;
+        for (int i = 0; i < n; ++i) {
+            for (int in : vg_->nodes()[i].inputs)
+                if (in >= 0 && in < n && in != i) preds[i].push_back(in);
+            for (const auto& ce : vg_->nodes()[i].control_edges) {
+                auto it = id2idx.find(ce.src_node);
+                if (it != id2idx.end() && it->second != i) preds[i].push_back(it->second);
+            }
+        }
+    }
+
     // 1. Longest-path rank via bounded relaxation (cycle-safe: at most n passes).
     std::vector<int> rank(n, 0);
     for (int pass = 0; pass < n; ++pass) {
         bool changed = false;
         for (int i = 0; i < n; ++i)
-            for (int in : vg_->nodes()[i].inputs)   // rank past the deepest of ALL input ports
-                if (in >= 0 && in < n && in != i && rank[in] + 1 > rank[i]) { rank[i] = rank[in] + 1; changed = true; }
+            for (int in : preds[i])   // rank past the deepest predecessor (texture OR control edge)
+                if (rank[in] + 1 > rank[i]) { rank[i] = rank[in] + 1; changed = true; }
         if (!changed) break;
     }
     int maxRank = 0;
@@ -274,7 +293,9 @@ void NodeGraph::layout_nodes() {
     std::vector<std::vector<int>> cols(maxRank + 1);
     for (int i = 0; i < n; ++i) cols[rank[i]].push_back(i);
 
-    const float left = bx0_ + 200.f, colSp = 200.f, gap = 16.f;   // room for data nodes on the left
+    const float left = bx0_ + 200.f, colSp = 256.f, gap = 34.f;   // room for data nodes on the left;
+    // colSp/gap give cards space to breathe: ~100px between columns (card ~156w) and ~34px between
+    // stacked cards, so wires have room and the flow is easy to read rather than cramped.
     const float mid  = (by0_ + by1_) * 0.5f;
 
     // 3. Coordinate assignment: place each node's CENTER at the barycenter of its inputs, so a chain
@@ -287,9 +308,9 @@ void NodeGraph::layout_nodes() {
     for (int i = 0; i < n; ++i) { float x, y, w, h; op_node_rect(i, x, y, w, h); ch[i] = h; }
     for (int c = 0; c <= maxRank; ++c) {
         auto& col = cols[c];
-        auto bary = [&](int node) {   // barycenter over all connected input ports (mid for a source)
+        auto bary = [&](int node) {   // barycenter over all predecessors, texture + control (mid for a source)
             float sum = 0.f; int cnt = 0;
-            for (int in : vg_->nodes()[node].inputs) if (in >= 0 && in < n) { sum += cy[in]; ++cnt; }
+            for (int in : preds[node]) { sum += cy[in]; ++cnt; }
             return cnt ? sum / cnt : mid;
         };
         std::stable_sort(col.begin(), col.end(), [&](int a, int b) { return bary(a) < bary(b); });

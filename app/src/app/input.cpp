@@ -365,13 +365,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         }
         if (hit(win->preview.panel(), mx, my)) return;   // clicks on the output itself: consume, don't pan
     }
-    // The graph "Re-layout" chrome (top-right of the visuals column).
-    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app->graph
-        && hit(vivid::ui::graph_relayout_rect(win->win_w, win->win_h, win->split_x, win->dock_h), mx, my)) {
-        app->graph->layout_nodes();
-        if (app->edit_gateway) app->edit_gateway->note_edit("Auto-Layout", "");
-        return;
-    }
+    // (Graph "Re-layout" is now a native View menu item — ⌘L. See platform/menu_bar.*.)
     // ADR-0033 P5: the "+ Note" chrome — create a sticky note at the viewport centre and start typing.
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app->graph
         && hit(vivid::ui::graph_add_note_rect(win->win_w, win->win_h, win->split_x, win->dock_h), mx, my)) {

@@ -412,6 +412,14 @@ int main(int argc, char** argv) {
         // ADR-0017/G4: Edit > Undo/Redo. app.edit_gateway is created below (read at click time).
         ma.undo            = [&] { if (app.edit_gateway) app.edit_gateway->undo(); };
         ma.redo            = [&] { if (app.edit_gateway) app.edit_gateway->redo(); };
+        // View > Re-layout Graph (⌘L): tidy the visual node graph AND the current track's audio graph
+        // (was a per-pane in-graph button). The audio view is re-primed to the selected track first,
+        // mirroring the button's old input-path (prime → relayout). One undo entry covers both.
+        ma.relayout_graph  = [&] {
+            if (app.graph) app.graph->layout_nodes();
+            if (app.session) { audio_graph.prime(app, win); audio_graph.relayout(); }
+            if (app.edit_gateway) app.edit_gateway->note_edit("Auto-Layout", "");
+        };
         // ADR-0026: the Eval menu. "Set Gemini Key…" opens the in-app modal (input.cpp owns the
         // keyboard while it's up). "Evaluate Output" captures 20s of the live master and kicks off an
         // async Gemini eval; the frame loop toasts the verdict when the job lands. Fail-closed here too.

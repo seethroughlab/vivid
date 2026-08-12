@@ -24,6 +24,7 @@ struct MenuActions {
     std::function<void()> export_audio;     // File > Export Audio (offline master-mix bounce to .wav, ADR-0032)
     std::function<void()> export_av;        // File > Export Video (Deterministic) (offline AV render, ADR-0032 Phase C)
     std::function<void()> toggle_reduce_motion;  // View > Reduce Motion (UX Ph4 F1 accessibility toggle)
+    std::function<void()> relayout_graph;        // View > Re-layout Graph (⌘L) — tidy visual + audio node graphs
     std::function<void(const std::string&)> select_audio_device;  // View > Audio Output > <name> (ADR-0032 Phase A; "" = system default)
 };
 
