@@ -912,22 +912,19 @@ void ClipEditor::draw(Renderer2D& r) {
         // ADR-0048/0049: compose the shared waveform language (same component the Sampler editor reuses).
         // The view transform matches wxn()/wnorm_at() (key_w()==0 for audio, so GX==gx()), so drawing and
         // the interaction code below stay in lockstep.
+        // The marker colors are the shared language's, not ours (waveform_view.h) — so the Sampler
+        // editor's trim handles and slice dividers read identically to these.
         const WaveformView wv{ { GX, GY, GW, GH }, wav_x0_, wav_px_, wav_amp_ };
-        static const float kTrim[3]  = { 0.92f, 0.84f, 0.34f };   // trim/loop handles (yellow)
-        static const float kTrans[3] = { 0.50f, 0.50f, 0.36f };   // transient ticks
-        static const float kSlice[3] = { 0.40f, 0.60f, 0.95f };   // slice dividers (blue)
-        static const float kWarp[3]  = { 0.96f, 0.62f, 0.24f };   // warp markers (orange)
-        static const float kPlay[3]  = { 0.95f, 0.35f, 0.35f };   // playhead (red)
         wv.bins(r, wave_.data(), static_cast<int>(wave_.size()), t0_, t1_);
         wv.center_line(r);
         wv.dim_outside(r, t0_, t1_);
-        wv.handle(r, t0_, kTrim); wv.handle(r, t1_, kTrim);
-        wv.ticks(r, trans_norm_.data(), static_cast<int>(trans_norm_.size()), kTrans);
-        wv.dividers(r, slice_norm_.data(), static_cast<int>(slice_norm_.size()), kSlice, 0.5f);
-        wv.dividers(r, warp_norm_.data(), static_cast<int>(warp_norm_.size()), kWarp, 0.85f, /*grab_tab*/true);
+        wv.handle(r, t0_); wv.handle(r, t1_);
+        wv.ticks(r, trans_norm_.data(), static_cast<int>(trans_norm_.size()));
+        wv.dividers(r, slice_norm_.data(), static_cast<int>(slice_norm_.size()));
+        wv.dividers(r, warp_norm_.data(), static_cast<int>(warp_norm_.size()), kWaveWarp, 0.85f, /*grab_tab*/true);
         if (playhead_ >= 0.0 && aud_loop_ > 0.0) {   // read position, mapped through the loop window
             double ph = std::fmod(playhead_, aud_loop_); if (ph < 0) ph += aud_loop_;
-            wv.playhead(r, t0_ + (ph / aud_loop_) * (t1_ - t0_), kPlay);
+            wv.playhead(r, t0_ + (ph / aud_loop_) * (t1_ - t0_));
         }
         r.pop_clip_rect();
         // ADR-0048: the footer crawl is gone — a hover-status pill names what the hovered handle does.

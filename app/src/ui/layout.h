@@ -29,6 +29,31 @@ inline int stepper_hit(Rect b, double mx, double my) {
     if (mx > b.x + b.w - bw) return +1;
     return 0;
 }
+// ADR-0049: map a Sampler playhead to the waveform canvas. The op publishes its position as 0..1 over
+// its regions CONCATENATED in order, but the Sampler editor draws the SOURCE file, so a drum rack (whose
+// slices need not tile the source, and whose head/tail may be trimmed off) has to walk the regions to
+// convert. `starts`/`ends` are per-region source frames; returns a source-normalized 0..1 position, or
+// -1 when there is nothing to map. With one region this is just lerp(in, out, ph).
+inline double sampler_playhead_norm(const uint32_t* starts, const uint32_t* ends, int n,
+                                    double ph, unsigned long long source_frames) {
+    if (!starts || !ends || n <= 0 || source_frames == 0 || ph < 0.0) return -1.0;
+    double total = 0.0;
+    for (int i = 0; i < n; ++i) total += static_cast<double>(ends[i]) - starts[i];
+    if (total <= 0.0) return -1.0;
+    double at = (ph < 1.0 ? ph : 1.0) * total, cum = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const double len = static_cast<double>(ends[i]) - starts[i];
+        // Half-open [cum, cum+len): a position exactly on a boundary belongs to the NEXT region, the
+        // same convention segmented_hit uses. The last region absorbs the tail (and any FP slop).
+        if (at < cum + len || i == n - 1) {
+            const double off = at - cum < 0.0 ? 0.0 : (at - cum > len ? len : at - cum);
+            return (starts[i] + off) / static_cast<double>(source_frames);
+        }
+        cum += len;
+    }
+    return -1.0;
+}
+
 inline float dock_top(int win_h, float dock_h);   // fwd (defined in the window-relative section)
 
 // --- Pane region chrome: bounded panels on a margin/gutter grid. ---

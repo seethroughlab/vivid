@@ -6,6 +6,7 @@
 #include "ui/layout.h"            // segmented_hit / stepper_hit (pure geometry)
 #include "audio/vst3_host.h"      // session_sampler_* + node param accessors
 #include "audio/sampler_op.h"     // SamplerInfo / SamplerSlice
+#include "platform/file_dialog.h" // open_file_dialog (Load / Replace)
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -26,10 +27,19 @@ namespace vivid::ui {
 
 class SamplerEditor {
 public:
+    // ADR-0017: every edit this editor makes must reach the undo gateway. The gateway lives in `app/`,
+    // which `ui/` may not include (ADR-0043 layering), so the host passes a plain function sink —
+    // the same shape session_view.cpp already uses for the operator-editor param sink.
+    struct EditSink {
+        void (*fn)(void* opaque, const char* label, const char* coalesce_key);
+        void* opaque;
+        void operator()(const char* label, const char* key = "") const { if (fn) fn(opaque, label, key); }
+    };
+
     // Draw + interact for the selected Sampler node, filling `body` (the dock area below the header).
     // Immediate-mode: reads the latest cursor + button; `click` is derived from the caller's edge latch.
     void draw(Renderer2D& r, vivid::session::Session* s, Rect body,
-              int track, int node_id, float mx, float my, bool mouse_down) {
+              int track, int node_id, float mx, float my, bool mouse_down, EditSink edited) {
         namespace S = vivid::session;
         const Style& sty = style();
         if (node_id != node_) { node_ = node_id; sel_ = -1; drag_ = -1; }  // reset per-node UI state
@@ -51,10 +61,14 @@ public:
         // ---- identity line (name + geometry) ----------------------------------------------------------
         const char* name = (src && *src) ? base_name(src) : (loaded ? "(sample)" : nullptr);
         if (!loaded || !name) {
-            // Nothing loaded: a single legible placeholder rather than an empty panel.
+            // Nothing loaded: an ACTION, not just a placeholder. ADR-0049 asks for load/replace as a
+            // clear action; telling the user to go do it somewhere else was the gap.
             const float cy = body.y + body.h * 0.5f;
-            const std::string t = "no sample \xC2\xB7 drop a file on this node, or load in the graph";
-            r.draw_text(body.x + 14.f, cy - 8.f, t.c_str(), sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_value);
+            const Rect rLoad{ body.x + 14.f, cy - 12.f, 132.f, 24.f };
+            icon_button(r, rLoad, "\xE2\x97\x89 Load sample", hov(rLoad));
+            if (click && hit(rLoad, mx, my)) load_replace(s, track, node_id, 60, edited);
+            r.draw_text(rLoad.x + rLoad.w + 12.f, cy - 6.f,
+                        "or drop an audio file on this node", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_value);
             return;
         }
         {
@@ -78,7 +92,7 @@ public:
         const float gn   = pget_f(s, track, node_id, "gain", 1.f);
 
         const Rect rRoot = place(112.f);
-        { char v[16]; std::snprintf(v, sizeof v, "%s", note_name(root)); stepper(r, rRoot, "ROOT", v, stepper_hit(rRoot, mx, my)); }
+        stepper(r, rRoot, "ROOT", note_name(root).s, stepper_hit(rRoot, mx, my));
         const Rect rGate = place(150.f);
         segmented(r, rGate, { "One-shot", "Gated" }, gate ? 1 : 0, segmented_hit(rGate, 2, mx, my), sty.audio);
         const Rect rTr = place(132.f);
@@ -89,6 +103,8 @@ public:
         { char v[16]; std::snprintf(v, sizeof v, "%d", nb); stepper(r, rSlc, "SLICES", v, stepper_hit(rSlc, mx, my)); }
         const Rect rDet = place(84.f);    // auto-slice at detected onsets
         icon_button(r, rDet, "Detect", hov(rDet));
+        const Rect rClr = place(74.f);    // collapse back to ONE region spanning [in,out] (melodic trim)
+        icon_button(r, rClr, "Clear", hov(rClr), false, nb > 1 ? nullptr : sty.dim);
         // Per-slice TUNE appears only when a drum-rack slice is selected (tune == trigger note - root note).
         const bool slice_sel = (sel_ >= 0 && sel_ < nsl && nb > 1);
         const int  stune = slice_sel ? (slc[sel_].lo_note - slc[sel_].root_note) : 0;
@@ -98,19 +114,43 @@ public:
             char v[16]; std::snprintf(v, sizeof v, "%+d st", stune);
             stepper(r, rTune, "TUNE", v, stepper_hit(rTune, mx, my));
         }
+        const Rect rMidi = place(120.f);  // write a MIDI clip that triggers these slices (drum rack only)
+        icon_button(r, rMidi, "Slice \xE2\x86\x92 MIDI", hov(rMidi), false, nb > 1 ? nullptr : sty.dim);
+        const Rect rLoad = place(104.f);  // replace the loaded sample in place (keeps the node + wiring)
+        icon_button(r, rLoad, "\xE2\x97\x89 Replace", hov(rLoad));
         const Rect rEnv = place(120.f);   // the disclosure for the set-and-forget envelope/voice params
         menu_button(r, rEnv, "\xE2\x8B\xAF Envelope", hov(rEnv), env_open_);
 
         if (click) {
-            if (int h = stepper_hit(rRoot, mx, my)) pset(s, track, node_id, "base_note", std::clamp(root + h, 0, 127));
-            if (int c = segmented_hit(rGate, 2, mx, my); c >= 0) pset(s, track, node_id, "gate", (float)c);
-            if (int h = stepper_hit(rTr, mx, my)) pset(s, track, node_id, "transpose", std::clamp(tr + h, -48, 48));
-            if (int h = stepper_hit(rGn, mx, my)) pset(s, track, node_id, "gain", std::clamp(gn + 0.05f * h, 0.f, 2.f));
-            if (int h = stepper_hit(rSlc, mx, my); h && nb > 0)   // re-cut into N EQUAL slices over [in,out]
+            // Every mutation below notes an edit (ADR-0017). Param steppers coalesce per param so a run
+            // of clicks is one undo entry; the structural actions (reslice / detect / clear / load) do not.
+            char ck[64];
+            auto param_edit = [&](const char* nm) {
+                std::snprintf(ck, sizeof ck, "sampler:%d/%s", node_id, nm);
+                edited("Sampler Param", ck);
+            };
+            if (int h = stepper_hit(rRoot, mx, my)) {
+                pset(s, track, node_id, "base_note", std::clamp(root + h, 0, 127)); param_edit("base_note"); }
+            if (int c = segmented_hit(rGate, 2, mx, my); c >= 0) {
+                pset(s, track, node_id, "gate", (float)c); param_edit("gate"); }
+            if (int h = stepper_hit(rTr, mx, my)) {
+                pset(s, track, node_id, "transpose", std::clamp(tr + h, -48, 48)); param_edit("transpose"); }
+            if (int h = stepper_hit(rGn, mx, my)) {
+                pset(s, track, node_id, "gain", std::clamp(gn + 0.05f * h, 0.f, 2.f)); param_edit("gain"); }
+            if (int h = stepper_hit(rSlc, mx, my); h && nb > 0) {  // re-cut into N EQUAL slices over [in,out]
                 reslice_equal(s, track, node_id, bs[0], be[nb - 1], std::clamp(nb + h, 1, 32), root);
-            if (hit(rDet, mx, my)) { S::session_sampler_detect_slices(s, track, node_id, 0.5f); sel_ = -1; }
-            if (slice_sel) if (int h = stepper_hit(rTune, mx, my))
+                sel_ = -1; edited("Sampler Slices"); }
+            if (hit(rDet, mx, my)) {
+                S::session_sampler_detect_slices(s, track, node_id, 0.5f); sel_ = -1; edited("Detect Slices"); }
+            if (hit(rClr, mx, my) && nb > 1) {                    // back to one region: the melodic trim
+                reslice_equal(s, track, node_id, bs[0], be[nb - 1], 1, root);
+                sel_ = -1; edited("Clear Slices"); }
+            if (hit(rMidi, mx, my) && nb > 1) slices_to_midi(s, track, slc, nsl, edited);
+            if (hit(rLoad, mx, my)) load_replace(s, track, node_id, root, edited);
+            if (slice_sel) if (int h = stepper_hit(rTune, mx, my)) {
                 S::session_sampler_set_slice_tune(s, track, node_id, sel_, std::clamp(stune + h, -48, 48));
+                std::snprintf(ck, sizeof ck, "sampler:%d/tune%d", node_id, sel_);
+                edited("Slice Tune", ck); }
             if (hit(rEnv, mx, my)) env_open_ = !env_open_;
         }
 
@@ -129,11 +169,9 @@ public:
         r.push_clip_rect(wf.x, wf.y, wf.w, wf.h);
         static float speaks[512];
         const int np = sframes ? S::session_sampler_source_peaks(s, track, node_id, speaks, 512) : 0;
+        // The marker colors come from the shared language (waveform_view.h) — the clip editor's
+        // waveform draws the same trim/divider/region/playhead colors from the same constants.
         const WaveformView wv{ { wf.x, wf.y, wf.w, wf.h }, 0.0, wf.w, 1.f };   // whole SOURCE, fit-to-width
-        static const float kTrim[3] = { 0.94f, 0.63f, 0.19f };     // in/out handles (amber)
-        static const float kDiv[3]  = { 0.58f, 0.66f, 0.78f };     // slice dividers
-        static const float kSel[3]  = { 0.35f, 0.55f, 0.85f };     // selected slice
-        static const float kPlay[3] = { 0.95f, 0.35f, 0.35f };     // playhead
         // A drag in progress paints from the live copy; otherwise from the committed boundaries.
         const bool dragging = (drag_ >= 0) && !ds_.empty();
         const uint32_t* S0 = dragging ? ds_.data() : bs;
@@ -144,13 +182,18 @@ public:
         if (np > 0) wv.bins(r, speaks, np);
         wv.center_line(r);
         wv.dim_outside(r, inN, outN);                              // darken the un-played head/tail
-        if (sel_ >= 0 && sel_ < NB) wv.region(r, n_of(S0[sel_]), n_of(E0[sel_]), kSel, 0.20f);
+        if (sel_ >= 0 && sel_ < NB) wv.region(r, n_of(S0[sel_]), n_of(E0[sel_]));
         float divs[64]; int nd = 0;                                // internal slice edges (shared boundaries)
         for (int i = 0; i + 1 < NB; ++i) divs[nd++] = static_cast<float>(n_of(E0[i]));
-        wv.dividers(r, divs, nd, kDiv, 0.85f, /*grab_tab*/true);
-        wv.handle(r, inN, kTrim, 3.f); wv.handle(r, outN, kTrim, 3.f);
-        if (NB == 1) { const float ph = S::session_audio_graph_node_sampler_playhead(s, track, node_id);
-                       if (ph >= 0.f) wv.playhead(r, inN + ph * (outN - inN), kPlay); }
+        wv.dividers(r, divs, nd, kWaveDivider, 0.85f, /*grab_tab*/true);
+        wv.handle(r, inN); wv.handle(r, outN);
+        // The playhead is drawn for a DRUM RACK too — the old NB==1 gate hid it in exactly the sliced
+        // case this editor exists for. The concat->source conversion is pure geometry, so it lives in
+        // layout.h and is unit-tested (test_editor_controls).
+        if (const float ph = S::session_audio_graph_node_sampler_playhead(s, track, node_id); ph >= 0.f) {
+            const double pn = sampler_playhead_norm(S0, E0, NB, ph, sframes);
+            if (pn >= 0.0) wv.playhead(r, pn);
+        }
         r.pop_clip_rect();
 
         // ---- drag: grab an in/out handle or a divider, or select a slice; commit on release -----------
@@ -187,6 +230,7 @@ public:
             if (!ds_.empty()) {
                 if (ds_.size() == 1) S::session_sampler_set_trim(s, track, node_id, ds_[0], de_[0]);
                 else S::session_sampler_reslice(s, track, node_id, ds_.data(), de_.data(), static_cast<int>(ds_.size()), root);
+                edited(drag_ >= 100 ? "Move Slice Point" : "Trim Sample");   // one entry per completed drag
             }
             drag_ = -1; ds_.clear(); de_.clear();
         }
@@ -198,18 +242,48 @@ public:
         if (sel_ != prev_kz && sel_ >= 0 && sel_ < nsl && hit(ks, mx, my))
             audition(s, track, slc[sel_].root_note);
 
-        // ---- hover status -----------------------------------------------------------------------------
+        // ---- hover status: name the thing under the cursor, not a generic instruction ------------------
+        char sbuf[128];
         std::string status;
         if (drag_ == 0)            status = "drag \xE2\x86\x92 sample start (in)";
         else if (drag_ == 1)       status = "drag \xE2\x86\x92 sample end (out)";
         else if (drag_ >= 100)     status = "drag \xE2\x86\x92 slice point";
-        else if (hit(wf, mx, my))  status = nb > 1 ? "drag edges to move slices \xC2\xB7 SLICES to add/remove"
-                                                   : "drag the amber handles to trim in/out \xC2\xB7 SLICES to cut";
-        else if (hit(ks, mx, my))  status = "the key map \xC2\xB7 each zone = a slice's note range";
+        else if (hit(wf, mx, my)) {
+            // Which slice is the cursor over, and what would a click do to it? (Clicking DOES audition —
+            // the old generic string never said so.) Near an edge, the drag verb wins.
+            const double hn = static_cast<double>(mx - wf.x) / wf.w;
+            int hovi = -1;
+            for (int i = 0; i < nb; ++i) if (hn >= n_of(bs[i]) && hn < n_of(be[i])) { hovi = i; break; }
+            const bool near_edge = at_x(n_of(bs[0])) || at_x(n_of(be[nb ? nb - 1 : 0]));
+            if (near_edge)
+                status = "drag \xE2\x86\x92 trim in/out";
+            else if (nb > 1 && hovi >= 0) {
+                std::snprintf(sbuf, sizeof sbuf, "click \xE2\x86\x92 audition slice %d / %d  \xC2\xB7  drag an edge \xE2\x86\x92 move the slice point",
+                              hovi + 1, nb);
+                status = sbuf;
+            } else {
+                status = nb > 1 ? "drag an edge \xE2\x86\x92 move the slice point  \xC2\xB7  SLICES to add/remove"
+                                : "click \xE2\x86\x92 audition  \xC2\xB7  drag the amber handles \xE2\x86\x92 trim in/out";
+            }
+        }
+        else if (hit(ks, mx, my)) {
+            // Over a zone, name the slice + the notes that trigger it; otherwise explain the strip.
+            int hz = -1;
+            for (int i = 0; i < nsl; ++i) {
+                const float zl = ks.x + (std::clamp(slc[i].lo_note, 0, 127) / 127.f) * ks.w;
+                const float zr = ks.x + (std::clamp(std::min(slc[i].hi_note + 1, 127), 0, 127) / 127.f) * ks.w;
+                if (mx >= zl && mx < std::max(zl + 2.f, zr)) { hz = i; break; }
+            }
+            if (hz >= 0) {
+                std::snprintf(sbuf, sizeof sbuf, "click \xE2\x86\x92 audition slice %d / %d  \xC2\xB7  keys %s\xE2\x80\x93%s",
+                              hz + 1, nsl, note_name(slc[hz].lo_note).s, note_name(slc[hz].hi_note).s);
+                status = sbuf;
+            } else status = "the key map \xC2\xB7 each zone = a slice's note range";
+        }
         if (!status.empty()) hover_status(r, body.x + 10.f, body.y + body.h - 22.f, status.c_str(), sty.audio);
 
         // ---- ⋯ Envelope popover (drawn LAST so it overlays the canvas) --------------------------------
-        if (env_open_) draw_env_popover(r, s, track, node_id, pop, mx, my, click);
+        if (env_open_) draw_env_popover(r, s, track, node_id, pop, mx, my, click, edited);
     }
 
 private:
@@ -223,6 +297,42 @@ private:
     // Play a slice's mapped note through the track's instrument so you can HEAR a slice as you cut it.
     static void audition(vivid::session::Session* s, int t, int pitch) {
         vivid::session::session_preview_note(s, t, std::clamp(pitch, 0, 127), 0.85f);
+    }
+
+    // ADR-0049 "clear actions": replace the loaded sample in place — the node, its wiring, and its
+    // envelope/voice params all survive; only the PCM changes. Cancelling the dialog is a no-op.
+    static void load_replace(vivid::session::Session* s, int t, int nid, int base, const EditSink& edited) {
+        const std::string p = vivid::platform::open_file_dialog(
+            "Load a sample", { "wav", "aif", "aiff", "flac", "mp3", "ogg" });
+        if (p.empty()) return;
+        if (vivid::session::session_audio_graph_load_sampler(s, t, nid, p.c_str(), base) > 0)
+            edited("Load Sample");
+    }
+
+    // ADR-0049 "no magic conversion": write a MIDI clip whose notes trigger these slices in order, so
+    // the mapping shown in the key strip becomes something you can hear and edit. Writes to the first
+    // EMPTY scene on this track — never overwrites an existing clip.
+    static void slices_to_midi(vivid::session::Session* s, int t, const SamplerSlice* slc, int n,
+                               const EditSink& edited) {
+        namespace S = vivid::session;
+        if (n <= 1) return;
+        int scene = -1;
+        for (int i = 0, sc = S::session_scene_count(s); i < sc; ++i)
+            if (S::session_clip_note_count(s, t, i) == 0) { scene = i; break; }
+        if (scene < 0) return;                       // every scene is taken: refuse rather than clobber
+        std::vector<S::ClipNote> notes;
+        notes.reserve(n);
+        for (int i = 0; i < n; ++i) {                // one 1/16 note per slice, in slice order
+            S::ClipNote cn{};
+            cn.pitch = std::clamp<int>(slc[i].root_note, 0, 127);
+            cn.start = i * 0.25;
+            cn.dur   = 0.25;
+            cn.vel   = 0.8f;
+            notes.push_back(cn);
+        }
+        const double len = std::max(4.0, std::ceil(n * 0.25));
+        S::session_set_clip(s, t, scene, notes.data(), static_cast<int>(notes.size()), len);
+        edited("Slices to MIDI");
     }
 
     // Re-cut into N equal slices spanning [in,out) of the source (N==1 => a plain melodic trim).
@@ -263,7 +373,7 @@ private:
         return { x, top, w, h };
     }
     static void draw_env_popover(Renderer2D& r, vivid::session::Session* s, int t, int nid,
-                                 Rect pop, float mx, float my, bool click) {
+                                 Rect pop, float mx, float my, bool click, const EditSink& edited) {
         const Style& sty = style();
         r.draw_rect(pop.x, pop.y, pop.w, pop.h, sty.region_hd[0], sty.region_hd[1], sty.region_hd[2], 0.99f);
         r.draw_rect_outline(pop.x, pop.y, pop.w, pop.h, 1.f, sty.sel[0], sty.sel[1], sty.sel[2], 1.0f);
@@ -278,8 +388,11 @@ private:
             else if (e[i].secs)     std::snprintf(v, sizeof v, "%.2fs", cur);
             else                    std::snprintf(v, sizeof v, "%.2f", cur);
             stepper(r, er, e[i].kick, v, stepper_hit(er, mx, my));
-            if (click) if (int h = stepper_hit(er, mx, my))
+            if (click) if (int h = stepper_hit(er, mx, my)) {
                 pset(s, t, nid, e[i].key, std::clamp(cur + e[i].step * h, e[i].lo, e[i].hi));
+                char ck[64]; std::snprintf(ck, sizeof ck, "sampler:%d/%s", nid, e[i].key);
+                edited("Sampler Param", ck);   // ADR-0017: the popover's steppers are edits too
+            }
         }
     }
 
@@ -291,16 +404,15 @@ private:
         const Style& sty = style();
         recess(r, b);
         auto xof = [&](int note) { return b.x + (std::clamp(note, 0, 127) / 127.f) * b.w; };
-        static const float kAmber[3] = { 0.94f, 0.63f, 0.19f };
-        static const float kSel[3]   = { 0.42f, 0.62f, 0.9f };
         for (int i = 0; i < n; ++i) {
             const float xl = xof(slc[i].lo_note), xr = xof(std::min(slc[i].hi_note + 1, 127));
             const bool selc = (i == sel);
-            const float* c = selc ? kSel : kAmber;
+            // Same amber/selected-blue the waveform above uses, so a zone and its slice read as one thing.
+            const float* c = selc ? kWaveRegion : kWaveTrim;
             r.draw_rect(xl, b.y + 2.f, std::max(2.f, xr - xl), b.h - 4.f, c[0], c[1], c[2], selc ? 0.42f : 0.24f);
             r.draw_rect_outline(xl, b.y + 2.f, std::max(2.f, xr - xl), b.h - 4.f, 1.f, c[0], c[1], c[2], 0.8f);
             const float rx = xof(slc[i].root_note);   // root tick within the zone
-            r.draw_rect(rx - 0.5f, b.y + 2.f, 1.f, b.h - 4.f, kAmber[0], kAmber[1], kAmber[2], 1.0f);
+            r.draw_rect(rx - 0.5f, b.y + 2.f, 1.f, b.h - 4.f, kWaveTrim[0], kWaveTrim[1], kWaveTrim[2], 1.0f);
             if (pick && hit({ xl, b.y, std::max(2.f, xr - xl), b.h }, mx, my)) *pick = (sel == i ? -1 : i);
         }
         // the sampler-level root marker (base_note) as a taller tick
@@ -335,12 +447,15 @@ private:
         for (const char* p = path; *p; ++p) if (*p == '/' || *p == '\\') b = p + 1;
         return b;
     }
-    static const char* note_name(int n) {
+    // Returns the name BY VALUE (not a shared static buffer) so two notes can be formatted in one
+    // expression — e.g. a zone's "keys C1–D#1" — without the second call clobbering the first.
+    struct NoteName { char s[8]; };
+    static NoteName note_name(int n) {
         static const char* names[12] = { "C","C#","D","D#","E","F","F#","G","G#","A","A#","B" };
-        static char buf[8];
+        NoteName o{};
         n = std::clamp(n, 0, 127);
-        std::snprintf(buf, sizeof buf, "%s%d", names[n % 12], n / 12 - 1);
-        return buf;
+        std::snprintf(o.s, sizeof o.s, "%s%d", names[n % 12], n / 12 - 1);
+        return o;
     }
 };
 

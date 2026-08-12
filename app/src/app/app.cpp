@@ -1,4 +1,5 @@
 #include "app/app.h"
+#include "app/edit_gateway.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -7,6 +8,11 @@ namespace vivid {
 
 void App::remember_project_path(const std::string& path) {
     project.remember_project_path(path);
+}
+
+// ADR-0017: the view-facing forwarder onto the undo sink (see the declaration in app.h).
+void App::note_edit(const char* label, const char* coalesce_key) {
+    if (edit_gateway && label) edit_gateway->note_edit(label, coalesce_key ? coalesce_key : "");
 }
 
 // Record the project's media root (the base a Video/Image node's relative path resolves against) and

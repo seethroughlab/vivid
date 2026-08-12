@@ -394,8 +394,16 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double beats, double mx, 
                 if (ty && std::strcmp(ty, "Sampler") == 0) {
                     static vivid::ui::SamplerEditor s_sampler_editor;
                     const Rect body{ 14.f, y0 + 26.f, static_cast<float>(w.win_w) - 28.f, w.dock_h - 32.f };
+                    // ADR-0017: the editor's mutations reach the undo gateway through this sink, via
+                    // App::note_edit — so ui/ never has to include app/edit_gateway.h (ADR-0043 layering).
+                    vivid::ui::SamplerEditor::EditSink sink{
+                        [](void* o, const char* label, const char* key) {
+                            static_cast<vivid::App*>(o)->note_edit(label, key);
+                        },
+                        w.app };
                     s_sampler_editor.draw(ui, s, body, tr, w.sel_audio_node,
-                                          static_cast<float>(w.cur_x), static_cast<float>(w.cur_y), w.mouse_left_down);
+                                          static_cast<float>(w.cur_x), static_cast<float>(w.cur_y),
+                                          w.mouse_left_down, sink);
                     return;
                 }
                 break;
