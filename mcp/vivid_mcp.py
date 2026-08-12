@@ -18,7 +18,25 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # import sibling
 import theory  # noqa: E402  — pure-Python music-theory helpers (chords/scales/rhythm)
 
 VIVID_URL = os.environ.get("VIVID_URL", "http://127.0.0.1:9876")
-mcp = FastMCP("vivid")
+mcp = FastMCP("vivid", instructions=(
+    "Vivid is a two-surface AV instrument: a DAW (tracks x scenes of clips; each track an instrument + "
+    "FX chain) wired to a rewireable visuals node-graph, joined by a mapping bridge (audio "
+    "characteristics -> visual params, and back).\n\n"
+    "POSTURE — AUTHORING IS FIRST-CLASS. The built-in operators are teaching examples, not the ceiling. "
+    "Vivid's actual product is the plumbing to AUTHOR YOUR OWN operator: scaffold -> edit -> build -> "
+    "reload, live, in seconds. When a built-in does not match the creative intent, WRITE A NEW OPERATOR "
+    "rather than force-fitting an approximate one — that is the encouraged default, not a last resort. "
+    "Custom operators live in the project folder and compile on load_project, so they ship with the piece.\n\n"
+    "WORKFLOW: (1) DISCOVER — list_operators / find_operators / find_params read the LIVE catalog with "
+    "per-param semantic hints (semantic_intent/tag/unit); choose ops and params BY INTENT, not by "
+    "guessing names. (2) If nothing fits, AUTHOR — call get_operator_authoring_guide, then "
+    "scaffold_operator_package (a C++/GPU operator) or scaffold_project_shader_operator (a WGSL/GLSL "
+    "shader), then build_operator_package / reload_operator_package; the new op appears in "
+    "list_operators immediately. (3) COMPOSE — add_node / connect_nodes / connect_mapping. (4) VERIFY — "
+    "get_graph / get_mappings / analyze_output / evaluate_visual_reactivity; get_health surfaces an op "
+    "that failed to build (errored_ops) instead of rendering silently black.\n\n"
+    "Every reply has an 'ok' bool; on failure branch on the stable `code`, not the human `error` text."
+))
 
 
 def _post(method: str, payload: dict | None = None) -> dict:
@@ -185,8 +203,17 @@ def list_operator_catalog(domain: str = "all", kind: str = "all", detail: str = 
 @mcp.tool
 def find_operators(query: str, domain: str = "all", kind: str = "all") -> dict:
     """Search the unified operator catalog by name, summary, keywords, kind, domain, plugin
-    format/class, and parameter semantic metadata."""
-    return _post("find_operators", {"query": query, "domain": domain, "kind": kind})
+    format/class, and parameter semantic metadata. IMPORTANT: if nothing matches your creative intent,
+    that is the cue to AUTHOR a new operator (built-ins are examples, not the ceiling) — see
+    get_operator_authoring_guide. A no-match reply carries an `authoring_suggestion`."""
+    r = _post("find_operators", {"query": query, "domain": domain, "kind": kind})
+    if isinstance(r, dict) and r.get("ok", True) and not r.get("count"):
+        r["authoring_suggestion"] = (
+            f"No built-in operator matches '{query}'. In Vivid, authoring your own is the encouraged "
+            f"default, not a workaround — call get_operator_authoring_guide, then scaffold_operator_package "
+            f"(a C++/GPU op) or scaffold_project_shader_operator (a WGSL/GLSL shader)."
+        )
+    return r
 
 
 @mcp.tool
@@ -2172,6 +2199,59 @@ def clone_operator(op: str, new_name: str) -> dict:
     installed / project C++ op). A shipped built-in dylib with no editable source can't be cloned;
     shaders use fork_shader."""
     return _post("clone_operator", {"op": op, "new_name": new_name})
+
+
+@mcp.tool
+def get_operator_authoring_guide() -> dict:
+    """WHEN and HOW to author your own operator — Vivid's core move. The built-ins are teaching
+    examples; the plumbing to write a NEW operator (scaffold -> edit -> build -> reload, live) is the
+    product. Read this before forcing a built-in to approximate something it was not designed for."""
+    return {
+        "posture": "Authoring a custom operator is the ENCOURAGED DEFAULT when a built-in does not match "
+                   "the intent — not a last resort. It is fast (scaffold -> edit -> reload in seconds) and "
+                   "the op ships with the project (it compiles on load_project).",
+        "author_when": [
+            "No built-in matches the look/behaviour you want (find_operators came up empty or approximate).",
+            "You are chaining/tweaking several built-ins to fake ONE effect — write the effect directly.",
+            "You need custom geometry, a specific SDF/raymarch/particle system, or a bespoke reactive mapping.",
+            "The piece has a signature visual that should be a first-class, reusable, parameterised node.",
+        ],
+        "reuse_when": [
+            "A built-in already does it (or does it with a param/mapping tweak) — prefer it; don't reinvent.",
+            "You only need a fullscreen colour/tone change — try a CustomShader (.glsl) before a C++ op.",
+        ],
+        "kinds": {
+            "gpu_visual (scaffold_operator_package)": "A C++/GPU operator — full control: a WGPU pipeline, "
+                "vertex geometry or a fullscreen pass, multi-pass, uniforms packed from param_values, reads "
+                "ctx.time for motion, writes the output texture. For geometry, SDF/3D, particles, anything "
+                "beyond a single fullscreen fragment.",
+            "shader (scaffold_project_shader_operator / CustomShader .glsl)": "A fullscreen WGSL/GLSL "
+                "fragment shader — the fastest path for a procedural look/filter driven by uv + time + params.",
+            "clone_operator / fork_shader": "Start from an existing op/shader you like and diverge.",
+        },
+        "loop": [
+            "1. This guide + find_operators to confirm nothing fits.",
+            "2. scaffold_operator_package(name, kind='gpu_visual')  OR  scaffold_project_shader_operator(name).",
+            "3. Edit the generated starter. Params are Param<float> in [0..1]; expose them in collect_params so "
+               "they are mappable and appear in list_operators with semantic hints.",
+            "4. build_operator_package(path) to check it compiles (no live mutation), then "
+               "reload_operator_package(path) to register it live — it appears in list_operators immediately.",
+            "5. add_node('<Name>') -> connect_nodes to Output; set_node_param for the base look; "
+               "connect_mapping(audio_src, 'node:<id>.<param>') for reactivity.",
+            "6. VERIFY: evaluate_visual_reactivity (reactive/legible); get_health — errored_ops>0 means the op "
+               "failed to build/init (read the node error) instead of rendering silently black.",
+        ],
+        "gotchas": [
+            "Project ops live in the project folder beside a vivid-package.json manifest and compile on "
+            "load_project — they SHIP with the project; add_node only works once the op is registered.",
+            "A GPU op that fails to build now SURFACES (get_health.errored_ops + a red node badge + a toast) "
+            "instead of a silent black frame — if your op renders black, check get_health / the node error first.",
+            "WGSL: smoothstep(edge0, edge1, x) with edge0 >= edge1 is UNDEFINED — build a reversed ramp as "
+            "1 - smoothstep(0, w, x). Pack params into a std140-aligned uniform; read ctx.time for motion.",
+            "If a project op renders black after many live reloads/edits, GPU state can rot — relaunch the app; "
+            "a fresh load registers and renders it cleanly.",
+        ],
+    }
 
 
 @mcp.tool
