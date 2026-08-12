@@ -866,6 +866,23 @@ def capture_frame(path: str = "") -> dict:
     return _post("capture_frame", payload)
 
 
+@mcp.tool
+def capture_interface(path: str = "") -> dict:
+    """Screenshot the WHOLE Vivid interface — the UI chrome, panels, session grid, node graph AND the
+    canvas — not just the visual output (that's capture_frame). Reads the app's own composited window
+    framebuffer, so it needs no screen-recording permission. Use it to SEE the interface you're driving
+    (an agent's eyes on the UI) or to make documentation screenshots. path optional (else saved under
+    the user data dir's captures/). Returns {path, pending}; the PNG is written within ~1 frame — this
+    tool waits briefly so the file exists on return."""
+    payload: dict = {}
+    if path:
+        payload["path"] = path
+    r = _post("capture_interface", payload)
+    if isinstance(r, dict) and r.get("ok", True):
+        time.sleep(0.35)   # the capture is taken in the next end_frame; give it a moment to land
+    return r
+
+
 # ---------------- video export (realtime AV) ----------------
 @mcp.tool
 def export_video(path: str, seconds: float, fps: float = 60.0) -> dict:
