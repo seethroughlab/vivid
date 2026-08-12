@@ -49,8 +49,10 @@ bool editor_mouse(Window& win, int button, int action, double mx, double my, int
 // Grows the shared dock to a comfortable editing height. Caller guards that win.editor exists.
 void editor_open_clip(Window& win, App& app, int t, int sc, int tracks) {
     namespace S = vivid::session;
-    char title[80];
-    std::snprintf(title, sizeof title, "%s  \xC2\xB7  Clip %c", S::session_track_name(app.session, t), 'A' + sc);
+    // The shell draws the clip name and its location at different weights, so build them separately.
+    char title[48], ident[64];
+    std::snprintf(title, sizeof title, "Clip %c", 'A' + sc);
+    std::snprintf(ident, sizeof ident, "%s \xC2\xB7 Scene %c", S::session_track_name(app.session, t), 'A' + sc);
     // Grow the shared dock to a comfortable editing height (the piano roll needs room); the user
     // can still resize it. Capped to 60% of the window.
     win.dock_h = std::min(std::max(win.dock_h, 320.f), win.win_h * 0.6f);
@@ -61,7 +63,7 @@ void editor_open_clip(Window& win, App& app, int t, int sc, int tracks) {
         const int nb = S::session_audio_waveform(app.session, t, sc, bins, 512);
         S::session_get_audio_trim(app.session, t, sc, &a, &b);
         const double lb = S::session_audio_loop_beats(app.session, t, sc);
-        win.editor->open_audio(t, sc, title, bins, nb, a, b, lb);
+        win.editor->open_audio(t, sc, title, ident, bins, nb, a, b, lb);
         // Load the clip's warp/pitch state + marker overlay (A5).
         win.editor->set_audio_shape(S::session_get_audio_warp(app.session, t, sc),
                                     S::session_get_audio_pitch(app.session, t, sc));
@@ -74,7 +76,7 @@ void editor_open_clip(Window& win, App& app, int t, int sc, int tracks) {
         S::ClipNote buf[256];
         const int n = S::session_get_clip(app.session, t, sc, buf, 256);
         const double len = S::session_clip_length(app.session, t, sc);
-        win.editor->open(t, sc, title, buf, n, len);
+        win.editor->open(t, sc, title, ident, buf, n, len);
         double ls = 0, le = 0;
         S::session_get_clip_loop(app.session, t, sc, &ls, &le);
         win.editor->set_loop(ls, le);

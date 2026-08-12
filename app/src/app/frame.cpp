@@ -900,7 +900,11 @@ void run_frame_loop(App& app, Window& win) {
             if (win.show_shader_library) draw_shader_library_view(ui, app.shader_library, win.win_w, win.win_h);
             if (win.show_diagnostics) draw_diagnostics_panel(ui, win.health, app, win.win_w, win.win_h);
             if (win.show_log) draw_log_view(ui, app.log, win.win_w, win.win_h);
-            if (win.show_shortcuts) draw_shortcuts_overlay(ui, win.win_w, win.win_h);   // Ph4 F3
+            // Ph4 F3 + ADR-0048 step 4: while a clip is open, the sheet also lists that editor's keys.
+            if (win.show_shortcuts)
+                draw_shortcuts_overlay(ui, win.win_w, win.win_h,
+                                       win.editor && win.editor->is_open(),
+                                       win.editor && win.editor->is_audio());
             if (win.show_gemini_key) draw_gemini_key_modal(ui, win);   // ADR-0026 key entry (on top)
             // UX Ph4 F3: a keyboard wire is pending — remind the user how to commit / cancel it.
             if (win.kbd_wire_dom)

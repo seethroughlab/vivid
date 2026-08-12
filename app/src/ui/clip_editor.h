@@ -1,5 +1,6 @@
 #pragma once
 #include "ui/renderer_2d.h"
+#include "ui/editor_shell.h"  // ADR-0048: the shared detail-view shell (TitleSpec / zone metrics)
 #include "midi/midi_clip.h"   // vivid::session::ClipNote
 #include <vector>
 #include <string>
@@ -24,10 +25,12 @@ class ClipEditor {
 public:
     enum class Tool { Select, Draw };
 
-    void open(int track, int scene, const std::string& title,
+    // `title` names the clip; `ident` says where it lives (track · scene). The shell's title strip
+    // draws them at different weights, so keep them separate rather than pre-concatenated.
+    void open(int track, int scene, const std::string& title, const std::string& ident,
               const vivid::session::ClipNote* notes, int n, double length);
     // Audio (waveform) mode: `bins` = peak amplitude per bin, trim = loop window.
-    void open_audio(int track, int scene, const std::string& title,
+    void open_audio(int track, int scene, const std::string& title, const std::string& ident,
                     const float* bins, int n, float t0, float t1, double loop_beats = 4.0);
     void close() { save_view(); open_ = false; drag_ = 0; }
     bool is_open() const { return open_; }
@@ -94,7 +97,8 @@ public:
 private:
     bool   open_ = false, dirty_ = false, docked_ = false, audio_ = false;
     int    track_ = 0, scene_ = 0;
-    std::string title_;
+    std::string title_;   // the clip's name ("Clip A")
+    std::string ident_;   // where it lives ("Bass · Scene A") — the shell draws it dimmer than the name
     std::vector<vivid::session::ClipNote> notes_;
     std::vector<uint8_t> sel_;         // selection mask, parallel to notes_
     std::vector<float> wave_;          // audio mode: peak bins
@@ -186,8 +190,10 @@ private:
     void  panel(float& x, float& y, float& w, float& h) const;
     float gx() const, gy() const, gw() const, gh() const;
     // ADR-0048: the inspector strip below the title strip (both modes). The content canvas (gy/gh)
-    // sits below it.
-    float insp_h() const { return 32.f; }
+    // sits below it. Height comes from the shared shell so the Sampler's strip matches.
+    float insp_h() const { return kShellInspH; }
+    // Which title-strip affordances this editor offers (see editor_shell.h). Shared by draw + hit.
+    TitleSpec title_spec() const;
     float lane_h() const { return audio_ ? 0.f : 54.f; }        // velocity/expression lane height
     float ruler_h() const { return audio_ ? 0.f : 15.f; }       // bars/beats ruler strip
     float roll_top() const { return gy() + ruler_h(); }         // piano-roll top (below ruler)

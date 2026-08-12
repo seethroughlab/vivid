@@ -108,6 +108,12 @@ struct App {
     void remember_project_path(const std::string& path);
     void set_media_root(const std::string& root);
 
+    // ADR-0017 convenience: forward one logical edit to the gateway (a no-op when there is none, e.g.
+    // headless). Lets a VIEW record an edit without including app/edit_gateway.h — the ui layer may not
+    // reach up into app/ (ADR-0043), but it already sees this header. Definition is in app.cpp, where
+    // EditGateway is complete.
+    void note_edit(const char* label, const char* coalesce_key = "");
+
     // Audio-thread DSP state (touched only inside the audio callback).
     float  m_flt_lo = 0.f, m_flt_hi = 0.f;   // master 3-band crossover states
     float  tr_baseline = 0.f;                // onset detector baseline
