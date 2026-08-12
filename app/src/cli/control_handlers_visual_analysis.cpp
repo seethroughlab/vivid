@@ -7,6 +7,7 @@
 #include "cli/audio_analysis_tools.h"   // compare_audio_specs (compare_variations composes audio + visual)
 #include "cli/image_analysis_tools.h"
 #include "gpu/visual_graph.h"
+#include "gpu/gpu_context.h"            // c.app->gpu — full-window screenshot (capture_interface)
 #include "platform/platform.h"
 #include "app/app.h"                    // c.app->reactivity (the per-frame perception ring)
 
@@ -111,6 +112,29 @@ void register_visual_analysis_handlers(Handlers& handlers_) {
         r["summary"] = "Captured " + std::to_string(w) + "x" + std::to_string(h) +
                        (a.value("is_blank", false) ? " (BLANK — " + a.value("blank_reason", std::string()) + ")" : "") +
                        (saved ? " -> " + path : "");
+        return r;
+    };
+    // Screenshot the WHOLE interface — UI chrome + panels + node graph + canvas — not just the visual
+    // output (that's capture_frame). Reads the app's own composited window framebuffer (no screen-
+    // recording permission). Armed here; taken in end_frame after the MSAA resolve → the PNG lands ~1
+    // frame later. Useful for docs and for an agent to actually SEE the interface it's driving.
+    handlers_["capture_interface"] = [](const ControlCtx& c, const json& b) {
+        if (!c.app || !c.app->gpu) return err(code::kBadArg, "no gpu context");
+        if (!c.app->gpu->surface_supports_copy_src())
+            return err(code::kInternal, "this GPU's surface is not copyable — interface capture unavailable");
+        std::string path = b.value("path", std::string());
+        if (path.empty()) {
+            namespace fs = std::filesystem;
+            const fs::path dir = fs::path(vivid::platform::user_data_dir()) / "captures";
+            std::error_code ec; fs::create_directories(dir, ec);
+            path = (dir / "interface.png").string();
+        }
+        c.app->gpu->request_interface_capture(path);
+        json r = ok();
+        r["path"] = path;
+        r["pending"] = true;
+        r["summary"] = "interface screenshot queued -> " + path +
+                       " (whole UI, not just the canvas; written within ~1 frame)";
         return r;
     };
     // Structured perception of the active output (or a saved image via {path}).

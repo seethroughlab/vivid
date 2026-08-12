@@ -13,6 +13,7 @@
 #include <cstring>
 
 #include "gpu/gpu_context.h"
+#include "cli/image_analysis_tools.h"   // write_png — injected as the interface-screenshot encoder
 #include "gpu/gpu_util.h"
 #include "transport.h"
 #include "audio/vst3_host.h"
@@ -215,6 +216,11 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "GpuContext init failed: %s\n", gpu.last_error().c_str());
         return 1;
     }
+    // capture_interface writes its PNG via the cli encoder; wire it once so the gpu layer keeps no
+    // image-format dependency.
+    gpu.set_png_writer([](const std::string& p, const uint8_t* rgba, uint32_t w, uint32_t h) {
+        return vivid::write_png(p, rgba, w, h);
+    });
     app.gpu = &gpu;
 
     vivid::ui::Renderer2D ui;
