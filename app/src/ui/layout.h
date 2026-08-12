@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <cstdint>   // uint32_t (sampler_playhead_norm) — clang pulls it in transitively, gcc does not
 #include <string>
 
 // Shared UI geometry + layout constants for the Vivid shell: the session grid

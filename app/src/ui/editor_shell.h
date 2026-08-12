@@ -3,6 +3,7 @@
 #include "ui/ui_style.h"        // Style, Rect, editor_panel, fit_text, draw_text_r
 #include "ui/editor_controls.h" // icon_button
 #include "ui/layout.h"          // hit(), the pure geometry home
+#include <string>               // fit_text's return — spelled out; gcc won't take it transitively
 
 // ADR-0048/0049: THE DETAIL-VIEW SHELL — "one shell, three modes".
 //
