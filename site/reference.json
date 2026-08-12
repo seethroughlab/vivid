@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-08-07T17:58:39.928486+00:00",
+  "generated_at": "2026-08-12T00:31:23.732528+00:00",
   "app_version": "0.1.1",
   "build_type": "debug",
   "operator_abi": 17,
-  "count": 70,
+  "count": 73,
   "domains": [
     "visual",
     "audio",
@@ -131,6 +131,39 @@
           "name": "output",
           "semantic_shape": "note_stream",
           "stream": "note_stream"
+        }
+      ],
+      "source": null
+    },
+    {
+      "name": "AudioInput",
+      "display_name": "Audio Input",
+      "slug": "audioinput",
+      "domain": "audio",
+      "kind": "instrument",
+      "role": "source",
+      "summary": "Hardware audio input (mic/line-in) as a graph source \u2014 monitor + react to live sound.",
+      "keywords": [
+        "audio",
+        "input",
+        "source",
+        "mic"
+      ],
+      "params": [
+        {
+          "default": 1.0,
+          "description": "Input gain applied to the captured signal",
+          "max": 4.0,
+          "min": 0.0,
+          "name": "gain",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "out",
+          "name": "output",
+          "stream": "audio_buffer"
         }
       ],
       "source": null
@@ -453,7 +486,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/blur.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/blur.wgsl",
         "tier": "bundled"
       },
       "preview": "blur.png"
@@ -672,7 +705,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/composite.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/composite.wgsl",
         "tier": "bundled"
       },
       "preview": "composite.png"
@@ -884,7 +917,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/crt.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/crt.wgsl",
         "tier": "bundled"
       },
       "preview": "crt.png"
@@ -955,12 +988,8 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "transform",
-      "summary": "Displaces a mesh's vertices with noise or a wave, so geometry ripples and breathes.",
-      "keywords": [
-        "3d",
-        "deform",
-        "displace"
-      ],
+      "summary": "",
+      "keywords": [],
       "params": [
         {
           "choices": [
@@ -1087,7 +1116,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/displace.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/displace.wgsl",
         "tier": "bundled"
       },
       "preview": "displace.png"
@@ -1358,7 +1387,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/fold.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/fold.wgsl",
         "tier": "bundled"
       },
       "preview": "fold.png"
@@ -1468,12 +1497,8 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "source",
-      "summary": "Lays out instances on a regular 3D grid \u2014 the lattice a shape is stamped across.",
-      "keywords": [
-        "3d",
-        "instances",
-        "grid"
-      ],
+      "summary": "",
+      "keywords": [],
       "params": [
         {
           "default": 16.0,
@@ -1537,12 +1562,8 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "transform",
-      "summary": "Perturbs instance transforms with noise, breaking a rigid layout into something organic.",
-      "keywords": [
-        "3d",
-        "instances",
-        "noise"
-      ],
+      "summary": "",
+      "keywords": [],
       "params": [
         {
           "default": 0.0,
@@ -1991,7 +2012,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/kaleidoscope.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/kaleidoscope.wgsl",
         "tier": "bundled"
       },
       "preview": "kaleidoscope.png"
@@ -3031,7 +3052,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/noise_field.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/noise_field.wgsl",
         "tier": "bundled"
       },
       "preview": "noisefield.png"
@@ -3172,12 +3193,8 @@
       "domain": "visual",
       "kind": "gpu_visual",
       "role": "transform",
-      "summary": "A GPU particle field \u2014 curl-noise motion, emission and lifetime, drawn as billboards.",
-      "keywords": [
-        "3d",
-        "particles",
-        "gpu"
-      ],
+      "summary": "",
+      "keywords": [],
       "params": [
         {
           "default": 1000.0,
@@ -3508,6 +3525,127 @@
           "name": "output",
           "semantic_shape": "note_stream",
           "stream": "note_stream"
+        }
+      ],
+      "source": null
+    },
+    {
+      "name": "ReactiveMaster",
+      "display_name": "ReactiveMaster",
+      "slug": "reactivemaster",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "source",
+      "summary": "",
+      "keywords": [],
+      "params": [],
+      "ports": [
+        {
+          "dir": "out",
+          "name": "level",
+          "semantic_shape": "signal"
+        },
+        {
+          "dir": "out",
+          "name": "transient",
+          "semantic_shape": "signal"
+        },
+        {
+          "dir": "out",
+          "name": "low",
+          "semantic_shape": "signal"
+        },
+        {
+          "dir": "out",
+          "name": "mid",
+          "semantic_shape": "signal"
+        },
+        {
+          "dir": "out",
+          "name": "high",
+          "semantic_shape": "signal"
+        },
+        {
+          "dir": "out",
+          "name": "beat",
+          "semantic_shape": "signal"
+        },
+        {
+          "dir": "out",
+          "name": "bar_phase",
+          "semantic_shape": "signal"
+        },
+        {
+          "dir": "out",
+          "name": "downbeat",
+          "semantic_shape": "signal"
+        },
+        {
+          "dir": "out",
+          "name": "beat_pulse",
+          "semantic_shape": "signal"
+        }
+      ],
+      "source": null
+    },
+    {
+      "name": "ReactiveTrack",
+      "display_name": "ReactiveTrack",
+      "slug": "reactivetrack",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "source",
+      "summary": "",
+      "keywords": [],
+      "params": [
+        {
+          "default": 0.0,
+          "max": 4095.0,
+          "min": 0.0,
+          "name": "track_id",
+          "type": "int"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "out",
+          "name": "level",
+          "semantic_shape": "signal"
+        },
+        {
+          "dir": "out",
+          "name": "transient",
+          "semantic_shape": "signal"
+        },
+        {
+          "dir": "out",
+          "name": "low",
+          "semantic_shape": "signal"
+        },
+        {
+          "dir": "out",
+          "name": "mid",
+          "semantic_shape": "signal"
+        },
+        {
+          "dir": "out",
+          "name": "high",
+          "semantic_shape": "signal"
+        },
+        {
+          "dir": "out",
+          "name": "note",
+          "semantic_shape": "signal"
+        },
+        {
+          "dir": "out",
+          "name": "velocity",
+          "semantic_shape": "signal"
+        },
+        {
+          "dir": "out",
+          "name": "gate",
+          "semantic_shape": "signal"
         }
       ],
       "source": null
@@ -4252,6 +4390,30 @@
           "type": "float"
         },
         {
+          "default": 0.0,
+          "group": "Instances",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "instances_only",
+          "type": "bool"
+        },
+        {
+          "default": 0.3499999940395355,
+          "group": "Instances",
+          "max": 2.0,
+          "min": 0.009999999776482582,
+          "name": "instance_smooth",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Instances",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "shadow",
+          "type": "float"
+        },
+        {
           "default": 0.8999999761581421,
           "display_hint": "color",
           "group": "Color",
@@ -4397,6 +4559,11 @@
       ],
       "ports": [
         {
+          "dir": "in",
+          "name": "instances",
+          "stream": "custom_ref"
+        },
+        {
           "dir": "out",
           "name": "scene",
           "stream": "custom_ref"
@@ -4510,7 +4677,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/shape.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/shape.wgsl",
         "tier": "bundled"
       },
       "preview": "shape.png"
@@ -4895,7 +5062,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/shatter.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/shatter.wgsl",
         "tier": "bundled"
       },
       "preview": "shatter.png"
@@ -5772,7 +5939,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/.claude/worktrees/adr-0051-lighting-rig/app/build/vivid.app/Contents/Resources/shaders/transform.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/transform.wgsl",
         "tier": "bundled"
       },
       "preview": "transform.png"
