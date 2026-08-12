@@ -245,8 +245,11 @@ def get_graph() -> dict:
 
 @mcp.tool
 def layout_graph() -> dict:
-    """Auto-arrange the op nodes into a tidy layered left->right layout (rank by depth along
-    the input chain; the 'Re-layout' button). Returns {nodes}. Positions show up in get_graph."""
+    """Auto-arrange the visual op nodes into a tidy layered LEFT->RIGHT layout — rank by depth along the
+    input chain AND the reactive control edges, so sources sit left of what they drive and the flow reads
+    cleanly. CALL THIS AFTER you build or rewire a graph: a legible, human-comprehensible arrangement is
+    part of the deliverable, not an afterthought — never leave nodes stacked or overlapping. Returns
+    {nodes}; positions show up in get_graph. (New audio-graph nodes are auto-arranged on creation.)"""
     return _post("layout_graph")
 
 
