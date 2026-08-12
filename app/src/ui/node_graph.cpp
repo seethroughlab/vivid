@@ -1571,6 +1571,12 @@ void NodeGraph::chooser_show(double sx, double sy) {
         e.accent = style().audio;
         entries.push_back(std::move(e));
     }
+    // ADR-0033 P5: a sticky NOTE — annotate the graph. Not an operator; picking it drops an editable
+    // note where the chooser was opened (this replaces the old "+ Note" chrome button).
+    { Chooser::Entry e; e.label = "Note";
+      e.summary = "sticky note \xC2\xB7 annotate the graph"; e.badge = "NOTE";
+      e.spawn = { Domain::Shared, SpawnKind::Note }; e.accent = style().gold;
+      entries.push_back(std::move(e)); }
     // ADR-0046: composable primitives first — sink bundled RECIPE ops (Instancer/Emitter/Solids) to
     // the bottom, preserving order otherwise. Each entry carries its own role now (bridge/data rows
     // stay DEFAULT), so the partition reads it directly.
@@ -1608,6 +1614,11 @@ void NodeGraph::chooser_spawn(const Chooser::Entry& e) {
         if (!existed && find_source_output(src, ni, oi)) {
             nodes_data_[ni].x = chooser_.spawn_x() - 84.f; nodes_data_[ni].y = chooser_.spawn_y() - 36.f;
         }
+    } else if (e.spawn.kind == SpawnKind::Note) {         // ADR-0033 P5: a sticky note, not an operator
+        // Drop the default-sized note centered on the chooser cursor (90 = 180/2, 48 = 96/2).
+        const int id = add_annotation(chooser_.spawn_x() - 90.f, chooser_.spawn_y() - 48.f);
+        note_edit_("Add Note");
+        note_pending_edit_ = id;   // the input layer (owns the Window) starts the text edit — see consume_pending_note_edit()
     }
 }
 
