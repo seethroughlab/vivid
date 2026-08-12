@@ -351,16 +351,36 @@ std::vector<std::pair<float, float>> AudioNodeGraph::seed_positions() const {
             if (ef[e] >= 0 && et[e] >= 0) rank[et[e]] = std::max(rank[et[e]], rank[ef[e]] + 1);
     int max_rank = 0; for (int i = 0; i < n; ++i) max_rank = std::max(max_rank, rank[i]);
     for (int i = 0; i < n; ++i) if (kind[i] == 2) rank[i] = max_rank;
-    std::vector<int> fill(max_rank + 1, 0);
-    for (int i = 0; i < n; ++i) slot[i] = fill[rank[i]]++;
-
-    // Seed spacing uses a generous row pitch — cards are variable-height (param ports), so the
-    // tallest a fresh column can get must not overlap the next row.
-    constexpr float kSeedRowPitch = 150.f;
-    out.reserve(n);
+    (void)slot;
+    // Vertical placement by BARYCENTER of predecessors (like the visual graph): a node sits level with
+    // the average of the nodes feeding it — audio AND control/modulation edges — so a chain runs in a
+    // straight line and a modulator (LFO/ADSR/…) sits next to the param it drives, instead of the old
+    // naive slot-fill that stacked a column in arbitrary order. Overlaps within a column are resolved by
+    // pushing the lower card down; cards are variable-height (param ports), so use each card's height.
+    std::vector<std::vector<int>> preds(n);
+    for (int e = 0; e < ne; ++e)
+        if (ef[e] >= 0 && et[e] >= 0 && ef[e] != et[e]) preds[et[e]].push_back(ef[e]);
+    std::vector<std::vector<int>> cols(max_rank + 1);
+    for (int i = 0; i < n; ++i) cols[rank[i]].push_back(i);
+    std::vector<float> ch(n), cy(n, 0.f);
+    for (int i = 0; i < n; ++i) ch[i] = card_height(id[i]);
+    for (int c = 0; c <= max_rank; ++c) {
+        auto& col = cols[c];
+        auto bary = [&](int node) { float s = 0.f; int k = 0; for (int p : preds[node]) { s += cy[p]; ++k; } return k ? s / k : 0.f; };
+        std::stable_sort(col.begin(), col.end(), [&](int a, int b) { return bary(a) < bary(b); });
+        float cursor = -1e9f;
+        for (int node : col) {
+            float center = bary(node), top = center - ch[node] * 0.5f;
+            if (top < cursor + kGapY) { top = cursor + kGapY; center = top + ch[node] * 0.5f; }
+            cy[node] = center; cursor = top + ch[node];
+        }
+    }
+    float min_top = 1e9f;
+    for (int i = 0; i < n; ++i) min_top = std::min(min_top, cy[i] - ch[i] * 0.5f);
+    const float shift = kPad - min_top;   // topmost card sits at kPad, never above
+    out.resize(n);
     for (int i = 0; i < n; ++i)
-        out.push_back({ kPad + rank[i] * (kCardW + kGapX),
-                        kPad + slot[i] * (kSeedRowPitch + kGapY) });
+        out[i] = { kPad + rank[i] * (kCardW + kGapX), cy[i] - ch[i] * 0.5f + shift };
     return out;
 }
 
