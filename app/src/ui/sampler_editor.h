@@ -332,16 +332,12 @@ private:
         for (int i = 0, sc = S::session_scene_count(s); i < sc; ++i)
             if (S::session_clip_note_count(s, t, i) == 0) { scene = i; break; }
         if (scene < 0) return;                       // every scene is taken: refuse rather than clobber
-        std::vector<S::ClipNote> notes;
-        notes.reserve(n);
-        for (int i = 0; i < n; ++i) {                // one 1/16 note per slice, in slice order
-            S::ClipNote cn{};
-            cn.pitch = std::clamp<int>(slc[i].root_note, 0, 127);
-            cn.start = i * 0.25;
-            cn.dur   = 0.25;
-            cn.vel   = 0.8f;
-            notes.push_back(cn);
-        }
+        // The note layout is the SHARED one (sampler_op.h) — the sampler_slices_to_midi control method
+        // calls the same helper, so the button and an agent produce an identical clip.
+        std::vector<S::ClipNote> notes(n);
+        const int wrote = sampler_slices_to_notes(slc, n, notes.data(), n);
+        notes.resize(wrote > 0 ? wrote : 0);
+        if (notes.empty()) return;
         const double len = std::max(4.0, std::ceil(n * 0.25));
         S::session_set_clip(s, t, scene, notes.data(), static_cast<int>(notes.size()), len);
         edited("Slices to MIDI");

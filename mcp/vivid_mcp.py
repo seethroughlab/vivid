@@ -1251,6 +1251,83 @@ def audio_graph_set_node_key_range(track: int, node: int, lo: int = 0, hi: int =
 
 
 @mcp.tool
+def get_sampler(track: int, node_id: int) -> dict:
+    """Read a Sampler node's loaded sample: source path, length (source_frames), sample rate,
+    channels, base_note, gate (one-shot vs gated), and the slice map — one entry per slice with its
+    [start,end) SOURCE frames and the note range that triggers it. This is the read side of the
+    Sampler editor; call it before any sampler_* edit, because those take SOURCE frames and you
+    need source_frames to address them. Node ids come from get_audio_graph."""
+    return _post("get_sampler", {"track": track, "node_id": node_id})
+
+
+@mcp.tool
+def sampler_set_trim(track: int, node_id: int, start: int, end: int) -> dict:
+    """Trim which part of the loaded sample plays: the region [start,end) in SOURCE frames (get
+    them from get_sampler.source_frames). This is the melodic framing — one region stretched across
+    the keyboard — and it REPLACES any slicing. Use it to cut silence off the head/tail. To go the
+    other way (one slice per key) use sampler_slice_equal or sampler_detect_slices."""
+    return _post("sampler_set_trim", {"track": track, "node_id": node_id, "start": start, "end": end})
+
+
+@mcp.tool
+def sampler_slice_equal(track: int, node_id: int, count: int) -> dict:
+    """Cut the played region into `count` equal slices, each mapped to its own ascending note from
+    base_note — the drum-rack framing (slice 1 on base_note, slice 2 a semitone up, …). Good for a
+    loop already on a grid, e.g. count=16 for a 1-bar 16th break. `count=1` CLEARS the slicing and
+    returns to one melodic region. For an unquantized break, sampler_detect_slices finds the actual
+    onsets instead. Returns the resulting slice map."""
+    return _post("sampler_slice_equal", {"track": track, "node_id": node_id, "count": count})
+
+
+@mcp.tool
+def sampler_detect_slices(track: int, node_id: int, sensitivity: float = 0.5) -> dict:
+    """Auto-slice the loaded sample at detected transients (onsets) and map each slice to its own
+    ascending note — the usual way to turn a drum break into a playable rack. `sensitivity` 0..1:
+    higher finds more (quieter) onsets. Returns the slice count and the resulting map; re-run with a
+    different sensitivity if you got too many/few, or place edges yourself with sampler_set_slices."""
+    return _post("sampler_detect_slices",
+                 {"track": track, "node_id": node_id, "sensitivity": sensitivity})
+
+
+@mcp.tool
+def sampler_set_slices(track: int, node_id: int, starts: list[int],
+                       ends: list[int] | None = None, base_note: int | None = None) -> dict:
+    """Place slice edges explicitly, in SOURCE frames (from get_sampler). `starts` is the list of
+    slice start positions (1..32, sorted for you); `ends` defaults to contiguous slices (each ends
+    where the next begins, the last at the sample end), so normally you pass starts only. Slices map
+    to ascending notes from `base_note` (defaults to the sampler's current one). Use this when
+    detect/equal put an edge in the wrong place."""
+    body: dict = {"track": track, "node_id": node_id, "starts": starts}
+    if ends is not None:
+        body["ends"] = ends
+    if base_note is not None:
+        body["base_note"] = base_note
+    return _post("sampler_set_slices", body)
+
+
+@mcp.tool
+def sampler_set_slice_tune(track: int, node_id: int, slice: int, semitones: int) -> dict:
+    """Pitch one slice up/down by `semitones` (-48..48) while it keeps triggering from the SAME
+    note — so you can tune a snare or drop a kick without remapping the rack. `slice` is the index
+    from get_sampler.slices."""
+    return _post("sampler_set_slice_tune",
+                 {"track": track, "node_id": node_id, "slice": slice, "semitones": semitones})
+
+
+@mcp.tool
+def sampler_slices_to_midi(track: int, node_id: int, scene: int | None = None) -> dict:
+    """Write a MIDI clip that plays the sampler's slices in order — one 1/16 note per slice, on the
+    note that triggers it — so a sliced break becomes an editable clip you can rearrange. Needs the
+    sampler to be sliced first (sampler_detect_slices / sampler_slice_equal). Writes to the first
+    EMPTY scene on this track so it never clobbers a clip; pass `scene` to overwrite one on purpose.
+    Produces exactly the clip the Sampler editor's `Slice -> MIDI` button does."""
+    body: dict = {"track": track, "node_id": node_id}
+    if scene is not None:
+        body["scene"] = scene
+    return _post("sampler_slices_to_midi", body)
+
+
+@mcp.tool
 def audio_graph_remove_node(track: int, node: int) -> dict:
     """Remove an effect node from a track's audio graph by node id (from get_audio_graph). Its
     predecessors reconnect to its successors so signal keeps flowing. Instrument and Output

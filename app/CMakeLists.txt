@@ -299,6 +299,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/cli/control_handlers_audio_clip_pool.cpp
     src/cli/control_handlers_audio_devices.cpp
     src/cli/control_handlers_audio_graph.cpp
+    src/cli/control_handlers_sampler.cpp
     src/cli/control_handlers_audio_catalog.cpp
     src/cli/control_handlers_introspection.cpp
     src/cli/control_handlers_mappings.cpp
