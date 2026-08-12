@@ -36,6 +36,7 @@ namespace vivid { namespace platform { static MenuActions g_actions; } }
 - (void)exportAudio:(id)sender    { (void)sender; if (vivid::platform::g_actions.export_audio)    vivid::platform::g_actions.export_audio(); }
 - (void)exportAv:(id)sender       { (void)sender; if (vivid::platform::g_actions.export_av)       vivid::platform::g_actions.export_av(); }
 - (void)toggleReduceMotion:(id)sender { (void)sender; if (vivid::platform::g_actions.toggle_reduce_motion) vivid::platform::g_actions.toggle_reduce_motion(); }
+- (void)relayoutGraph:(id)sender { (void)sender; if (vivid::platform::g_actions.relayout_graph) vivid::platform::g_actions.relayout_graph(); }
 - (void)selectAudioDevice:(NSMenuItem*)sender {
     NSString* n = [sender representedObject];   // nil/"" for the "System Default" item
     if (vivid::platform::g_actions.select_audio_device)
@@ -146,6 +147,12 @@ void install_menu_bar(const MenuActions& actions) {
         // persisted app setting (set_reduce_motion_checked).
         NSMenu* viewMenu = [[NSMenu alloc] initWithTitle:@"View"];
         [viewMenu setAutoenablesItems:NO];
+        {   // Re-layout Graph (⌘L): tidy the visual + audio node graphs (was an in-graph button).
+            NSMenuItem* rl = [[NSMenuItem alloc] initWithTitle:@"Re-layout Graph"
+                              action:@selector(relayoutGraph:) keyEquivalent:@"l"];
+            [rl setTarget:g_target]; [viewMenu addItem:rl]; [rl release];
+            [viewMenu addItem:[NSMenuItem separatorItem]];
+        }
         g_reduceMotionItem = [[NSMenuItem alloc] initWithTitle:@"Reduce Motion (flash limit)"
                                                         action:@selector(toggleReduceMotion:) keyEquivalent:@""];
         [g_reduceMotionItem setTarget:g_target]; [viewMenu addItem:g_reduceMotionItem]; [g_reduceMotionItem release];

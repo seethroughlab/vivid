@@ -691,11 +691,8 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     ui.push_clip_rect(w.split_x, kTopBarH, W - w.split_x, w.dock_top() - kTopBarH);
     // (No edge accent bar here: hard against the splitter it reads as a stray line, not identity.
     // The visual domain announces itself through the graph's own cyan node/port coloring.)
-    { const Rect rl = graph_relayout_rect(w.win_w, w.win_h, w.split_x, w.dock_h);
-      const bool rlh = hit(rl, mx, my);
-      item_box(ui, rl, sty.gpu, rlh);
-      ui.draw_text(rl.x + 8.f, rl.y + 2.f, "Re-layout", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
-    // ADR-0033 P5: the "+ Note" sticky-note create button, left of Re-layout.
+    // (Re-layout moved to the native View menu — ⌘L. See platform/menu_bar.*.)
+    // ADR-0033 P5: the "+ Note" sticky-note create button (top-right of the visuals column).
     { const Rect nb = graph_add_note_rect(w.win_w, w.win_h, w.split_x, w.dock_h);
       const bool nbh = hit(nb, mx, my);
       item_box(ui, nb, sty.gold, nbh);
@@ -766,9 +763,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         const Rect hdr = audio_pane_hdr_rect(pane);
         ui.draw_text(hdr.x + 2.f, hdr.y + 5.f, vivid::session::session_track_name(s, tr),
                      sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.78f);
-        { const Rect rb = audio_pane_relayout_rect(pane); const bool rh = hit(rb, mx, my);
-          item_box(ui, rb, sty.audio, rh);
-          ui.draw_text(rb.x + 8.f, rb.y + 2.f, "Re-layout", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
+        // (Re-layout moved to the native View menu — ⌘L relays out whichever graph is in view.)
         // Show "Editor" for a plugin node with a native GUI — VST3 (has a controller) or CLAP (clap.gui).
         if (w.sel_audio_node >= 0 &&
             (vivid::session::session_audio_graph_node_controller(s, tr, w.sel_audio_node) ||

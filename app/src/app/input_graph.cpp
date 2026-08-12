@@ -706,12 +706,7 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my, int mo
     const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
     prime(app, win);
     const Rect ag_pane = audio_graph_pane(win.split_x, win.win_h, win.dock_h, S::session_scene_count(app.session));
-    // "Re-layout" button (audio-pane header) → snap the graph back to the tidy auto-arrangement.
-    if (hit(audio_pane_relayout_rect(ag_pane), mx, my)) {
-        relayout();
-        if (app.edit_gateway) app.edit_gateway->note_edit("Auto-Layout", "ag-relayout");   // ADR-0017
-        return true;
-    }
+    // (Audio-pane "Re-layout" is now a native View menu item — ⌘L relays out the current audio graph.)
     // "Editor" button (audio-pane header) → open the selected node's native plugin editor (VST3 or CLAP).
     if (win.sel_audio_node >= 0
         && hit(audio_pane_editor_rect(ag_pane), mx, my)) {
