@@ -382,32 +382,37 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double beats, double mx, 
         // The audio node CANVAS lives below the session view now (drawn by draw_ui); the bottom dock is
         // the UNIFIED param inspector, so here we render ONLY the selected audio node's param strip.
         const int tr = std::min(std::max(w.focus.track, 0), vivid::session::session_track_count(s) - 1);
-        section_header(ui, 12.f, y0 + 7.f, vivid::session::session_track_name(s, tr), sty.audio);
         // ADR-0049 slice 5: a selected Sampler node gets its first-class editor (identity + waveform +
         // key-zone mapping + the high-frequency controls) in place of the generic param rows.
+        bool sampler_view = false;
         if (w.sel_audio_node >= 0) {
             namespace SS = vivid::session;
             const int nc = SS::session_track_audio_graph_node_count(s, tr);
             for (int i = 0; i < nc; ++i) {
                 if (SS::session_track_audio_graph_node_id(s, tr, i) != w.sel_audio_node) continue;
                 const char* ty = SS::session_track_audio_graph_node_type(s, tr, i);
-                if (ty && std::strcmp(ty, "Sampler") == 0) {
-                    static vivid::ui::SamplerEditor s_sampler_editor;
-                    const Rect body{ 14.f, y0 + 26.f, static_cast<float>(w.win_w) - 28.f, w.dock_h - 32.f };
-                    // ADR-0017: the editor's mutations reach the undo gateway through this sink, via
-                    // App::note_edit — so ui/ never has to include app/edit_gateway.h (ADR-0043 layering).
-                    vivid::ui::SamplerEditor::EditSink sink{
-                        [](void* o, const char* label, const char* key) {
-                            static_cast<vivid::App*>(o)->note_edit(label, key);
-                        },
-                        w.app };
-                    s_sampler_editor.draw(ui, s, body, tr, w.sel_audio_node,
-                                          static_cast<float>(w.cur_x), static_cast<float>(w.cur_y),
-                                          w.mouse_left_down, sink);
-                    return;
-                }
+                sampler_view = ty && std::strcmp(ty, "Sampler") == 0;
                 break;
             }
+        }
+        // The Sampler editor paints the SHARED shell (its own title strip carries the track ident), so
+        // the generic section header would be a second, competing title. Every other node keeps it.
+        if (!sampler_view)
+            section_header(ui, 12.f, y0 + 7.f, vivid::session::session_track_name(s, tr), sty.audio);
+        if (sampler_view) {
+            static vivid::ui::SamplerEditor s_sampler_editor;
+            const Rect body{ 12.f, y0 + 2.f, static_cast<float>(w.win_w) - 24.f, w.dock_h - 10.f };
+            // ADR-0017: the editor's mutations reach the undo gateway through this sink, via
+            // App::note_edit — so ui/ never has to include app/edit_gateway.h (ADR-0043 layering).
+            vivid::ui::SamplerEditor::EditSink sink{
+                [](void* o, const char* label, const char* key) {
+                    static_cast<vivid::App*>(o)->note_edit(label, key);
+                },
+                w.app };
+            s_sampler_editor.draw(ui, s, body, tr, w.sel_audio_node,
+                                  static_cast<float>(w.cur_x), static_cast<float>(w.cur_y),
+                                  w.mouse_left_down, sink);
+            return;
         }
         AudioNodeGraph& ag = *w.app->audio_graph;   // ADR-0023 step 6: the one persistent instance, re-primed
         ag.prime(*w.app, w);                        // node-canvas bounds + param bounds (dock) + selection

@@ -1,6 +1,7 @@
 #include "ui/clip_editor.h"
 #include "ui/ui_style.h"
 #include "ui/editor_controls.h"   // ADR-0048: the shared control substrate (icon_button, segmented, …)
+#include "ui/editor_shell.h"      // ADR-0048: the shared detail-view shell (zones, title strip, packer)
 #include "ui/waveform_view.h"     // ADR-0048/0049: the shared waveform component (one waveform language)
 #include "midi/note_ops.h"
 #include "midi/note_tools.h"
@@ -16,52 +17,52 @@ using vivid::session::ExprCurve;
 
 static constexpr float kFloatW = 900.f, kFloatH = 560.f;  // floating size
 static constexpr float kDockH  = 300.f;                   // docked bottom-strip height
-static constexpr float kEditorHeaderH = 30.f;
+static constexpr float kEditorHeaderH = kShellTitleH;     // the shell owns the title-strip height now
 
-// ADR-0048: shared header-control rects — draw() and on_down() compute a control's bounds from the SAME
-// helper, so the click target can never drift from what's drawn (the old code hand-authored mismatched
-// x-ranges in each). More controls migrate to real widgets + a laid-out inspector strip in later slices.
-static Rect close_btn_rect(float px, float py, float pw) { return { px + pw - 26.f, py + 6.f, 20.f, 18.f }; }
-static Rect dock_btn_rect (float px, float py, float pw) { return { px + pw - 76.f, py + 6.f, 44.f, 18.f }; }
-// Title-strip transport buttons, right side (left of the dock/close buttons).
-static Rect fit_btn_rect  (float px, float py, float pw) { return { px + pw - 108.f, py + 6.f, 26.f, 18.f }; }
-static Rect follow_btn_rect(float px, float py, float pw){ return { px + pw - 138.f, py + 6.f, 26.f, 18.f }; }
+// ADR-0048: the title-strip button rects come from the SHARED shell (editor_shell.h) so the Sampler's
+// strip and this one can't drift. `title_spec()` says which affordances this mode offers; the button
+// geometry then follows from that one description, for both draw and hit-test.
+TitleSpec ClipEditor::title_spec() const {
+    TitleSpec t;
+    t.name  = title_.c_str();
+    t.ident = ident_.c_str();
+    t.mode  = audio_ ? EditorMode::Audio : EditorMode::Midi;
+    t.follow = t.fit = t.dock = t.close = true;   // a clip editor is a drill-in: it gets the full row
+    t.follow_on = follow_;
+    t.docked    = docked_;
+    return t;
+}
 
 // ADR-0048: the MIDI inspector strip — real controls, packed left-to-right, one shared Rect each for
-// draw + hit. `midi_insp()` is pure geometry (from the panel), so draw() and on_down() lay out identically.
+// draw + hit. `midi_insp()` is pure geometry (from the panel), so draw() and on_down() lay out
+// identically. The packer itself is the shell's, shared with the audio + Sampler strips.
 struct MidiInsp { Rect tool, grid, fold, key, scale, ghost, step, lane, quant, xform; };
-static MidiInsp midi_insp(float px, float py, float /*pw*/) {
-    const float y = py + kEditorHeaderH + 5.f, h = 22.f;
-    float x = px + 10.f;
-    auto take = [&](float w) { Rect r{ x, y, w, h }; x += w + 6.f; return r; };
-    auto gap  = [&]() { x += 8.f; };
+static MidiInsp midi_insp(float px, float py, float pw) {
+    InspectorStrip s = InspectorStrip::begin({ px, py, pw, 0.f });
     MidiInsp m;
-    m.tool  = take(112.f); gap();      // Draw | Select
-    m.grid  = take(116.f); gap();      // GRID stepper (wide enough for kicker + value)
-    m.fold  = take(46.f);              // toggles
-    m.ghost = take(52.f);
-    m.step  = take(46.f);  gap();
-    m.key   = take(64.f);              // KEY (scale root) dropdown
-    m.scale = take(76.f);  gap();      // SCALE (type) dropdown
-    m.lane  = take(96.f);  gap();      // velocity/expression lane
-    m.quant = take(84.f);              // Quantize
-    m.xform = take(104.f);             // ⋯ Transform menu
+    m.tool  = s.take(112.f); s.gap();  // Draw | Select
+    m.grid  = s.take(116.f); s.gap();  // GRID stepper (wide enough for kicker + value)
+    m.fold  = s.take(46.f);            // toggles
+    m.ghost = s.take(52.f);
+    m.step  = s.take(46.f);  s.gap();
+    m.key   = s.take(64.f);            // KEY (scale root) dropdown
+    m.scale = s.take(76.f);  s.gap();  // SCALE (type) dropdown
+    m.lane  = s.take(96.f);  s.gap();  // velocity/expression lane
+    m.quant = s.take(84.f);            // Quantize
+    m.xform = s.take(104.f);           // ⋯ Transform menu
     return m;
 }
 // ADR-0048: the AUDIO inspector strip — real controls (warp / auto / pitch / slice / slice→MIDI), one
 // shared Rect each for draw + hit, driving the same `aud_req_` commit bits the old header text did.
 struct AudioInsp { Rect warp, autow, pitch, slice, to_midi; };
-static AudioInsp audio_insp(float px, float py, float /*pw*/) {
-    const float y = py + kEditorHeaderH + 5.f, h = 22.f;
-    float x = px + 10.f;
-    auto take = [&](float w) { Rect r{ x, y, w, h }; x += w + 6.f; return r; };
-    auto gap  = [&]() { x += 8.f; };
+static AudioInsp audio_insp(float px, float py, float pw) {
+    InspectorStrip s = InspectorStrip::begin({ px, py, pw, 0.f });
     AudioInsp a;
-    a.warp    = take(196.f); gap();    // Off | Cplx | Beat | Rept
-    a.autow   = take(92.f);            // Auto-warp
-    a.pitch   = take(104.f); gap();    // PITCH stepper
-    a.slice   = take(150.f);           // Off | Tran | Grid
-    a.to_midi = take(116.f);           // Slice → MIDI
+    a.warp    = s.take(196.f); s.gap();   // Off | Cplx | Beat | Rept
+    a.autow   = s.take(92.f);             // Auto-warp
+    a.pitch   = s.take(104.f); s.gap();   // PITCH stepper
+    a.slice   = s.take(150.f);            // Off | Tran | Grid
+    a.to_midi = s.take(116.f);            // Slice → MIDI
     return a;
 }
 
@@ -281,10 +282,10 @@ void ClipEditor::save_view() {
     view_mem_[{track_, scene_}] = ViewState{ view_beat0_, beat_px_, row_h_, view_row_top_ };
 }
 
-void ClipEditor::open(int track, int scene, const std::string& title,
+void ClipEditor::open(int track, int scene, const std::string& title, const std::string& ident,
                       const vivid::session::ClipNote* notes, int n, double length) {
     save_view();                          // remember the previously-open clip's view
-    track_ = track; scene_ = scene; title_ = title;
+    track_ = track; scene_ = scene; title_ = title; ident_ = ident;
     length_ = length > 0 ? length : 4.0;
     notes_.assign(notes, notes + (n > 0 ? n : 0));
     sel_.assign(notes_.size(), 0);
@@ -309,9 +310,9 @@ void ClipEditor::open(int track, int scene, const std::string& title,
     }
 }
 
-void ClipEditor::open_audio(int track, int scene, const std::string& title,
+void ClipEditor::open_audio(int track, int scene, const std::string& title, const std::string& ident,
                             const float* bins, int n, float t0, float t1, double loop_beats) {
-    track_ = track; scene_ = scene; title_ = title;
+    track_ = track; scene_ = scene; title_ = title; ident_ = ident;
     wave_.assign(bins, bins + (n > 0 ? n : 0));
     t0_ = t0; t1_ = t1;
     aud_loop_ = loop_beats > 0 ? loop_beats : 4.0;
@@ -371,11 +372,12 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
     }
     // Title strip: close / dock (both modes), MIDI follow/fit, audio per-mode controls, or drag-to-move.
     if (y < py + kEditorHeaderH) {
-        // ADR-0048: hit-test the SAME rects the controls are drawn from (no magic-offset drift).
-        if (hit(close_btn_rect(px, py, pw), x, y)) { close(); return true; }             // [✕]
-        if (hit(dock_btn_rect(px, py, pw), x, y)) { docked_ = !docked_; drag_ = 0; return true; }  // dock
-        if (hit(follow_btn_rect(px, py, pw), x, y)) { follow_ = !follow_; return true; }
-        if (hit(fit_btn_rect(px, py, pw), x, y)) { fit_view(); return true; }
+        // ADR-0048: hit-test the SAME rects the shell drew (no magic-offset drift).
+        const TitleButtons b = title_buttons({ px, py, pw, ph }, title_spec());
+        if (hit(b.close, x, y)) { close(); return true; }                                // [✕]
+        if (hit(b.dock, x, y)) { docked_ = !docked_; drag_ = 0; return true; }           // dock / float
+        if (hit(b.follow, x, y)) { follow_ = !follow_; return true; }
+        if (hit(b.fit, x, y)) { fit_view(); return true; }
         if (!docked_) { drag_ = 3; down_off_x_ = x - px_; down_off_y_ = y - py_; }       // start move
         return true;
     }
@@ -863,20 +865,21 @@ void ClipEditor::draw(Renderer2D& r) {
     if (!open_) return;
     float px, py, pw, ph; panel(px, py, pw, ph);
     const Style& sty = style();
-    editor_panel(r, { px, py, pw, ph }, title_.c_str(), sty.audio, kEditorHeaderH);
     auto hov = [&](Rect rr) { return hit(rr, hover_x_, hover_y_); };
     hover_status_.clear();
-    // ADR-0048: shared title-strip controls (both modes) — dock/float toggle + close, real bounded buttons.
-    icon_button(r, dock_btn_rect(px, py, pw), docked_ ? "float" : "dock", hov(dock_btn_rect(px, py, pw)));
-    icon_button(r, close_btn_rect(px, py, pw), "\xE2\x9C\x95", hov(close_btn_rect(px, py, pw)), false, sty.red);  // ✕
-    icon_button(r, follow_btn_rect(px, py, pw), "Flw", hov(follow_btn_rect(px, py, pw)), follow_);   // follow (active)
-    icon_button(r, fit_btn_rect(px, py, pw), "Fit", hov(fit_btn_rect(px, py, pw)));                  // fit view
-    // Inspector strip background (shared shell zone).
-    r.draw_rect(px + 1.f, py + kEditorHeaderH + 1.f, pw - 2.f, insp_h() - 1.f, sty.region[0], sty.region[1], sty.region[2], 1.0f);
-    r.draw_rect(px + 1.f, py + kEditorHeaderH + insp_h(), pw - 2.f, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
+    // ADR-0048: zones 1+2 are the SHARED shell's — panel chrome, name · ident · mode chip · readout,
+    // the title buttons, and the inspector-strip background. The Sampler editor paints the same one.
+    char readout[64];
+    if (audio_)   // audio mode had NO readout before: the geometry line was inside the MIDI branch
+        std::snprintf(readout, sizeof readout, "%.3g bars \xC2\xB7 %+d st \xC2\xB7 %s",
+                      aud_loop_ / 4.0, static_cast<int>(std::lround(aud_pitch_)),
+                      aud_warp_mode_ < 0 ? "no warp" : "warped");
+    else
+        std::snprintf(readout, sizeof readout, "%s \xC2\xB7 %d sel", kGrids[grid_idx_].label, selected_count());
+    TitleSpec tspec = title_spec();
+    tspec.readout = readout;
+    shell_chrome(r, { px, py, pw, ph }, tspec, hover_x_, hover_y_);
     if (!audio_) {
-        { char rd[48]; std::snprintf(rd, sizeof rd, "%s \xC2\xB7 %d sel", kGrids[grid_idx_].label, selected_count());
-          draw_text_r(r, follow_btn_rect(px, py, pw).x - 10.f, py + 9.f, rd, sty.dim, 1.0f, sty.fs_value); }
         // MIDI inspector controls, each drawn + hit from the SAME midi_insp() rect.
         const MidiInsp m = midi_insp(px, py, pw);
         segmented(r, m.tool, { "Draw", "Select" }, tool_ == Tool::Draw ? 0 : 1,
@@ -955,8 +958,8 @@ void ClipEditor::draw(Renderer2D& r) {
         if (is_black(p)) r.draw_rect(GX, y, GW, RH, 0.09f, 0.10f, 0.12f, 1.0f);
         if (scale_root_ >= 0) {
             const int pc = (((p - scale_root_) % 12) + 12) % 12;
-            if (pc == 0)                              r.draw_rect(GX, y, GW, RH, 0.35f, 0.85f, 0.45f, 0.17f);
-            else if (kScales[scale_type_].mask & (1u << pc)) r.draw_rect(GX, y, GW, RH, 0.35f, 0.85f, 0.45f, 0.07f);
+            if (pc == 0)                              r.draw_rect(GX, y, GW, RH, sty.roll_scale[0], sty.roll_scale[1], sty.roll_scale[2], 0.17f);
+            else if (kScales[scale_type_].mask & (1u << pc)) r.draw_rect(GX, y, GW, RH, sty.roll_scale[0], sty.roll_scale[1], sty.roll_scale[2], 0.07f);
         }
         if (p % 12 == 0) {
             r.draw_rect(GX, y, GW, 1.f, 0.22f, 0.24f, 0.28f, 1.0f);
@@ -991,22 +994,23 @@ void ClipEditor::draw(Renderer2D& r) {
         for (const auto& n : ghost_notes_) {
             const float nx = xb(n.start), ny = yp(n.pitch), nw = std::max(2.f, float(n.dur) * bw());
             if (ny >= RBOT || ny + RH <= RTOP || nx > GX + GW || nx + nw < GX) continue;
-            r.draw_rect(nx, ny + 1.f, nw, RH - 2.f, 0.30f, 0.34f, 0.42f, 0.5f);
+            r.draw_rect(nx, ny + 1.f, nw, RH - 2.f, sty.note_ghost[0], sty.note_ghost[1], sty.note_ghost[2], 0.5f);
         }
     }
-    // Notes.
+    // Notes. Velocity darkens the body; SELECTION is the same hue lifted plus a white-ish ring — it no
+    // longer borrows gold (the loop region) or sel-blue (the focus frame), so each color means one thing.
     for (size_t i = 0; i < notes_.size(); ++i) {
         const auto& n = notes_[i];
         const float nx = xb(n.start), ny = yp(n.pitch), nw = std::max(2.f, float(n.dur) * bw());
         if (ny >= RBOT || ny + RH <= RTOP) continue;
         const float v = 0.4f + 0.5f * std::clamp(n.vel, 0.f, 1.f);
         if (sel_[i]) {
-            r.draw_rect(nx - 1.f, ny, nw + 2.f, RH, 0.98f, 0.86f, 0.42f, 1.0f);   // selection halo
-            r.draw_rect(nx, ny + 1.f, nw, RH - 2.f, 0.42f, 0.60f, 0.95f, 1.0f);
+            r.draw_rect(nx - 1.f, ny, nw + 2.f, RH, sty.text[0], sty.text[1], sty.text[2], 0.9f);   // selection ring
+            r.draw_rect(nx, ny + 1.f, nw, RH - 2.f, sty.note_sel[0], sty.note_sel[1], sty.note_sel[2], 1.0f);
         } else {
-            r.draw_rect(nx, ny + 1.f, nw, RH - 2.f, 0.30f * v + 0.1f, 0.78f * v, 0.80f * v, 1.0f);
+            r.draw_rect(nx, ny + 1.f, nw, RH - 2.f, sty.note[0] * v, sty.note[1] * v, sty.note[2] * v, 1.0f);
         }
-        r.draw_rect(nx, ny + 1.f, 2.f, RH - 2.f, 0.6f, 0.92f, 0.9f, 1.0f);
+        r.draw_rect(nx, ny + 1.f, 2.f, RH - 2.f, sty.note_sel[0], sty.note_sel[1], sty.note_sel[2], 1.0f);  // start tick
     }
     // Bottom lane: velocity bars, or a painted per-note expression curve for one MPE axis.
     const float laneTop = lane_top(), laneBot = GY + GH, laneH = laneBot - laneTop - 6.f;
@@ -1019,9 +1023,10 @@ void ClipEditor::draw(Renderer2D& r) {
             const float bx = xb(n.start);
             if (bx < GX - 2.f || bx > GX + GW) continue;
             const float h = std::clamp(n.vel, 0.f, 1.f) * laneH;
-            const bool s = sel_[i] != 0;
-            r.draw_rect(bx, laneBot - 3.f - h, 2.5f, h,
-                        s ? 0.98f : 0.35f, s ? 0.72f : 0.66f, s ? 0.30f : 0.72f, 1.0f);
+            // A bar carries its note's selection state with the SAME two tokens the roll uses, so the
+            // lane and the roll agree about what is selected (it used to say gold down here, blue up there).
+            const float* c = sel_[i] ? sty.note_sel : sty.note;
+            r.draw_rect(bx, laneBot - 3.f - h, 2.5f, h, c[0], c[1], c[2], 1.0f);
         }
     } else {
         char lbl[24]; std::snprintf(lbl, sizeof lbl, "%s%s", kAxisNames[lane_axis_], bend_snap_ && lane_axis_ == 0 ? " (snap)" : "");
@@ -1063,18 +1068,18 @@ void ClipEditor::draw(Renderer2D& r) {
     if (loop_end_ > loop_start_ + 1e-6) {
         const float lx0 = std::max(xb(loop_start_), GX), lx1 = std::min(xb(loop_end_), GX + GW);
         if (lx1 > lx0) {
-            r.draw_rect(lx0, GY, lx1 - lx0, ruler_h(), 0.95f, 0.78f, 0.32f, 0.35f);        // ruler brace
-            r.draw_rect(lx0, roll_top(), lx1 - lx0, lane_top() - roll_top(), 0.95f, 0.78f, 0.32f, 0.05f);  // region tint
+            r.draw_rect(lx0, GY, lx1 - lx0, ruler_h(), sty.roll_loop[0], sty.roll_loop[1], sty.roll_loop[2], 0.35f);        // ruler brace
+            r.draw_rect(lx0, roll_top(), lx1 - lx0, lane_top() - roll_top(), sty.roll_loop[0], sty.roll_loop[1], sty.roll_loop[2], 0.05f);  // region tint
         }
         const float e0 = xb(loop_start_), e1 = xb(loop_end_);
-        if (e0 >= GX && e0 < GX + GW) r.draw_rect(e0, GY, 1.5f, GH, 0.95f, 0.78f, 0.32f, 0.85f);
-        if (e1 >= GX && e1 < GX + GW) r.draw_rect(e1 - 1.5f, GY, 1.5f, GH, 0.95f, 0.78f, 0.32f, 0.85f);
+        if (e0 >= GX && e0 < GX + GW) r.draw_rect(e0, GY, 1.5f, GH, sty.roll_loop[0], sty.roll_loop[1], sty.roll_loop[2], 0.85f);
+        if (e1 >= GX && e1 < GX + GW) r.draw_rect(e1 - 1.5f, GY, 1.5f, GH, sty.roll_loop[0], sty.roll_loop[1], sty.roll_loop[2], 0.85f);
     }
     // Playhead (spans roll + lane).
     if (playhead_ >= 0.0 && length_ > 0.0) {
         double p = std::fmod(playhead_, length_); if (p < 0) p += length_;
         const float x = xb(p);
-        if (x >= GX && x < GX + GW) r.draw_rect(x, GY, 1.5f, GH, 0.95f, 0.35f, 0.35f, 1.0f);
+        if (x >= GX && x < GX + GW) r.draw_rect(x, GY, 1.5f, GH, sty.roll_head[0], sty.roll_head[1], sty.roll_head[2], 1.0f);
     }
     // Scrollbars (drawn over the roll; hidden when the content fits).
     { float tx, ty, tw, th, t0, tl;
@@ -1086,10 +1091,12 @@ void ClipEditor::draw(Renderer2D& r) {
           r.draw_rect(tx, ty, tw, th, 0.10f, 0.11f, 0.13f, 0.7f);
           r.draw_rect(t0, ty + 1.f, tl, th - 2.f, 0.42f, 0.45f, 0.52f, 0.9f);
       } }
-    // Step-input cursor: a gold vertical marking where the next note lands.
+    // Step-input cursor: a vertical marking where the next note lands. Its own token — it used to be
+    // the same gold as the loop region, so a loop edge and the write position were indistinguishable.
     if (step_mode_ && length_ > 0.0) {
         const float x = xb(std::fmod(step_cursor_, length_));
-        if (x >= GX && x < GX + GW) r.draw_rect(x, GY, 1.5f, GH, 0.95f, 0.78f, 0.30f, 0.9f);
+        if (x >= GX && x < GX + GW)
+            r.draw_rect(x, GY, 1.5f, GH, sty.roll_step[0], sty.roll_step[1], sty.roll_step[2], 0.9f);
     }
     // Marquee rectangle.
     if (drag_ == 4) {

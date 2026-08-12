@@ -2,6 +2,7 @@
 #include "ui/renderer_2d.h"
 #include "ui/ui_style.h"          // Style, Rect, hit(), section_header, draw_text_r, fit_text
 #include "ui/editor_controls.h"   // icon_button, segmented, stepper, menu_button, hover_status
+#include "ui/editor_shell.h"      // the shared detail-view shell: zones, title strip, strip packer
 #include "ui/waveform_view.h"     // the shared waveform language (ADR-0048 slice 3b)
 #include "ui/layout.h"            // segmented_hit / stepper_hit (pure geometry)
 #include "audio/vst3_host.h"      // session_sampler_* + node param accessors
@@ -58,33 +59,44 @@ public:
         uint32_t bs[64], be[64];
         const int nb = sframes ? S::session_sampler_edit_boundaries(s, track, node_id, bs, be, 64) : 0;
 
-        // ---- identity line (name + geometry) ----------------------------------------------------------
+        // ---- ZONE 1: the SHARED title strip (editor_shell.h) -------------------------------------------
+        // The same component the clip editor paints: name · ident · MODE CHIP · readout. A docked
+        // Sampler is a track's HOME detail view, not a drill-in, so its TitleSpec asks for no
+        // close/float/follow/fit — the affordances differ, the implementation does not.
         const char* name = (src && *src) ? base_name(src) : (loaded ? "(sample)" : nullptr);
+        char ident[64], readout[96];
+        std::snprintf(ident, sizeof ident, "Sampler \xC2\xB7 %s", S::session_track_name(s, track));
+        if (loaded && name) {
+            const double secs = info.sample_rate ? (double)info.frames / info.sample_rate : 0.0;
+            std::snprintf(readout, sizeof readout, "%.2fs \xC2\xB7 %d Hz \xC2\xB7 %dch \xC2\xB7 %d slice%s \xC2\xB7 %s",
+                          secs, info.sample_rate, info.channels,
+                          nsl, nsl == 1 ? "" : "s", info.gate ? "gated" : "one-shot");
+        } else {
+            std::snprintf(readout, sizeof readout, "no sample loaded");
+        }
+        TitleSpec tspec;
+        tspec.name = name ? name : "(no sample)";
+        tspec.ident = ident;
+        tspec.readout = readout;
+        tspec.mode = EditorMode::Sampler;
+        shell_chrome(r, body, tspec, mx, my);
+
         if (!loaded || !name) {
             // Nothing loaded: an ACTION, not just a placeholder. ADR-0049 asks for load/replace as a
             // clear action; telling the user to go do it somewhere else was the gap.
-            const float cy = body.y + body.h * 0.5f;
-            const Rect rLoad{ body.x + 14.f, cy - 12.f, 132.f, 24.f };
+            const Rect cv = shell_canvas_rect(body);
+            const float cy = cv.y + cv.h * 0.5f;
+            const Rect rLoad{ cv.x + 4.f, cy - 12.f, 132.f, 24.f };
             icon_button(r, rLoad, "\xE2\x97\x89 Load sample", hov(rLoad));
             if (click && hit(rLoad, mx, my)) load_replace(s, track, node_id, 60, edited);
             r.draw_text(rLoad.x + rLoad.w + 12.f, cy - 6.f,
                         "or drop an audio file on this node", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_value);
             return;
         }
-        {
-            char id[160];
-            const double secs = info.sample_rate ? (double)info.frames / info.sample_rate : 0.0;
-            std::snprintf(id, sizeof id, "%s   \xC2\xB7   %.2fs \xC2\xB7 %d Hz \xC2\xB7 %dch \xC2\xB7 %d slice%s \xC2\xB7 %s",
-                          name, secs, info.sample_rate, info.channels,
-                          nsl, nsl == 1 ? "" : "s", info.gate ? "gated" : "one-shot");
-            r.draw_text(body.x + 2.f, body.y, fit_text(r, id, body.w - 12.f, sty.fs_value).c_str(),
-                        sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_value);
-        }
 
-        // ---- inspector strip: the high-frequency controls ---------------------------------------------
-        const float IY = body.y + 20.f, IH = 24.f;
-        float x = body.x + 2.f;
-        auto place = [&](float w) { Rect rr{ x, IY, w, IH }; x += w + 6.f; return rr; };
+        // ---- ZONE 2: the inspector strip, packed by the SHARED packer ---------------------------------
+        InspectorStrip strip = InspectorStrip::begin(body);
+        auto place = [&](float w) { return strip.take(w); };
 
         const int   root = pget_i(s, track, node_id, "base_note", info.base_note);
         const int   gate = pget_i(s, track, node_id, "gate", info.gate);
@@ -161,10 +173,10 @@ public:
         const bool pop_hit = env_open_ && hit(pop, mx, my);
         if (env_open_ && click && !pop_hit && !hit(rEnv, mx, my)) env_open_ = false;
 
-        // ---- waveform canvas: the WHOLE source with draggable in/out + slice edges (SOURCE space) ------
-        const float canvas_top = IY + IH + 8.f;
+        // ---- ZONE 3: the canvas — the WHOLE source with draggable in/out + slice edges (SOURCE space) --
+        const Rect canvas = shell_canvas_rect(body);               // the shell's zone-3 rect
         const float ksH = 26.f;                                    // key-zone strip height (below the waveform)
-        const Rect wf{ body.x + 4.f, canvas_top, body.w - 8.f, std::max(30.f, body.y + body.h - canvas_top - ksH - 6.f) };
+        const Rect wf{ canvas.x, canvas.y, canvas.w, std::max(30.f, canvas.h - ksH - 4.f) };
         recess(r, wf);
         r.push_clip_rect(wf.x, wf.y, wf.w, wf.h);
         static float speaks[512];
