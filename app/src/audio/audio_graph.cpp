@@ -59,6 +59,50 @@ void AudioGraph::clear_positions() {
     for (AudioGraphNode& n : nodes_) { n.positioned = false; n.ui_x = 0.f; n.ui_y = 0.f; }
 }
 
+// ADR-0033 P5: graph sticky notes (UI thread; persisted). Mirror the visual NodeGraph annotation store.
+int AudioGraph::anno_index(int id) const {
+    for (size_t i = 0; i < annotations_.size(); ++i) if (annotations_[i].id == id) return static_cast<int>(i);
+    return -1;
+}
+int AudioGraph::add_annotation(float x, float y) {
+    const int id = next_anno_id_++;
+    annotations_.push_back({ id, x, y, 180.f, 96.f, std::string() });
+    return id;
+}
+void AudioGraph::add_annotation_raw(int id, const std::string& text, float x, float y, float w, float h) {
+    annotations_.push_back({ id, x, y, w, h, text });
+    if (id >= next_anno_id_) next_anno_id_ = id + 1;   // keep fresh ids above any restored one
+}
+bool AudioGraph::remove_annotation(int id) {
+    const int i = anno_index(id);
+    if (i < 0) return false;
+    annotations_.erase(annotations_.begin() + i);
+    return true;
+}
+bool AudioGraph::set_annotation_text(int id, const std::string& text) {
+    const int i = anno_index(id);
+    if (i < 0) return false;
+    annotations_[i].text = text;
+    return true;
+}
+bool AudioGraph::move_annotation(int id, float x, float y) {
+    const int i = anno_index(id);
+    if (i < 0) return false;
+    annotations_[i].x = x; annotations_[i].y = y;
+    return true;
+}
+bool AudioGraph::get_annotation(int i, int& id, std::string& text,
+                                float& x, float& y, float& w, float& h) const {
+    if (i < 0 || i >= static_cast<int>(annotations_.size())) return false;
+    const AudioGraphAnnotation& a = annotations_[i];
+    id = a.id; text = a.text; x = a.x; y = a.y; w = a.w; h = a.h;
+    return true;
+}
+const char* AudioGraph::annotation_text(int id) const {
+    const int i = anno_index(id);
+    return i < 0 ? nullptr : annotations_[i].text.c_str();
+}
+
 void AudioGraph::set_node_bypass(int id, bool on) {
     const int i = node_index(id);
     if (i < 0) return;
@@ -278,6 +322,9 @@ int AudioGraph::fan_in_to_output(int id, int (*make_output)(void* user), void* u
     return out;
 }
 
+// Note: sticky notes (annotations_) survive clear()/reset() on purpose — the derived linear path
+// resets agraph on every edit (see vst3_host derive_linear_agraph), and a note must not vanish when
+// you add an fx. Notes are cleared only by remove_annotation or by a fresh track on load.
 void AudioGraph::clear() { nodes_.clear(); edges_.clear(); output_id_ = -1; }   // keeps next_id_
 void AudioGraph::reset() { nodes_.clear(); edges_.clear(); output_id_ = -1; next_id_ = 0; }
 

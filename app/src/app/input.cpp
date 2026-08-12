@@ -79,7 +79,11 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
                 win->text_edit_kind = 0; win->text_edit_target = -1; win->text_edit_buf.clear();
             }
             else if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {   // commit
-                if (app->graph) {
+                if (win->text_edit_kind == 3) {   // ADR-0033 P5: audio-graph sticky note (target = note id on sel_track)
+                    vivid::session::session_audio_graph_annotation_set_text(
+                        app->session, win->sel_track, win->text_edit_target, win->text_edit_buf.c_str());
+                    if (app->edit_gateway) app->edit_gateway->note_edit("Edit Note", "");
+                } else if (app->graph) {
                     if (win->text_edit_kind == 1) app->graph->set_op_name_at(win->text_edit_target, win->text_edit_buf);
                     else                          app->graph->set_annotation_text(win->text_edit_target, win->text_edit_buf);
                     if (app->edit_gateway)

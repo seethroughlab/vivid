@@ -582,6 +582,21 @@ int         session_audio_graph_node_param_pinned_at     (Session*, int track, i
 // (save/introspection) → 1 if the node has a stored position, else 0 (editor auto-lays it out).
 void        session_audio_graph_node_set_pos(Session*, int track, int node_id, float x, float y);
 int         session_track_audio_graph_node_pos(Session*, int track, int i, float* x, float* y);
+// ADR-0033 P5: per-track graph sticky notes (UI thread; persisted; never seen by the audio thread —
+// notes aren't nodes). Mirror the visual graph's annotations. `add` returns the new note id (-1 on a
+// bad track); `add_raw` is the load path (preserves id + rect + text). The id-keyed mutators return 1
+// on success, 0 on a missing id/track. Read side: `count`; `at` fills id + rect by index (1 if ok);
+// `text` returns a pointer to the note's text (nullptr if absent; valid until the store is mutated).
+int         session_audio_graph_annotation_add     (Session*, int track, float x, float y);
+void        session_audio_graph_annotation_add_raw (Session*, int track, int id, const char* text,
+                                                    float x, float y, float w, float h);
+int         session_audio_graph_annotation_remove  (Session*, int track, int id);
+int         session_audio_graph_annotation_set_text(Session*, int track, int id, const char* text);
+int         session_audio_graph_annotation_move    (Session*, int track, int id, float x, float y);
+int         session_audio_graph_annotation_count   (Session*, int track);
+int         session_audio_graph_annotation_at      (Session*, int track, int i, int* id,
+                                                    float* x, float* y, float* w, float* h);
+const char* session_audio_graph_annotation_text    (Session*, int track, int id);
 // 1 if the track's audio graph is the authoritative source of topology (has been rewired) → its
 // graph should be persisted as nodes+edges rather than the linear instrument/fx chain.
 int         session_track_audio_graph_authoritative(Session*, int track);

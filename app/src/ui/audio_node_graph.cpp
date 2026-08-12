@@ -754,6 +754,23 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const
         node_marquee(r, { static_cast<float>(marq_x0_), static_cast<float>(marq_y0_),
                           static_cast<float>(marq_x1_ - marq_x0_), static_cast<float>(marq_y1_ - marq_y0_) });
 
+    // ADR-0033 P5: sticky notes — free-floating annotations over the graph (WORLD space, on top of the
+    // cards). Drawn from the per-track session store (this view is stateless). The one being edited shows
+    // the live buffer + caret; the rest show stored text. Mirrors the visual graph's note draw.
+    const int na = P::session_audio_graph_annotation_count(s_, track_);
+    for (int i = 0; i < na; ++i) {
+        int aid = 0; float ax = 0.f, ay = 0.f, aw = 0.f, ah = 0.f;
+        if (!P::session_audio_graph_annotation_at(s_, track_, i, &aid, &ax, &ay, &aw, &ah)) continue;
+        const bool editing = (aid == edit_anno_);
+        node_sticky(r, { ax, ay, aw, ah }, editing);
+        std::string shown;
+        if (editing && edit_buf_) shown = *edit_buf_ + "|";
+        else { const char* t = P::session_audio_graph_annotation_text(s_, track_, aid); shown = t ? t : ""; }
+        r.draw_text_wrapped(ax + 8.f, ay + 9.f, shown.c_str(), aw - 16.f,
+                            sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
+        r.draw_text(ax + aw - 13.f, ay + 3.f, "\xC3\x97", sty.dim[0], sty.dim[1], sty.dim[2], 0.9f, sty.fs_label);
+    }
+
     r.set_transform(0.f, 0.f, 1.f);   // ADR-0023 #3: back to identity — the chrome below is screen-space
     // Adding a node is Tab (the unified catalog: native ops + VST3 + CLAP). No on-canvas hint — the
     // visuals graph has none either, and Tab-to-add is the established convention for both.

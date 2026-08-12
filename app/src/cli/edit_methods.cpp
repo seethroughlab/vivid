@@ -65,6 +65,10 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "sampler_detect_slices",    { "Detect Slices",    false } },
         { "sampler_set_slice_tune",   { "Slice Tune",       true  } },   // a run of nudges = one entry
         { "sampler_slices_to_midi",   { "Slices to MIDI",   false } },
+        { "audio_graph_add_annotation",      { "Add Note",    false } },   // ADR-0033 P5 (audio graph notes)
+        { "audio_graph_set_annotation_text", { "Edit Note",   false } },
+        { "audio_graph_move_annotation",     { "Move Note",   true  } },
+        { "audio_graph_remove_annotation",   { "Delete Note", false } },
         { "duplicate_audio_nodes",  { "Duplicate Audio Nodes", false } },   // ADR-0033 P2b
         { "audio_graph_connect",    { "Connect Audio",      false } },
         { "graph_connect",          { "Connect",            false } },   // ADR-0022 P4: by gnid (intra/cross)

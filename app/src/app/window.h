@@ -123,8 +123,10 @@ struct Window {
     std::string gemini_key_buf;
     int         music_eval_job  = -1;
     // ADR-0033 P5: in-canvas text editing for a sticky note or a node rename. kind 0 = none,
-    // 1 = renaming op node `text_edit_target` (an op INDEX), 2 = editing annotation `text_edit_target`
-    // (a note ID). text_edit_buf holds the live text; char_callback appends, key_callback commits/cancels.
+    // 1 = renaming a VISUAL op node `text_edit_target` (an op INDEX), 2 = editing a VISUAL graph
+    // annotation `text_edit_target` (a note ID), 3 = editing an AUDIO graph sticky note (target = a
+    // note ID on the current sel_track). text_edit_buf holds the live text; char_callback appends,
+    // key_callback commits/cancels.
     int         text_edit_kind = 0;
     int         text_edit_target = -1;
     std::string text_edit_buf;
