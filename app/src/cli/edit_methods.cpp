@@ -56,6 +56,15 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "audio_graph_add_midi_in",{ "Add Audio Node",     false } },
         { "audio_graph_add_plugin", { "Add Audio Node",     false } },
         { "audio_graph_remove_node",{ "Remove Audio Node",  false } },
+        // ---- Sampler sample editing (ADR-0049). `audio_graph_load_sampler` was missing here, so an
+        // MCP sample load was NOT undoable even though the same edit from the UI is. ----------------
+        { "audio_graph_load_sampler", { "Load Sample",      false } },
+        { "sampler_set_trim",         { "Trim Sample",      false } },
+        { "sampler_slice_equal",      { "Sampler Slices",   false } },
+        { "sampler_set_slices",       { "Sampler Slices",   false } },
+        { "sampler_detect_slices",    { "Detect Slices",    false } },
+        { "sampler_set_slice_tune",   { "Slice Tune",       true  } },   // a run of nudges = one entry
+        { "sampler_slices_to_midi",   { "Slices to MIDI",   false } },
         { "duplicate_audio_nodes",  { "Duplicate Audio Nodes", false } },   // ADR-0033 P2b
         { "audio_graph_connect",    { "Connect Audio",      false } },
         { "graph_connect",          { "Connect",            false } },   // ADR-0022 P4: by gnid (intra/cross)

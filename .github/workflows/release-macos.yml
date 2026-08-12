@@ -91,6 +91,11 @@ jobs:
       - name: Clip edit conflict (optimistic concurrency)
         run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_clip_conflict.py
 
+      # ADR-0049: the Sampler sample-editing surface an agent drives — trim / slice / detect / tune /
+      # slices-to-MIDI, their guard rails, and that every one of them (incl. the load) is undoable.
+      - name: Sampler editing surface (MCP parity)
+        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_sampler_surface.py
+
       # Import the Developer ID cert into a dedicated temporary keychain so codesign can reach the
       # private key non-interactively (a locked/service-context login keychain gives
       # errSecInternalComponent on a self-hosted runner). Cleaned up below regardless of outcome.
