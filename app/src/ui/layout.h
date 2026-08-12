@@ -121,7 +121,6 @@ inline Rect audio_graph_pane(float split_x, int win_h, float dock_h, int scenes)
 }
 inline Rect audio_pane_hdr_rect(const Rect& pane)      { return { pane.x, pane.y, pane.w, kPanelHdH }; }
 inline Rect audio_pane_canvas_rect(const Rect& pane)   { return { pane.x, pane.y + kPanelHdH, pane.w, pane.h - kPanelHdH }; }
-inline Rect audio_pane_relayout_rect(const Rect& pane) { return { pane.x + pane.w - 78.f, pane.y + 3.f, 74.f, kPanelHdH - 6.f }; }
 inline Rect audio_pane_editor_rect(const Rect& pane)   { return { pane.x + pane.w - 156.f, pane.y + 3.f, 60.f, kPanelHdH - 6.f }; }
 
 // Sources offered when mapping an audio param (the return path): audio characteristics + visuals state.
@@ -237,16 +236,8 @@ inline Rect preview_grip_rect(float px, float py, float pw, float aspect) {
     const Rect p = preview_panel(px, py, pw, aspect);
     return { p.x + p.w - 14.f, p.y + p.h - 14.f, 14.f, 14.f };
 }
-// Graph chrome, pinned to the visuals column's top-right corner (screen space, not canvas space).
-inline Rect graph_relayout_rect(int win_w, int win_h, float split_x, float dock_h) {
-    const Rect g = visuals_panel(win_w, win_h, split_x, dock_h);
-    return { g.x + g.w - 78.f, g.y + 4.f, 74.f, kPanelHdH - 6.f };
-}
-// ADR-0033 P5: the "+ Note" chrome button, immediately left of Re-layout.
-inline Rect graph_add_note_rect(int win_w, int win_h, float split_x, float dock_h) {
-    const Rect rl = graph_relayout_rect(win_w, win_h, split_x, dock_h);
-    return { rl.x - 66.f, rl.y, 60.f, rl.h };
-}
+// (Graph "Re-layout" and "+ Note" chrome buttons removed — Re-layout is now View ▸ Re-layout Graph
+// (⌘L) and Note is a "Note" entry in the Tab operator chooser.)
 // The DAW|visuals splitter: a full-height grab strip running from the transport bar down to the
 // dock (no gap at the top — a divider that stops short reads as an artifact, not a handle).
 inline Rect splitter_rect(int win_h, float dock_h, float split_x) { return { split_x - 3.f, kTopBarH, 6.f, dock_top(win_h, dock_h) - kTopBarH }; }

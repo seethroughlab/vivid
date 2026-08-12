@@ -1121,6 +1121,15 @@ void AudioNodeGraph::on_move(App& app, Window& win, double mx, double my) {
         double wxd, wyd; canvas_.view().to_world(mx, my, wxd, wyd);
         marq_x1_ = wxd; marq_y1_ = wyd;
     }
+    // ADR-0033 P5: drag a sticky note (world space, like a node).
+    if (anno_drag_ >= 0 && app.session) {
+        const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
+        prime(app, win);
+        double wxd, wyd; canvas_.view().to_world(mx, my, wxd, wyd);
+        S::session_audio_graph_annotation_move(app.session, tr, anno_drag_,
+                                               static_cast<float>(wxd) - anno_dx_, static_cast<float>(wyd) - anno_dy_);
+        if (app.edit_gateway) app.edit_gateway->note_edit("Move Note", "ag-note-drag");   // ADR-0017/G3
+    }
     // Drag a source node's key-range handle (vertical): ~0.25 semitone/px, lo/hi kept ordered.
     if (key_drag >= 0 && app.session && win.sel_audio_node >= 0) {
         const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);

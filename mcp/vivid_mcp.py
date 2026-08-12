@@ -1223,6 +1223,34 @@ def audio_graph_add_op(track: int, op: str) -> dict:
 
 
 @mcp.tool
+def audio_graph_add_annotation(track: int, x: float = 40.0, y: float = 40.0, text: str = "") -> dict:
+    """Add a sticky note to a track's audio graph at world position (x,y) — free-floating
+    explainability text (not a node; makes no sound, never wired). Returns its id. Persists;
+    undoable. The audio-graph peer of add_annotation (which annotates the visual graph). Use it
+    to leave intent on an audio graph for a human or another agent."""
+    return _post("audio_graph_add_annotation", {"track": track, "x": x, "y": y, "text": text})
+
+
+@mcp.tool
+def audio_graph_set_annotation_text(track: int, id: int, text: str) -> dict:
+    """Set an audio-graph sticky note's text (id from audio_graph_add_annotation / get_audio_graph
+    annotations). Undoable."""
+    return _post("audio_graph_set_annotation_text", {"track": track, "id": id, "text": text})
+
+
+@mcp.tool
+def audio_graph_move_annotation(track: int, id: int, x: float, y: float) -> dict:
+    """Move an audio-graph sticky note to world position (x,y). Undoable."""
+    return _post("audio_graph_move_annotation", {"track": track, "id": id, "x": x, "y": y})
+
+
+@mcp.tool
+def audio_graph_remove_annotation(track: int, id: int) -> dict:
+    """Remove an audio-graph sticky note by id. Undoable."""
+    return _post("audio_graph_remove_annotation", {"track": track, "id": id})
+
+
+@mcp.tool
 def audio_graph_add_source(track: int, op: str) -> dict:
     """Add a native instrument (name from list_audio_operators) as a new *source* node in a
     track's audio graph, wired straight to the Output in parallel with any existing source.

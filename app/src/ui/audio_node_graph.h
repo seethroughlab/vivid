@@ -219,6 +219,12 @@ private:
     bool   panning     = false; double pan_last_mx = 0, pan_last_my = 0;   // pan gesture (incremental delta, ADR-0023 #3d)
     double last_click_t = -1;                           // double-click-to-reset-view timer
     int    last_node   = -1; double last_node_t = -1;   // double-click a node -> open its plugin editor
+    // ADR-0033 P5: sticky-note edit + drag state. Notes live in the per-track session store; these are
+    // just transient view state (like sel_node_) — edit_anno_/edit_buf_ are rebound each frame in prime().
+    int    edit_anno_  = -1;                            // note id being text-edited (-1 = none)
+    const std::string* edit_buf_ = nullptr;            // -> Window::text_edit_buf (live text; null = none)
+    int    anno_drag_  = -1; float anno_dx_ = 0.f, anno_dy_ = 0.f;   // note reposition: id + world grab offset
+    double last_anno_  = -1, last_anno_t_ = -1;         // double-click a note to edit it
 
     // ADR-0033 P1 multi-select. The set itself lives on the Window (see window.h — prime() would clobber
     // an editor-owned copy); prime() points sel_multi_ at it so the const draw path can ring every

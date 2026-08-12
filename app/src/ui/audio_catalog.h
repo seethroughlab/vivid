@@ -49,6 +49,16 @@ inline std::vector<ChooserEntry> audio_catalog(vivid::session::Session* s, bool 
 
     // --- ADR-0015: notes are a signal you can wire ---
     if (!instruments_only) {
+        {   // ADR-0033 P5: a sticky NOTE — annotate the audio graph (not a node, makes no sound).
+            ChooserEntry e;
+            e.label = "Note";
+            e.badge = "NOTE";
+            e.summary = "sticky note \xC2\xB7 annotate the graph";
+            e.hay = "note sticky annotation comment label";
+            e.spawn = { Domain::Shared, SpawnKind::Note };
+            e.accent = sty.gold;
+            out.push_back(std::move(e));
+        }
         {   // the track's note stream, as a node
             ChooserEntry e;
             e.label = "MIDI In";

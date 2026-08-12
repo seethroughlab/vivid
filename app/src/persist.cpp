@@ -409,6 +409,21 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
             for (int e = 0; e < vivid::session::session_audio_effect_count(s, t); ++e) afx.push_back(audio_op(e));
             if (!afx.empty()) jt["audio_fx"] = afx;
         }
+        // ADR-0033 P5: per-track graph sticky notes — saved for EVERY track, independent of the
+        // authoritative/linear split above (notes live on the track's editor view either way).
+        {
+            json notes = json::array();
+            const int na = vivid::session::session_audio_graph_annotation_count(s, t);
+            for (int i = 0; i < na; ++i) {
+                int aid = 0; float ax = 0.f, ay = 0.f, aw = 0.f, ah = 0.f;
+                if (vivid::session::session_audio_graph_annotation_at(s, t, i, &aid, &ax, &ay, &aw, &ah)) {
+                    const char* txt = vivid::session::session_audio_graph_annotation_text(s, t, aid);
+                    notes.push_back({ {"id", aid}, {"text", txt ? txt : ""},
+                                      {"x", ax}, {"y", ay}, {"w", aw}, {"h", ah} });
+                }
+            }
+            if (!notes.empty()) jt["audio_notes"] = notes;
+        }
 
         tracks.push_back(jt);
     }
@@ -790,6 +805,14 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
             vivid::session::session_set_track_gain(s, t, jt.value("gain", 0.8f));
             vivid::session::session_set_track_mute(s, t, jt.value("mute", false));   // ADR-0022 P1b.4
             vivid::session::session_set_track_solo(s, t, jt.value("solo", false));
+            // ADR-0033 P5: restore per-track graph sticky notes (every track; tracks are freshly
+            // rebuilt above, so the store starts empty — absent key in older projects ⇒ none).
+            if (jt.contains("audio_notes"))
+                for (const auto& jn : jt["audio_notes"])
+                    vivid::session::session_audio_graph_annotation_add_raw(
+                        s, t, jn.value("id", 0), jn.value("text", std::string()).c_str(),
+                        jn.value("x", 0.f), jn.value("y", 0.f),
+                        jn.value("w", 180.f), jn.value("h", 96.f));
             if (vivid::session::session_track_is_audio(s, t) && jt.contains("trims")) {
                 const json& tr = jt["trims"];
                 for (int sc = 0; sc < static_cast<int>(tr.size()); ++sc)

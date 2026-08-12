@@ -691,12 +691,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     ui.push_clip_rect(w.split_x, kTopBarH, W - w.split_x, w.dock_top() - kTopBarH);
     // (No edge accent bar here: hard against the splitter it reads as a stray line, not identity.
     // The visual domain announces itself through the graph's own cyan node/port coloring.)
-    // (Re-layout moved to the native View menu — ⌘L. See platform/menu_bar.*.)
-    // ADR-0033 P5: the "+ Note" sticky-note create button (top-right of the visuals column).
-    { const Rect nb = graph_add_note_rect(w.win_w, w.win_h, w.split_x, w.dock_h);
-      const bool nbh = hit(nb, mx, my);
-      item_box(ui, nb, sty.gold, nbh);
-      ui.draw_text(nb.x + 8.f, nb.y + 2.f, "+ Note", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
+    // (Re-layout → native View menu ⌘L; "+ Note" → the Tab operator chooser. No graph chrome here.)
     ui.pop_clip_rect();
 
     // DAW | visuals splitter (on top, unclipped): a full-height rule from the transport to the dock,

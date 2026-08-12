@@ -79,7 +79,11 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
                 win->text_edit_kind = 0; win->text_edit_target = -1; win->text_edit_buf.clear();
             }
             else if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {   // commit
-                if (app->graph) {
+                if (win->text_edit_kind == 3) {   // ADR-0033 P5: audio-graph sticky note (target = note id on sel_track)
+                    vivid::session::session_audio_graph_annotation_set_text(
+                        app->session, win->sel_track, win->text_edit_target, win->text_edit_buf.c_str());
+                    if (app->edit_gateway) app->edit_gateway->note_edit("Edit Note", "");
+                } else if (app->graph) {
                     if (win->text_edit_kind == 1) app->graph->set_op_name_at(win->text_edit_target, win->text_edit_buf);
                     else                          app->graph->set_annotation_text(win->text_edit_target, win->text_edit_buf);
                     if (app->edit_gateway)
@@ -94,7 +98,12 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     if (app->graph && app->graph->chooser_open()) {
         if (action == GLFW_PRESS || action == GLFW_REPEAT) {
             if (key == GLFW_KEY_ESCAPE) app->graph->chooser_hide();
-            else if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) app->graph->chooser_confirm();
+            else if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+                app->graph->chooser_confirm();
+                // ADR-0033 P5: if that spawned a sticky Note, drop straight into editing its text.
+                const int nid = app->graph->consume_pending_note_edit();
+                if (nid >= 0) { win->text_edit_kind = 2; win->text_edit_target = nid; win->text_edit_buf.clear(); }
+            }
             else if (key == GLFW_KEY_DOWN || key == GLFW_KEY_TAB) app->graph->chooser_move(+1);
             else if (key == GLFW_KEY_UP) app->graph->chooser_move(-1);
             else if (key == GLFW_KEY_BACKSPACE) app->graph->chooser_backspace();
@@ -365,14 +374,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         }
         if (hit(win->preview.panel(), mx, my)) return;   // clicks on the output itself: consume, don't pan
     }
-    // (Graph "Re-layout" is now a native View menu item — ⌘L. See platform/menu_bar.*.)
-    // ADR-0033 P5: the "+ Note" chrome — create a sticky note at the viewport centre and start typing.
-    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app->graph
-        && hit(vivid::ui::graph_add_note_rect(win->win_w, win->win_h, win->split_x, win->dock_h), mx, my)) {
-        const int id = app->graph->add_note_centered();   // notes the "Add Note" undo entry itself
-        win->text_edit_kind = 2; win->text_edit_target = id; win->text_edit_buf.clear();   // type into it now
-        return;
-    }
+    // (Graph "Re-layout" → native View menu ⌘L; "+ Note" → the Tab operator chooser's "Note" entry.)
     // (The File menu is now a native OS menu — see platform/menu_bar.*.)
 
     // Mapping overview is modal while open: per-row steppers/toggle/clear; click-away closes.
@@ -626,8 +628,12 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         win->vg_last_click_t = now; win->vg_last_click_note = note; win->vg_last_click_node = node;
     }
     // ADR-0033 P1: shift/super carry multi-select modifiers into the visual gesture FSM.
-    if (app->graph && app->graph->on_down(mx, my, (mods & GLFW_MOD_SHIFT) != 0, (mods & GLFW_MOD_SUPER) != 0))
+    if (app->graph && app->graph->on_down(mx, my, (mods & GLFW_MOD_SHIFT) != 0, (mods & GLFW_MOD_SUPER) != 0)) {
+        // ADR-0033 P5: a click that spawned a sticky Note from the chooser → begin editing its text.
+        const int nid = app->graph->consume_pending_note_edit();
+        if (nid >= 0) { win->text_edit_kind = 2; win->text_edit_target = nid; win->text_edit_buf.clear(); }
         return;  // node graph consumed it (it owns the visuals column)
+    }
     // clip cells (single-click arms/launches, double-click opens editor) + scene-launch buttons.
     if (vivid::input::clipgrid_cells(*win, *app, mx, my, tracks, scenes)) return;
 }

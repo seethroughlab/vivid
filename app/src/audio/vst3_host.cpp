@@ -4016,6 +4016,54 @@ int session_track_audio_graph_node_pos(Session* s, int t, int i, float* x, float
     return 1;
 }
 
+// ADR-0033 P5: per-track graph sticky notes. UI-thread authoring state on the track's AudioGraph;
+// never touched by the audio thread (notes aren't nodes), so mutating one needs no republish.
+int session_audio_graph_annotation_add(Session* s, int t, float x, float y) {
+    Track* tr = graph_track(s, t); if (!tr) return -1;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return tr->agraph.add_annotation(x, y);
+}
+void session_audio_graph_annotation_add_raw(Session* s, int t, int id, const char* text,
+                                            float x, float y, float w, float h) {
+    Track* tr = graph_track(s, t); if (!tr) return;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    tr->agraph.add_annotation_raw(id, text ? text : "", x, y, w, h);
+}
+int session_audio_graph_annotation_remove(Session* s, int t, int id) {
+    Track* tr = graph_track(s, t); if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return tr->agraph.remove_annotation(id) ? 1 : 0;
+}
+int session_audio_graph_annotation_set_text(Session* s, int t, int id, const char* text) {
+    Track* tr = graph_track(s, t); if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return tr->agraph.set_annotation_text(id, text ? text : "") ? 1 : 0;
+}
+int session_audio_graph_annotation_move(Session* s, int t, int id, float x, float y) {
+    Track* tr = graph_track(s, t); if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return tr->agraph.move_annotation(id, x, y) ? 1 : 0;
+}
+int session_audio_graph_annotation_count(Session* s, int t) {
+    Track* tr = graph_track(s, t); if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return tr->agraph.annotation_count();
+}
+int session_audio_graph_annotation_at(Session* s, int t, int i, int* id,
+                                      float* x, float* y, float* w, float* h) {
+    Track* tr = graph_track(s, t); if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    int aid = 0; std::string txt; float ax = 0.f, ay = 0.f, aw = 0.f, ah = 0.f;
+    if (!tr->agraph.get_annotation(i, aid, txt, ax, ay, aw, ah)) return 0;
+    if (id) *id = aid; if (x) *x = ax; if (y) *y = ay; if (w) *w = aw; if (h) *h = ah;
+    return 1;
+}
+const char* session_audio_graph_annotation_text(Session* s, int t, int id) {
+    Track* tr = graph_track(s, t); if (!tr) return nullptr;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return tr->agraph.annotation_text(id);
+}
+
 int session_track_audio_graph_authoritative(Session* s, int t) {
     Track* tr = graph_track(s, t);
     if (!tr) return 0;

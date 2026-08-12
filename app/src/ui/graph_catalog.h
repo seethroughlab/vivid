@@ -23,6 +23,7 @@ enum class SpawnKind {
     AudioNoteOp,          // note effect (ADR-0015)  -> session_audio_graph_add_note_op(type)
     AudioMidiIn,          // the track note stream   -> session_audio_graph_add_midi_in()
     AudioModOp,           // a modulator (ADR-0022)  -> session_audio_graph_add_mod_op(type)
+    Note,                 // a sticky note (ADR-0033 P5) -> a graph annotation (no operator node)
 };
 
 // The typed spawn payload a catalog entry carries. `type` is an op type name OR a plugin bundle path;
