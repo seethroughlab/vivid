@@ -73,6 +73,30 @@ struct SamplerEditable {
     virtual int edit_boundaries(uint32_t* starts, uint32_t* ends, int cap) const = 0;
 };
 
+// ADR-0049 "no magic conversion": the slice→MIDI note layout, shared by the Sampler editor's
+// `Slice → MIDI` button and the `sampler_slices_to_midi` control method so the UI and an agent
+// produce the SAME clip. One note per slice, in slice order, each `step` beats long and `step`
+// beats apart, on the pitch that triggers that slice. Pure (no session, no renderer) so both
+// layers can call it. Writes up to `cap` notes; returns how many it wrote.
+//
+// Deliberately NOT the slice geometry — only the note layout. Callers still read the slices.
+template <class Note>
+inline int sampler_slices_to_notes(const SamplerSlice* slices, int n, Note* out, int cap,
+                                   double step = 0.25, float velocity = 0.8f) {
+    if (!slices || !out || n <= 0 || cap <= 0) return 0;
+    const int count = n < cap ? n : cap;
+    for (int i = 0; i < count; ++i) {
+        out[i] = Note{};
+        int p = slices[i].root_note;
+        p = p < 0 ? 0 : (p > 127 ? 127 : p);
+        out[i].pitch = p;
+        out[i].start = i * step;
+        out[i].dur   = step;
+        out[i].vel   = velocity;
+    }
+    return count;
+}
+
 // Read side of the same escape hatch: the UI reads a downsampled peak envelope of the loaded
 // sample to draw the node's waveform thumbnail (VividThumbnailContext carries only params, not
 // PCM). The op caches the peaks at load time, so this copy is cheap and UI-thread-only.
