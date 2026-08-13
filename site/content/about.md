@@ -17,6 +17,10 @@ active development, released as signed macOS builds through
 
 Questions, partnerships, and press: **jeff@seethroughlab.com**.
 
+**Made with Vivid.** The [Gallery](/gallery/) attributes every piece to its maker. Testimonials and a
+notable-creator strand arrive as real users come on board — honest and empty-until-real, per our house
+rule. Using Vivid? [Submit your work](/community/).
+
 ## Press kit
 
 Downloadable brand assets for writing about or linking to Vivid. Please keep the mark intact and on a

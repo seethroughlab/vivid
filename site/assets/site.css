@@ -318,6 +318,24 @@ main {
 .tutorial-prereqs strong { color: var(--muted); }
 .card-link { font-size: 13px; font-weight: 600; }
 
+/* --- gallery attribution + strands + proof (ADR-0057) ------------------------------------- */
+.showcase-foot { display: flex; flex-direction: column; gap: 8px; }
+.byline { font-size: var(--fs-xs); color: var(--faint); }
+.byline a { color: var(--muted); }
+.byline a:hover { color: var(--signal-cyan); text-decoration: none; }
+.strand { margin-top: var(--sp-12); }
+.strand:first-of-type { margin-top: var(--sp-4); }
+.strand-note { font-size: var(--fs-sm); color: var(--muted); }
+.proof-soon { border: 1px dashed var(--border-lit); border-radius: var(--radius-lg);
+  padding: 28px 24px; background: var(--card); }
+.proof-soon p { margin: 0 0 18px; color: var(--muted); max-width: 62ch; }
+.proof-soon strong { color: var(--text); }
+.quote-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.quote { margin: 0; border: 1px solid var(--border); background: var(--card); border-radius: var(--radius);
+  padding: 20px 22px; }
+.quote blockquote { margin: 0 0 12px; font-size: var(--fs-lead); color: var(--text); line-height: 1.45; }
+.quote figcaption .quote-meta { font-size: var(--fs-sm); color: var(--muted); }
+
 /* --- tutorial grid ------------------------------------------------------------------------ */
 .tutorial-grid {
   display: grid;

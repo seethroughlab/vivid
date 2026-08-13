@@ -259,10 +259,30 @@ SHOWCASE_PLAYER_JS = """
 """
 
 
+# --- attribution (ADR-0057 honesty rule: every gallery piece names its creator) ---------------
+
+STRAND_LABEL = {"makers": "From the makers", "community": "Made with Vivid"}
+
+
+def resolve_creator(entry: dict, cfg: dict) -> dict:
+    """The creator of a gallery piece. First-party demos fall back to the makers (a real, honest
+    attribution — See Through Lab made them); external entries carry their own `creator`."""
+    c = dict(entry.get("creator") or cfg.get("makers") or {})
+    c.setdefault("strand", "community" if entry.get("creator") else "makers")
+    return c
+
+
+def attribution_html(creator: dict) -> str:
+    name = esc(creator.get("name", "")) or "Unknown"
+    url = creator.get("url")
+    inner = (f'<a href="{esc(url)}" rel="noopener" target="_blank">{name}</a>' if url else name)
+    return f'<span class="byline">by {inner}</span>'
+
+
 def render_showcase_cards(cfg: dict, items: list[dict] | None = None, include_js: bool = True) -> str:
-    """Render showcase/gallery cards. `items` defaults to all showcases (pass a slice for a teaser).
-    `include_js=False` suppresses the appended player JS when the caller emits it once elsewhere
-    (the homepage does this so a single copy at page-end wires BOTH the verb clips and the teaser)."""
+    """Render attributed showcase/gallery cards. `items` defaults to all showcases (pass a slice for a
+    teaser). `include_js=False` suppresses the appended player JS when the caller emits it once
+    elsewhere (the homepage does this so one copy at page-end wires the verb clips AND the teaser)."""
     item = load_template("_showcase_card.html")
     cards = []
     any_video = False
@@ -270,15 +290,38 @@ def render_showcase_cards(cfg: dict, items: list[dict] | None = None, include_js
         media = showcase_media_html(s, cfg)
         if "showcase-player" in media:
             any_video = True
+        creator = resolve_creator(s, cfg)
         cards.append(item.substitute(
-            media=media, title=esc(s["title"]), type=s["type"],
+            media=media, title=esc(s["title"]),
+            strand_label=esc(STRAND_LABEL.get(creator["strand"], "Made with Vivid")),
             mechanism=esc(s["mechanism"]), blurb=esc(s["blurb"]),
+            attribution=attribution_html(creator),
             source=f'{cfg["source_base"]}/{s["source"]}',
         ))
     html = "\n".join(cards)
     if include_js and any_video:
         html += "\n" + SHOWCASE_PLAYER_JS   # inserted as a value — not re-substituted
     return html
+
+
+def render_proof_teaser(cfg: dict) -> str:
+    """Homepage proof teaser (ADR-0056 beat 8 / ADR-0057): real testimonials only. Returns "" when
+    there are none, so the homepage OMITS the section rather than fabricating quotes."""
+    quotes = cfg.get("testimonials") or []
+    if not quotes:
+        return ""
+    cards = []
+    for q in quotes:
+        who = esc(q.get("name", ""))
+        title = esc(q.get("title", "")) or esc(q.get("handle", ""))
+        url = q.get("url")
+        who_html = f'<a href="{esc(url)}" rel="noopener" target="_blank">{who}</a>' if url else who
+        meta = f'<span class="quote-meta">{who_html}{" · " + title if title else ""}</span>'
+        cards.append(f'        <figure class="quote"><blockquote>{esc(q["quote"])}</blockquote>'
+                     f'<figcaption>{meta}</figcaption></figure>')
+    return ('    <section class="section">\n'
+            '      <h2 class="section-title">What people say</h2>\n'
+            '      <div class="quote-grid">\n' + "\n".join(cards) + "\n      </div>\n    </section>")
 
 
 def render_hero_reel(cfg: dict) -> str:
@@ -579,6 +622,7 @@ def build_site(output_dir: Path) -> None:
         supports=render_supports(cfg),
         audiences=render_audiences(cfg),
         gallery_teaser=render_showcase_cards(cfg, items=cfg["showcase"][:3], include_js=False),
+        proof=render_proof_teaser(cfg),
         cta_title=esc(cfg["cta"]["title"]), cta_body=esc(cfg["cta"]["body"]),
         player_js=SHOWCASE_PLAYER_JS,
         download_url=cfg["download_url"],
@@ -605,10 +649,30 @@ def build_site(output_dir: Path) -> None:
              title="Free Plugins", body=render_markdown(CONTENT / "free-plugins.md")),
          "/free-plugins/")
 
-    # Gallery ("Made with Vivid"; re-homes the old /showcase/ grid — attribution is ADR-0057)
+    # Gallery ("Made with Vivid", attributed — ADR-0057). First-party demos are the honest "from the
+    # makers" strand; the community strand is coming-soon with a real submission path (no fabrication).
+    makers_items = [s for s in cfg["showcase"] if resolve_creator(s, cfg)["strand"] == "makers"]
+    community_items = [s for s in cfg["showcase"] if resolve_creator(s, cfg)["strand"] == "community"]
+    if community_items:
+        community_block = ('<div class="showcase-grid">\n'
+                           + render_showcase_cards(cfg, items=community_items, include_js=False)
+                           + '\n        </div>')
+    else:
+        community_block = (
+            '<div class="proof-soon">\n'
+            '          <p><strong>Your work here.</strong> We’re gathering pieces made in Vivid by the '
+            'community. Real attributions only — this space stays a genuine “coming soon” until it’s '
+            'full, never a stock-photo wall.</p>\n'
+            '          <div class="cta-actions">\n'
+            f'            <a class="btn btn-primary" href="{cfg["github_url"]}/discussions" rel="noopener" target="_blank">Submit your work</a>\n'
+            '            <a class="btn btn-ghost" href="/community/">How submissions work &rarr;</a>\n'
+            '          </div>\n'
+            '        </div>')
     emit("gallery", f"Gallery — {site}",
-         "Made with Vivid — nine projects, each a saved, regenerable project captured live from the signed build.",
-         load_template("gallery.html").substitute(cards=render_showcase_cards(cfg)),
+         "Made with Vivid — work attributed to the artists who made it, captured live from the signed build.",
+         load_template("gallery.html").substitute(
+             makers_cards=render_showcase_cards(cfg, items=makers_items),
+             community_block=community_block),
          "/gallery/")
 
     # The Instrument (product / how-it-works — the architecture, after the vision has landed)
@@ -683,6 +747,14 @@ def _self_check(cfg: dict, output_dir: Path) -> None:
                       if not (output_dir / "assets" / "showcase" / s["hero"]).exists()]
     if missing_heroes:
         raise SystemExit(f"[build] self-check failed — missing heroes: {', '.join(missing_heroes)}")
+    # ADR-0057 honesty rule: every gallery piece names a real creator; testimonials carry name + quote.
+    for s in cfg["showcase"]:
+        creator = s.get("creator") or cfg.get("makers") or {}
+        if not creator.get("name"):
+            raise SystemExit(f"[build] self-check failed — gallery piece '{s.get('id')}' has no attribution")
+    for i, q in enumerate(cfg.get("testimonials") or []):
+        if not (q.get("name") and q.get("quote")):
+            raise SystemExit(f"[build] self-check failed — testimonial #{i} missing name/quote")
     # Showcase clips are hosted separately (gitignored); a missing local clip is NOT a build failure —
     # the card degrades to the hero still, or references the external base. So no video self-check here.
     # No unresolved $template placeholders leaked into any page.

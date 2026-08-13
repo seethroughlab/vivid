@@ -7,6 +7,11 @@
   "github_url": "https://github.com/seethroughlab/vivid",
   "source_base": "https://github.com/seethroughlab/vivid/tree/main",
   "showcase_video_base": "https://d2at399jej1hdi.cloudfront.net/videos",
+  "makers": {
+    "name": "See Through Lab",
+    "url": "https://seethroughlab.com"
+  },
+  "testimonials": [],
   "nav": [
     {
       "label": "The Instrument",
