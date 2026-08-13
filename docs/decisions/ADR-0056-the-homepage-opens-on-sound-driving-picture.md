@@ -1,6 +1,6 @@
 # ADR-0056: The Homepage Opens on Sound Driving Picture
 
-Status: proposed
+Status: accepted
 
 Date: 2026-08-12
 
