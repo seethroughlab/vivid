@@ -1,7 +1,7 @@
 {
   "title": "Vivid",
   "tagline": "A new instrument for live visuals.",
-  "meta_description": "Vivid is a new instrument for live visuals — play sound and picture as one, rewire the signal path live, author your own operators with code and AI, and fork the whole thing. A macOS app for VJs, live performers, and creative technologists.",
+  "meta_description": "Vivid is a new instrument for live visuals: play sound and picture as one, rewire the signal path live, author your own operators with code and AI, and fork the whole thing. A macOS app for VJs, live performers, and creative technologists.",
   "site_url": "https://vivid.seethroughlab.com",
   "download_url": "https://github.com/seethroughlab/vivid/releases/latest",
   "github_url": "https://github.com/seethroughlab/vivid",
@@ -39,15 +39,15 @@
       "external": true
     }
   ],
-  "manifesto": "Vivid is a new instrument for live visuals — play sound and picture as one, rewire the signal path live, author your own operators with code and AI, and fork the whole thing.",
-  "hero_lede": "Play sound and picture as one signal path. Rewire the path between them live. Author your own operators with code and AI. Fork the whole thing — a project is a folder you own.",
+  "manifesto": "Vivid is a new instrument for live visuals: play sound and picture as one, rewire the signal path live, author your own operators with code and AI, and fork the whole thing.",
+  "hero_lede": "Play sound and picture as one signal path. Rewire the path between them live. Author your own operators with code and AI. Fork the whole thing. A project is a folder you own.",
   "hero_reel": "blob",
-  "one_liner": "A macOS app where a DAW-style Session View and a rewireable visual node graph are one project — so you play sound and picture together.",
+  "one_liner": "A macOS app where a DAW-style Session View and a rewireable visual node graph are one project, so you play sound and picture together.",
   "verbs": [
     {
       "key": "play",
       "title": "Play",
-      "body": "Sound and picture are one signal path you perform in real time. A DAW-style Session View and a live visual graph share a single project — the notes you play are the picture you throw.",
+      "body": "Sound and picture are one signal path you perform in real time. A DAW-style Session View and a live visual graph share a single project: the notes you play are the picture you throw.",
       "clip_id": "pulse-song"
     },
     {
@@ -60,13 +60,13 @@
       "key": "author",
       "title": "Author",
       "tag": "The reveal · MCP-native",
-      "body": "When a look doesn't exist yet, you write it — project-local WGSL shaders and compiled C++ operators, edited live. And every operation is exposed over MCP, so an AI agent authors, inspects and verifies whole projects alongside you.",
+      "body": "When a look doesn't exist yet, you write it - project-local WGSL shaders and compiled C++ operators, edited live. And every operation is exposed over MCP, so an AI agent authors, inspects and verifies whole projects alongside you.",
       "clip_id": "shader-edit"
     },
     {
       "key": "fork",
       "title": "Fork",
-      "body": "A project is a folder you own end to end — the session, the graph, the mappings, and your custom operators, saved together. Take it, change it, run it anywhere. No lock-in, no cloud round-trip.",
+      "body": "A project is a folder you own end to end - the session, the graph, the mappings, and your custom operators, saved together. Take it, change it, run it anywhere. No lock-in, no cloud round-trip.",
       "clip_id": "first-project"
     }
   ],
@@ -74,7 +74,7 @@
     {
       "mark": "01 · Perform",
       "title": "VJs & live visualists",
-      "body": "Drive picture from your set in real time and rewire the look between songs — never wrestle a fixed pipeline mid-show."
+      "body": "Drive picture from your set in real time and rewire the look between songs - never wrestle a fixed pipeline mid-show."
     },
     {
       "mark": "02 · Compose",
@@ -89,21 +89,21 @@
     {
       "mark": "04 · Explore",
       "title": "Generative & new-media artists",
-      "body": "Treat the graph as a sketchbook — patch, break, and reshape a living system that reacts to sound instead of a canned loop."
+      "body": "Treat the graph as a sketchbook - patch, break, and reshape a living system that reacts to sound instead of a canned loop."
     }
   ],
   "cta": {
     "title": "Play it yourself.",
-    "body": "Download the signed macOS build and make your first audio-reactive project in a few minutes — or read the story behind the instrument."
+    "body": "Download the signed macOS build and make your first audio-reactive project in a few minutes - or read the story behind the instrument."
   },
   "supports": [
     {
       "title": "Session View",
-      "body": "A DAW-style timeline of tracks, clips, scenes, instruments, effects and a mixer — the musical half of the graph."
+      "body": "A DAW-style timeline of tracks, clips, scenes, instruments, effects and a mixer - the musical half of the graph."
     },
     {
       "title": "Visual node graph",
-      "body": "A rewireable graph of visual operators — real geometry, shaders and compositing — that you build and fork like code."
+      "body": "A rewireable graph of visual operators (real geometry, shaders and compositing) that you build and fork like code."
     },
     {
       "title": "The mapping bridge",
@@ -111,7 +111,7 @@
     },
     {
       "title": "MCP-native control",
-      "body": "Every operation is exposed over MCP, so agents (and scripts) author, inspect and verify whole projects — not just nudge knobs."
+      "body": "Every operation is exposed over MCP, so agents (and scripts) author, inspect and verify whole projects - not just nudge knobs."
     }
   ],
   "tutorials": [
@@ -121,7 +121,7 @@
       "track": "Start Here",
       "difficulty": "Beginner",
       "prereqs": "Surge XT",
-      "build": "A Surge XT track, a project-local shader, and audio mapped to visuals — saved as one portable, reloadable project.",
+      "build": "A Surge XT track, a project-local shader, and audio mapped to visuals - saved as one portable, reloadable project.",
       "hero": "first-project.png"
     },
     {
@@ -151,16 +151,16 @@
       "title": "Make your first sound",
       "time": "3 min",
       "prereqs": "Vivid + Surge XT",
-      "goal": "Get a note out of Vivid — the shortest possible first win, no code, no visuals yet.",
+      "goal": "Get a note out of Vivid - the shortest possible first win, no code, no visuals yet.",
       "result_clip": null,
       "steps": [
         {
-          "do": "Add a track and load the free Surge XT synth on it — Vivid finds it automatically once it's installed.",
+          "do": "Add a track and load the free Surge XT synth on it - Vivid finds it automatically once it's installed.",
           "see": "A new track with Surge XT ready to play."
         },
         {
           "do": "Draw a short MIDI clip (a few notes) and press play.",
-          "see": "You hear Surge XT — Vivid is making sound."
+          "see": "You hear Surge XT - Vivid is making sound."
         }
       ],
       "recap": "That's the musical half of the instrument. Next, put something on screen.",
@@ -173,11 +173,11 @@
       "title": "Put something on screen",
       "time": "3 min",
       "prereqs": "Guide 1",
-      "goal": "Get a visual rendering in the output window — still no code.",
+      "goal": "Get a visual rendering in the output window - still no code.",
       "result_clip": null,
       "steps": [
         {
-          "do": "Open the visual node graph and add a visual operator — start with a built-in look or a shader.",
+          "do": "Open the visual node graph and add a visual operator - start with a built-in look or a shader.",
           "see": "A shape or field appears in the graph."
         },
         {
@@ -185,7 +185,7 @@
           "see": "Your visual fills the output window."
         }
       ],
-      "recap": "You have sound and picture. They're not talking to each other yet — that's the next, best part.",
+      "recap": "You have sound and picture. They're not talking to each other yet - that's the next, best part.",
       "next": "make-it-react"
     },
     {
@@ -194,16 +194,16 @@
       "verb": "Rewire",
       "title": "Make it react to the sound",
       "time": "5 min",
-      "prereqs": "Guides 1–2",
-      "goal": "Map the sound onto the picture so the visual moves with the music — the aha.",
+      "prereqs": "Guides 1-2",
+      "goal": "Map the sound onto the picture so the visual moves with the music - the aha.",
       "result_clip": "first-project",
       "steps": [
         {
-          "do": "Open the mapping bridge and map an audio signal — a note's pitch, an envelope, a transient — onto a visual parameter like size or brightness.",
+          "do": "Open the mapping bridge and map an audio signal - a note's pitch, an envelope, a transient - onto a visual parameter like size or brightness.",
           "see": "That parameter moves the instant the sound plays."
         },
         {
-          "do": "Add a few more mappings — size, colour, glow — so several things react at once.",
+          "do": "Add a few more mappings - size, colour, glow - so several things react at once.",
           "see": "The picture visibly moves with the music. This is the aha."
         }
       ],
@@ -225,7 +225,7 @@
           "see": "You can launch scenes and the visuals follow the change."
         },
         {
-          "do": "Play the set — trigger scenes live and watch the look shift with the music.",
+          "do": "Play the set - trigger scenes live and watch the look shift with the music.",
           "see": "You're performing sound and picture as one instrument."
         }
       ],
@@ -236,18 +236,18 @@
       "slug": "author-your-own",
       "num": 5,
       "verb": "Author",
-      "title": "Author your own — with code and AI",
+      "title": "Author your own - with code and AI",
       "time": "10 min",
-      "prereqs": "Guides 1–4",
-      "goal": "Graduate from playing the built-ins to writing your own operator — the deep end, and the point of Vivid.",
+      "prereqs": "Guides 1-4",
+      "goal": "Graduate from playing the built-ins to writing your own operator - the deep end, and the point of Vivid.",
       "result_clip": "shader-edit",
       "steps": [
         {
-          "do": "Open a shader node's backing WGSL file and edit it live — Vivid hot-reloads the change.",
+          "do": "Open a shader node's backing WGSL file and edit it live - Vivid hot-reloads the change.",
           "see": "Your edit shows up in the output immediately; break it and Vivid's diagnostics help you recover."
         },
         {
-          "do": "Bring in an AI agent over MCP — ask it to author or tweak an operator, then inspect and verify the result together.",
+          "do": "Bring in an AI agent over MCP - ask it to author or tweak an operator, then inspect and verify the result together.",
           "see": "You and the agent authored a new look, in code, over MCP."
         }
       ],
@@ -262,7 +262,7 @@
       "type": 1,
       "title": "Your first project",
       "mechanism": "Session View + visual graph + mappings",
-      "blurb": "The beginner project: a Surge XT track and a project-local shader whose rings pulse from four audio-to-visual mappings — the notes drive the picture, saved as a portable project.",
+      "blurb": "The beginner project: a Surge XT track and a project-local shader whose rings pulse from four audio-to-visual mappings - the notes drive the picture, saved as a portable project.",
       "hero": "first-project.png",
       "video": "first-project.mp4",
       "source": "examples/tutorials/mcp-native-first-project"
@@ -272,7 +272,7 @@
       "type": 2,
       "title": "Pulse",
       "mechanism": "Session View scenes + reactive geometry",
-      "blurb": "A techno scene driving a per-note geometry graph — hexagons for the bassline, wireframe octahedra for the lead, particle bursts on every drum hit.",
+      "blurb": "A techno scene driving a per-note geometry graph - hexagons for the bassline, wireframe octahedra for the lead, particle bursts on every drum hit.",
       "hero": "pulse-song.png",
       "video": "pulse-song.mp4",
       "source": "examples/demos/pulse.py"
@@ -292,7 +292,7 @@
       "type": 4,
       "title": "Live shader edit",
       "mechanism": "Creative-coding a project-local shader",
-      "blurb": "A woven interference field authored as a project-local WGSL shader — edited, broken and recovered live over MCP.",
+      "blurb": "A woven interference field authored as a project-local WGSL shader - edited, broken and recovered live over MCP.",
       "hero": "shader-edit.png",
       "video": "shader-edit.mp4",
       "source": "examples/tutorials/live-shader-edit"
@@ -312,7 +312,7 @@
       "type": 3,
       "title": "Spectrum",
       "mechanism": "Composable value-lane graph",
-      "blurb": "A live 3D FFT equaliser assembled from separate lane nodes — an AudioSpectrum node feeds per-band bar heights, a LanePalette node the colour gradient, through the new value-lane transport. Each bar is one frequency of the sound Vivid is making.",
+      "blurb": "A live 3D FFT equaliser assembled from separate lane nodes - an AudioSpectrum node feeds per-band bar heights, a LanePalette node the colour gradient, through the new value-lane transport. Each bar is one frequency of the sound Vivid is making.",
       "source": "examples/demos/spectrum.py",
       "hero": "spectrum.png",
       "video": "spectrum.mp4"
@@ -322,7 +322,7 @@
       "type": 3,
       "title": "Blob",
       "mechanism": "SDF raymarch, bass-driven",
-      "blurb": "A raymarched SDF metaball that swells, melds and glows to the kick — the bass drives its size, its smooth-union blend and its emission through the audio→visual bridge, fast-attack then glide.",
+      "blurb": "A raymarched SDF metaball that swells, melds and glows to the kick - the bass drives its size, its smooth-union blend and its emission through the audio→visual bridge, fast-attack then glide.",
       "source": "examples/demos/blob.py",
       "hero": "blob.png",
       "video": "blob.mp4"
@@ -332,7 +332,7 @@
       "type": 3,
       "title": "Crystal",
       "mechanism": "Beat-locked scene cuts",
-      "blurb": "Three different forms — a spiky crystal, a smooth churning orb, a torus ring — that a bar-locked Clock cuts between every 4 bars via a Switch3D node. Each churns to the bass and erupts note-spikes to the arp.",
+      "blurb": "Three different forms - a spiky crystal, a smooth churning orb, a torus ring - that a bar-locked Clock cuts between every 4 bars via a Switch3D node. Each churns to the bass and erupts note-spikes to the arp.",
       "source": "examples/demos/crystal.py",
       "hero": "crystal.png",
       "video": "crystal.mp4"
@@ -342,7 +342,7 @@
       "type": 3,
       "title": "Storm",
       "mechanism": "GPU curl-noise particles",
-      "blurb": "A GPU curl-noise particle storm — transients burst new embers into the field, the kick churns the turbulence and swells the particles.",
+      "blurb": "A GPU curl-noise particle storm - transients burst new embers into the field, the kick churns the turbulence and swells the particles.",
       "source": "examples/demos/storm.py",
       "hero": "storm.png",
       "video": "storm.mp4"

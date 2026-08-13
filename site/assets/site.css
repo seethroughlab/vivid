@@ -536,7 +536,9 @@ main {
 /* --- layout utilities --------------------------------------------------------------------- */
 body { overflow-x: clip; }   /* let full-bleed bands span the viewport without a horizontal scrollbar */
 .full-bleed { margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw); }
-.full-bleed > .wrap { max-width: var(--maxw); margin-inline: auto; padding: 0 20px; }
+/* the centered content column inside a full-bleed band — works at any nesting depth (the hero wraps
+   it inside .hero-reel-overlay, so a direct-child selector would miss it and the content goes flush) */
+.wrap { max-width: var(--maxw); margin-inline: auto; padding: 0 20px; }
 .btn-lg { padding: 12px 22px; font-size: 15px; }
 
 /* --- manifesto hero (ADR-0055 spine; the reel hero is ADR-0056) --------------------------- */
