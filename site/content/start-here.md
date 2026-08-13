@@ -28,7 +28,7 @@ all saved as one portable project you can reload, inspect over MCP, and fork.
 ## 4. Keep going
 
 - [All tutorials](/tutorials/) — the beginner path, plus creative-coding on shaders and C++ operators.
-- [Showcase](/showcase/) — five finished projects, each a saved project you can regenerate.
+- [Gallery](/gallery/) — nine finished projects, each a saved project you can regenerate.
 
 > Every tutorial project doubles as a regression case: if the product can't support a step, that's a
 > bug to fix, not a paragraph to soften.

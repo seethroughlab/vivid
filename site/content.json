@@ -1,31 +1,37 @@
 {
   "title": "Vivid",
-  "tagline": "An MCP-native creative coding app.",
-  "meta_description": "Vivid is an MCP-native creative coding app: a DAW-style Session View, a rewireable visual node graph, and a bidirectional mapping bridge between sound and picture — driven by code and by AI agents over MCP.",
+  "tagline": "A new instrument for live visuals.",
+  "meta_description": "Vivid is a new instrument for live visuals — play sound and picture as one, rewire the signal path live, author your own operators with code and AI, and fork the whole thing. A macOS app for VJs, live performers, and creative technologists.",
+  "site_url": "https://vivid.seethroughlab.com",
   "download_url": "https://github.com/seethroughlab/vivid/releases/latest",
   "github_url": "https://github.com/seethroughlab/vivid",
   "source_base": "https://github.com/seethroughlab/vivid/tree/main",
   "showcase_video_base": "https://d2at399jej1hdi.cloudfront.net/videos",
+  "makers": {
+    "name": "See Through Lab",
+    "url": "https://seethroughlab.com"
+  },
+  "testimonials": [],
   "nav": [
     {
-      "label": "Start Here",
-      "href": "/start-here/"
+      "label": "The Instrument",
+      "href": "/the-instrument/"
     },
     {
-      "label": "Tutorials",
-      "href": "/tutorials/"
+      "label": "Gallery",
+      "href": "/gallery/"
     },
     {
-      "label": "Showcase",
-      "href": "/showcase/"
+      "label": "Learn",
+      "href": "/learn/"
     },
     {
-      "label": "Free Plugins",
-      "href": "/free-plugins/"
+      "label": "Community",
+      "href": "/community/"
     },
     {
-      "label": "Reference",
-      "href": "/reference/"
+      "label": "About",
+      "href": "/about/"
     },
     {
       "label": "GitHub",
@@ -33,6 +39,63 @@
       "external": true
     }
   ],
+  "manifesto": "Vivid is a new instrument for live visuals — play sound and picture as one, rewire the signal path live, author your own operators with code and AI, and fork the whole thing.",
+  "hero_lede": "Play sound and picture as one signal path. Rewire the path between them live. Author your own operators with code and AI. Fork the whole thing — a project is a folder you own.",
+  "hero_reel": "blob",
+  "one_liner": "A macOS app where a DAW-style Session View and a rewireable visual node graph are one project — so you play sound and picture together.",
+  "verbs": [
+    {
+      "key": "play",
+      "title": "Play",
+      "body": "Sound and picture are one signal path you perform in real time. A DAW-style Session View and a live visual graph share a single project — the notes you play are the picture you throw.",
+      "clip_id": "pulse-song"
+    },
+    {
+      "key": "rewire",
+      "title": "Rewire",
+      "body": "The path between sound and picture is a live, rewireable node graph, not a fixed pipeline. Assemble it from typed operators and re-patch the signal flow while it runs.",
+      "clip_id": "spectrum"
+    },
+    {
+      "key": "author",
+      "title": "Author",
+      "tag": "The reveal · MCP-native",
+      "body": "When a look doesn't exist yet, you write it — project-local WGSL shaders and compiled C++ operators, edited live. And every operation is exposed over MCP, so an AI agent authors, inspects and verifies whole projects alongside you.",
+      "clip_id": "shader-edit"
+    },
+    {
+      "key": "fork",
+      "title": "Fork",
+      "body": "A project is a folder you own end to end — the session, the graph, the mappings, and your custom operators, saved together. Take it, change it, run it anywhere. No lock-in, no cloud round-trip.",
+      "clip_id": "first-project"
+    }
+  ],
+  "audiences": [
+    {
+      "mark": "01 · Perform",
+      "title": "VJs & live visualists",
+      "body": "Drive picture from your set in real time and rewire the look between songs — never wrestle a fixed pipeline mid-show."
+    },
+    {
+      "mark": "02 · Compose",
+      "title": "Musicians & producers",
+      "body": "Your Session View and the visuals are one project. Write the music and the picture it throws off together, and save both as one file."
+    },
+    {
+      "mark": "03 · Build",
+      "title": "Creative technologists & studios",
+      "body": "Author operators in shaders and C++ with AI over MCP; fork a project folder straight into an installation or a client job."
+    },
+    {
+      "mark": "04 · Explore",
+      "title": "Generative & new-media artists",
+      "body": "Treat the graph as a sketchbook — patch, break, and reshape a living system that reacts to sound instead of a canned loop."
+    }
+  ],
+  "cta": {
+    "title": "Play it yourself.",
+    "body": "Download the signed macOS build and make your first audio-reactive project in a few minutes — or read the story behind the instrument."
+  },
   "supports": [
     {
       "title": "Session View",
@@ -78,6 +141,119 @@
       "prereqs": "Xcode Command Line Tools",
       "build": "Scaffold a project-local C++ visual operator, compile it with clang++, and hot-swap it live after an edit.",
       "hero": ""
+    }
+  ],
+  "guides": [
+    {
+      "slug": "make-a-sound",
+      "num": 1,
+      "verb": "Play",
+      "title": "Make your first sound",
+      "time": "3 min",
+      "prereqs": "Vivid + Surge XT",
+      "goal": "Get a note out of Vivid — the shortest possible first win, no code, no visuals yet.",
+      "result_clip": null,
+      "steps": [
+        {
+          "do": "Add a track and load the free Surge XT synth on it — Vivid finds it automatically once it's installed.",
+          "see": "A new track with Surge XT ready to play."
+        },
+        {
+          "do": "Draw a short MIDI clip (a few notes) and press play.",
+          "see": "You hear Surge XT — Vivid is making sound."
+        }
+      ],
+      "recap": "That's the musical half of the instrument. Next, put something on screen.",
+      "next": "make-a-visual"
+    },
+    {
+      "slug": "make-a-visual",
+      "num": 2,
+      "verb": "Play",
+      "title": "Put something on screen",
+      "time": "3 min",
+      "prereqs": "Guide 1",
+      "goal": "Get a visual rendering in the output window — still no code.",
+      "result_clip": null,
+      "steps": [
+        {
+          "do": "Open the visual node graph and add a visual operator — start with a built-in look or a shader.",
+          "see": "A shape or field appears in the graph."
+        },
+        {
+          "do": "Add an Output node and connect your operator into it.",
+          "see": "Your visual fills the output window."
+        }
+      ],
+      "recap": "You have sound and picture. They're not talking to each other yet — that's the next, best part.",
+      "next": "make-it-react"
+    },
+    {
+      "slug": "make-it-react",
+      "num": 3,
+      "verb": "Rewire",
+      "title": "Make it react to the sound",
+      "time": "5 min",
+      "prereqs": "Guides 1–2",
+      "goal": "Map the sound onto the picture so the visual moves with the music — the aha.",
+      "result_clip": "first-project",
+      "steps": [
+        {
+          "do": "Open the mapping bridge and map an audio signal — a note's pitch, an envelope, a transient — onto a visual parameter like size or brightness.",
+          "see": "That parameter moves the instant the sound plays."
+        },
+        {
+          "do": "Add a few more mappings — size, colour, glow — so several things react at once.",
+          "see": "The picture visibly moves with the music. This is the aha."
+        }
+      ],
+      "recap": "This is Vivid's whole idea: sound and picture are one signal path. The clip above is exactly this project, captured live.",
+      "next": "perform-it"
+    },
+    {
+      "slug": "perform-it",
+      "num": 4,
+      "verb": "Play",
+      "title": "Perform it live",
+      "time": "5 min",
+      "prereqs": "Guide 3",
+      "goal": "Arrange scenes and play sound and picture together in real time.",
+      "result_clip": "pulse-song",
+      "steps": [
+        {
+          "do": "Arrange your clips into scenes in the Session View.",
+          "see": "You can launch scenes and the visuals follow the change."
+        },
+        {
+          "do": "Play the set — trigger scenes live and watch the look shift with the music.",
+          "see": "You're performing sound and picture as one instrument."
+        }
+      ],
+      "recap": "You can play Vivid. The clip above is a scene-driven performance made this way.",
+      "next": "author-your-own"
+    },
+    {
+      "slug": "author-your-own",
+      "num": 5,
+      "verb": "Author",
+      "title": "Author your own — with code and AI",
+      "time": "10 min",
+      "prereqs": "Guides 1–4",
+      "goal": "Graduate from playing the built-ins to writing your own operator — the deep end, and the point of Vivid.",
+      "result_clip": "shader-edit",
+      "steps": [
+        {
+          "do": "Open a shader node's backing WGSL file and edit it live — Vivid hot-reloads the change.",
+          "see": "Your edit shows up in the output immediately; break it and Vivid's diagnostics help you recover."
+        },
+        {
+          "do": "Bring in an AI agent over MCP — ask it to author or tweak an operator, then inspect and verify the result together.",
+          "see": "You and the agent authored a new look, in code, over MCP."
+        }
+      ],
+      "recap": "You've gone from playing built-ins to authoring your own operators. From here, the tested code tutorials go deeper.",
+      "next": null,
+      "next_label": "Graduate to the code tutorials"
     }
   ],
   "showcase": [

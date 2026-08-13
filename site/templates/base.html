@@ -5,14 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>$title</title>
   <meta name="description" content="$meta_description">
+  <link rel="canonical" href="$canonical">
+
+  <meta name="theme-color" content="#0b0c0f">
+  <link rel="icon" href="/assets/brand/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/assets/brand/favicon.svg" sizes="any">
+  <link rel="apple-touch-icon" href="/assets/brand/favicon.svg">
+
+  <!-- Open Graph / Twitter — shared links preview well to the press audience (ADR-0058) -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Vivid">
+  <meta property="og:title" content="$title">
+  <meta property="og:description" content="$meta_description">
+  <meta property="og:url" content="$canonical">
+  <meta property="og:image" content="$og_image">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="$title">
+  <meta name="twitter:description" content="$meta_description">
+  <meta name="twitter:image" content="$og_image">
+
   <link rel="preconnect" href="https://github.com">
+  <link rel="preload" href="/assets/fonts/space-grotesk-v22-latin-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/assets/fonts/inter-v20-latin-regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/assets/site.css">
 </head>
 <body>
   <header class="site-header">
     <div class="site-header-accent"></div>
     <div class="header-inner">
-      <a class="brand" href="/">vivid</a>
+      <a class="brand" href="/"><img class="brand-mark" src="/assets/brand/mark.svg" alt="" width="26" height="26">vivid</a>
       <nav class="nav-links">
         $nav_links
       </nav>
@@ -26,7 +49,39 @@ $content
 
   <footer class="site-footer">
     <div class="footer-inner">
-      <span>Vivid — an MCP-native creative coding app.</span>
+      <div class="footer-brand">
+        <a class="brand" href="/"><img class="brand-mark" src="/assets/brand/mark.svg" alt="" width="26" height="26">vivid</a>
+        <p>A new instrument for live visuals.</p>
+      </div>
+      <nav class="footer-cols" aria-label="Footer">
+        <div class="footer-col">
+          <h2>Product</h2>
+          <a href="/the-instrument/">The Instrument</a>
+          <a href="/gallery/">Gallery</a>
+          <a href="$download_url">Download</a>
+        </div>
+        <div class="footer-col">
+          <h2>Learn</h2>
+          <a href="/start-here/">Start Here</a>
+          <a href="/tutorials/">Tutorials</a>
+          <a href="/reference/">Operator Reference</a>
+          <a href="/free-plugins/">Free Plugins</a>
+        </div>
+        <div class="footer-col">
+          <h2>Community</h2>
+          <a href="$github_url" rel="noopener" target="_blank">GitHub</a>
+          <a href="$github_url/discussions" rel="noopener" target="_blank">Discussions</a>
+          <span class="footer-soon">Discord — soon</span>
+        </div>
+        <div class="footer-col">
+          <h2>About</h2>
+          <a href="/about/">About &amp; Press</a>
+          <a href="/community/">Community</a>
+        </div>
+      </nav>
+    </div>
+    <div class="footer-base">
+      <span>© Vivid · <a href="https://seethroughlab.com" rel="noopener" target="_blank">See Through Lab</a></span>
       <a href="$github_url" rel="noopener" target="_blank">Source on GitHub</a>
     </div>
   </footer>

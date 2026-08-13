@@ -1,37 +1,104 @@
-    <section class="hero">
-      <p class="kicker">Creative coding, MCP-native</p>
-      <h1 class="hero-title">$tagline</h1>
-      <div class="hero-intro">$intro</div>
-      <div class="hero-cta">
-        <a class="btn btn-primary" href="$download_url">Download for macOS</a>
-        <a class="btn btn-ghost" href="/start-here/">Start Here &rarr;</a>
+    <section class="hero-reel full-bleed">
+      $hero_reel
+      <div class="hero-reel-scrim"></div>
+      <div class="hero-reel-overlay">
+        <div class="wrap">
+          <p class="eyebrow">A new medium · live audiovisual instrument</p>
+          <h1 class="manifesto-title">A new instrument for <span class="grad">live visuals</span></h1>
+          <p class="manifesto-lede">$hero_lede</p>
+          <div class="hero-cta">
+            <a class="btn btn-primary btn-lg" href="$download_url">Download for macOS</a>
+            <a class="btn btn-ghost btn-lg" href="/gallery/">See it in motion &rarr;</a>
+          </div>
+        </div>
       </div>
-      <p class="hero-note">A signed macOS build, published via GitHub Releases.</p>
+    </section>
+
+    <section class="what-is full-bleed">
+      <div class="wrap"><p>$one_liner</p></div>
+    </section>
+
+    <section class="section rewire-beat">
+      <h2 class="section-title">Rewire · how it works</h2>
+      <div class="graph-figure">
+        <svg class="node-graph" viewBox="0 0 760 260" role="img"
+             aria-label="Sound enters as a signal, flows through a graph of operators you re-patch live, and comes out as picture.">
+          <defs>
+            <linearGradient id="ngEdge" x1="0" y1="0" x2="760" y2="0" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#4ecdc4"/><stop offset="1" stop-color="#ff5aa8"/>
+            </linearGradient>
+          </defs>
+          <!-- edges -->
+          <path class="ng-edge" d="M160,130 C230,130 230,75 300,75"/>
+          <path class="ng-edge" d="M160,130 C230,130 230,185 300,185"/>
+          <path class="ng-edge" d="M430,75 C505,75 525,130 600,130"/>
+          <path class="ng-edge" d="M430,185 C505,185 525,130 600,130"/>
+          <!-- signal pulses (offset-path matches each edge; animated only when motion is allowed) -->
+          <circle class="ng-sig" r="5" style="offset-path:path('M160,130 C230,130 230,75 300,75')"/>
+          <circle class="ng-sig" r="5" style="offset-path:path('M160,130 C230,130 230,185 300,185')"/>
+          <circle class="ng-sig ng-sig-out" r="5" style="offset-path:path('M430,75 C505,75 525,130 600,130')"/>
+          <circle class="ng-sig ng-sig-out" r="5" style="offset-path:path('M430,185 C505,185 525,130 600,130')"/>
+          <!-- nodes -->
+          <g class="ng-node ng-in">
+            <rect x="30" y="105" width="130" height="50" rx="9"/>
+            <text x="95" y="135">Audio in</text>
+          </g>
+          <g class="ng-node">
+            <rect x="300" y="50" width="130" height="50" rx="9"/>
+            <text x="365" y="80">Analyze</text>
+          </g>
+          <g class="ng-node">
+            <rect x="300" y="160" width="130" height="50" rx="9"/>
+            <text x="365" y="190">Scene 3D</text>
+          </g>
+          <g class="ng-node ng-out">
+            <rect x="600" y="105" width="130" height="50" rx="9"/>
+            <text x="665" y="135">Picture</text>
+          </g>
+        </svg>
+      </div>
+      <p class="graph-caption">Sound enters as a signal, flows through a graph of operators you can
+        re-patch <em>live</em>, and comes out as picture. It is a rewireable node graph, not a fixed
+        pipeline &mdash; change the wiring while it runs.</p>
     </section>
 
     <section class="section">
-      <h2 class="section-title">What it is</h2>
+      <h2 class="section-title">Under the hood</h2>
       <ul class="supports">
 $supports
       </ul>
     </section>
 
+    <div class="verbs">
+$verbs
+    </div>
+
     <section class="section">
-      <div class="section-head">
-        <h2 class="section-title">Showcase</h2>
-        <a class="section-link" href="/showcase/">All showcases &rarr;</a>
-      </div>
-      <div class="showcase-grid">
-$showcase_cards
+      <h2 class="section-title">Who it's for</h2>
+      <div class="audience-grid">
+$audiences
       </div>
     </section>
 
     <section class="section">
       <div class="section-head">
-        <h2 class="section-title">Start with a tutorial</h2>
-        <a class="section-link" href="/tutorials/">All tutorials &rarr;</a>
+        <h2 class="section-title">Made with Vivid</h2>
+        <a class="section-link" href="/gallery/">Full gallery &rarr;</a>
       </div>
-      <div class="tutorial-grid">
-$tutorial_cards
+      <div class="showcase-grid">
+$gallery_teaser
       </div>
     </section>
+$proof
+
+    <section class="cta-band full-bleed">
+      <div class="wrap">
+        <h2>$cta_title</h2>
+        <p>$cta_body</p>
+        <div class="cta-actions">
+          <a class="btn btn-primary btn-lg" href="$download_url">Download for macOS</a>
+          <a class="btn btn-ghost btn-lg" href="/learn/">Learn Vivid &rarr;</a>
+        </div>
+      </div>
+    </section>
+$player_js
