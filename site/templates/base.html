@@ -5,14 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>$title</title>
   <meta name="description" content="$meta_description">
+  <link rel="canonical" href="$canonical">
+
+  <meta name="theme-color" content="#0b0c0f">
+  <link rel="icon" href="/assets/brand/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/assets/brand/favicon.svg" sizes="any">
+  <link rel="apple-touch-icon" href="/assets/brand/favicon.svg">
+
+  <!-- Open Graph / Twitter — shared links preview well to the press audience (ADR-0058) -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Vivid">
+  <meta property="og:title" content="$title">
+  <meta property="og:description" content="$meta_description">
+  <meta property="og:url" content="$canonical">
+  <meta property="og:image" content="$og_image">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="$title">
+  <meta name="twitter:description" content="$meta_description">
+  <meta name="twitter:image" content="$og_image">
+
   <link rel="preconnect" href="https://github.com">
+  <link rel="preload" href="/assets/fonts/space-grotesk-v22-latin-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/assets/fonts/inter-v20-latin-regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/assets/site.css">
 </head>
 <body>
   <header class="site-header">
     <div class="site-header-accent"></div>
     <div class="header-inner">
-      <a class="brand" href="/">vivid</a>
+      <a class="brand" href="/"><img class="brand-mark" src="/assets/brand/mark.svg" alt="" width="26" height="26">vivid</a>
       <nav class="nav-links">
         $nav_links
       </nav>
@@ -26,7 +49,7 @@ $content
 
   <footer class="site-footer">
     <div class="footer-inner">
-      <span>Vivid — an MCP-native creative coding app.</span>
+      <span>Vivid — a new instrument for live visuals.</span>
       <a href="$github_url" rel="noopener" target="_blank">Source on GitHub</a>
     </div>
   </footer>

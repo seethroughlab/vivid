@@ -1,31 +1,32 @@
 {
   "title": "Vivid",
-  "tagline": "An MCP-native creative coding app.",
-  "meta_description": "Vivid is an MCP-native creative coding app: a DAW-style Session View, a rewireable visual node graph, and a bidirectional mapping bridge between sound and picture — driven by code and by AI agents over MCP.",
+  "tagline": "A new instrument for live visuals.",
+  "meta_description": "Vivid is a new instrument for live visuals — play sound and picture as one, rewire the signal path live, author your own operators with code and AI, and fork the whole thing. A macOS app for VJs, live performers, and creative technologists.",
+  "site_url": "https://vivid.seethroughlab.com",
   "download_url": "https://github.com/seethroughlab/vivid/releases/latest",
   "github_url": "https://github.com/seethroughlab/vivid",
   "source_base": "https://github.com/seethroughlab/vivid/tree/main",
   "showcase_video_base": "https://d2at399jej1hdi.cloudfront.net/videos",
   "nav": [
     {
-      "label": "Start Here",
-      "href": "/start-here/"
+      "label": "The Instrument",
+      "href": "/the-instrument/"
     },
     {
-      "label": "Tutorials",
-      "href": "/tutorials/"
+      "label": "Gallery",
+      "href": "/gallery/"
     },
     {
-      "label": "Showcase",
-      "href": "/showcase/"
+      "label": "Learn",
+      "href": "/learn/"
     },
     {
-      "label": "Free Plugins",
-      "href": "/free-plugins/"
+      "label": "Community",
+      "href": "/community/"
     },
     {
-      "label": "Reference",
-      "href": "/reference/"
+      "label": "About",
+      "href": "/about/"
     },
     {
       "label": "GitHub",
@@ -33,6 +34,61 @@
       "external": true
     }
   ],
+  "manifesto": "Vivid is a new instrument for live visuals — play sound and picture as one, rewire the signal path live, author your own operators with code and AI, and fork the whole thing.",
+  "hero_lede": "Play sound and picture as one signal path. Rewire the path between them live. Author your own operators with code and AI. Fork the whole thing — a project is a folder you own.",
+  "verbs": [
+    {
+      "key": "play",
+      "title": "Play",
+      "body": "Sound and picture are one signal path you perform in real time. A DAW-style Session View and a live visual graph share a single project — the notes you play are the picture you throw.",
+      "clip_id": "pulse-song"
+    },
+    {
+      "key": "rewire",
+      "title": "Rewire",
+      "body": "The path between sound and picture is a live, rewireable node graph, not a fixed pipeline. Assemble it from typed operators and re-patch the signal flow while it runs.",
+      "clip_id": "spectrum"
+    },
+    {
+      "key": "author",
+      "title": "Author",
+      "tag": "The reveal · MCP-native",
+      "body": "When a look doesn't exist yet, you write it — project-local WGSL shaders and compiled C++ operators, edited live. And every operation is exposed over MCP, so an AI agent authors, inspects and verifies whole projects alongside you.",
+      "clip_id": "shader-edit"
+    },
+    {
+      "key": "fork",
+      "title": "Fork",
+      "body": "A project is a folder you own end to end — the session, the graph, the mappings, and your custom operators, saved together. Take it, change it, run it anywhere. No lock-in, no cloud round-trip.",
+      "clip_id": "first-project"
+    }
+  ],
+  "audiences": [
+    {
+      "mark": "01 · Perform",
+      "title": "VJs & live visualists",
+      "body": "Drive picture from your set in real time and rewire the look between songs — never wrestle a fixed pipeline mid-show."
+    },
+    {
+      "mark": "02 · Compose",
+      "title": "Musicians & producers",
+      "body": "Your Session View and the visuals are one project. Write the music and the picture it throws off together, and save both as one file."
+    },
+    {
+      "mark": "03 · Build",
+      "title": "Creative technologists & studios",
+      "body": "Author operators in shaders and C++ with AI over MCP; fork a project folder straight into an installation or a client job."
+    },
+    {
+      "mark": "04 · Explore",
+      "title": "Generative & new-media artists",
+      "body": "Treat the graph as a sketchbook — patch, break, and reshape a living system that reacts to sound instead of a canned loop."
+    }
+  ],
+  "cta": {
+    "title": "Play it yourself.",
+    "body": "Download the signed macOS build and make your first audio-reactive project in a few minutes — or read the story behind the instrument."
+  },
   "supports": [
     {
       "title": "Session View",

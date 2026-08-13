@@ -259,11 +259,14 @@ SHOWCASE_PLAYER_JS = """
 """
 
 
-def render_showcase_cards(cfg: dict) -> str:
+def render_showcase_cards(cfg: dict, items: list[dict] | None = None, include_js: bool = True) -> str:
+    """Render showcase/gallery cards. `items` defaults to all showcases (pass a slice for a teaser).
+    `include_js=False` suppresses the appended player JS when the caller emits it once elsewhere
+    (the homepage does this so a single copy at page-end wires BOTH the verb clips and the teaser)."""
     item = load_template("_showcase_card.html")
     cards = []
     any_video = False
-    for s in cfg["showcase"]:
+    for s in (items if items is not None else cfg["showcase"]):
         media = showcase_media_html(s, cfg)
         if "showcase-player" in media:
             any_video = True
@@ -273,9 +276,71 @@ def render_showcase_cards(cfg: dict) -> str:
             source=f'{cfg["source_base"]}/{s["source"]}',
         ))
     html = "\n".join(cards)
-    if any_video:
+    if include_js and any_video:
         html += "\n" + SHOWCASE_PLAYER_JS   # inserted as a value — not re-substituted
     return html
+
+
+def render_verbs(cfg: dict) -> str:
+    """The homepage spine: Play · Rewire · Author · Fork, each with an inline showcase clip (reusing
+    the showcase-player). The 'author' verb is the MCP/authoring reveal, flagged with a tag + accent."""
+    by_id = {s["id"]: s for s in cfg["showcase"]}
+    blocks = []
+    for i, v in enumerate(cfg["verbs"], 1):
+        clip = by_id.get(v.get("clip_id"))
+        media = showcase_media_html(clip, cfg) if clip else ""
+        reveal = " is-reveal" if v.get("key") == "author" else ""
+        tag = f'          <span class="verb-tag">{esc(v["tag"])}</span>\n' if v.get("tag") else ""
+        blocks.append(
+            f'      <div class="verb">\n'
+            f'        <div class="verb-media{reveal}">{media}</div>\n'
+            f'        <div class="verb-copy">\n'
+            f'          <p class="verb-index"><b>0{i}</b> / {esc(v["title"])}</p>\n'
+            f'{tag}'
+            f'          <h2>{esc(v["title"])}</h2>\n'
+            f'          <p>{esc(v["body"])}</p>\n'
+            f'        </div>\n'
+            f'      </div>')
+    return "\n".join(blocks)
+
+
+def render_audiences(cfg: dict) -> str:
+    out = []
+    for a in cfg["audiences"]:
+        out.append(
+            f'        <div class="audience">\n'
+            f'          <span class="audience-mark">{esc(a["mark"])}</span>\n'
+            f'          <h3>{esc(a["title"])}</h3>\n'
+            f'          <p>{esc(a["body"])}</p>\n'
+            f'        </div>')
+    return "\n".join(out)
+
+
+def render_learn_hub() -> str:
+    """Learn is a hub over the kept routes (Start Here / Tutorials / Reference / Free Plugins) plus a
+    'coming soon' nod to the ADR-0059 getting-started series. The routes are stable, so hardcode them."""
+    cards = [
+        ("Start Here", "/start-here/", "Download, install the free beginner instrument, and build your first project."),
+        ("Tutorials", "/tutorials/", "Saved, loadable, MCP-inspectable sample projects — worked in order."),
+        ("Operator Reference", "/reference/", "Every built-in operator, generated from Vivid's live metadata."),
+        ("Free Plugins", "/free-plugins/", "The curated free-plugin path — Surge XT is the one required beginner instrument."),
+    ]
+    out = []
+    for i, (title, href, body) in enumerate(cards, 1):
+        out.append(
+            f'        <a class="hub-card" href="{href}">\n'
+            f'          <span class="hub-kicker">0{i}</span>\n'
+            f'          <h3>{esc(title)}</h3>\n'
+            f'          <p>{esc(body)}</p>\n'
+            f'        </a>')
+    out.append(
+        '        <div class="hub-card hub-soon">\n'
+        '          <span class="hub-kicker">Guided</span>\n'
+        '          <h3>Getting-started series <span class="badge-soon">coming soon</span></h3>\n'
+        '          <p>A fun, motion-first, GUI-first walkthrough — make a sound, make a visual, make it '
+        'react, perform, then author your own with code and AI.</p>\n'
+        '        </div>')
+    return "\n".join(out)
 
 
 def render_tutorial_cards(cfg: dict) -> str:
@@ -460,10 +525,15 @@ def build_site(output_dir: Path) -> None:
                       f"hero still. Set showcase_video_base or run the harness with --video to include it.")
 
     base = load_template("base.html")
+    site_url = (cfg.get("site_url") or "").rstrip("/")
+    default_og = f"{site_url}/assets/brand/og-default.png"
 
-    def emit(slug: str, title: str, description: str, content_html: str, active: str) -> Path:
+    def emit(slug: str, title: str, description: str, content_html: str, active: str,
+             og_image: str | None = None) -> Path:
+        canonical = site_url + "/" + (slug + "/" if slug else "")
         page = base.substitute(
             title=title, meta_description=esc(description),
+            canonical=esc(canonical), og_image=esc(og_image or default_og),
             nav_links=nav_links_html(cfg, active),
             download_url=cfg["download_url"], github_url=cfg["github_url"],
             content=content_html,
@@ -475,11 +545,17 @@ def build_site(output_dir: Path) -> None:
 
     site = cfg["title"]
 
-    # Home
+    # Home — the manifesto spine (ADR-0055): hero → Play·Rewire·Author·Fork → capabilities →
+    # audiences → gallery teaser → CTA. One copy of the player JS at page end wires every clip.
     home = load_template("home.html").substitute(
-        tagline=esc(cfg["tagline"]), intro=render_markdown(CONTENT / "home.md"),
-        supports=render_supports(cfg), showcase_cards=render_showcase_cards(cfg),
-        tutorial_cards=render_tutorial_cards(cfg), download_url=cfg["download_url"],
+        hero_lede=esc(cfg["hero_lede"]),
+        verbs=render_verbs(cfg),
+        supports=render_supports(cfg),
+        audiences=render_audiences(cfg),
+        gallery_teaser=render_showcase_cards(cfg, items=cfg["showcase"][:3], include_js=False),
+        cta_title=esc(cfg["cta"]["title"]), cta_body=esc(cfg["cta"]["body"]),
+        player_js=SHOWCASE_PLAYER_JS,
+        download_url=cfg["download_url"],
     )
     emit("", site, cfg["meta_description"], home, "/")
 
@@ -503,11 +579,44 @@ def build_site(output_dir: Path) -> None:
              title="Free Plugins", body=render_markdown(CONTENT / "free-plugins.md")),
          "/free-plugins/")
 
-    # Showcase (hero gallery)
-    emit("showcase", f"Showcase — {site}",
-         "Five showcase projects — each a saved, regenerable project, captured from the signed build.",
-         load_template("showcase.html").substitute(cards=render_showcase_cards(cfg)),
-         "/showcase/")
+    # Gallery ("Made with Vivid"; re-homes the old /showcase/ grid — attribution is ADR-0057)
+    emit("gallery", f"Gallery — {site}",
+         "Made with Vivid — nine projects, each a saved, regenerable project captured live from the signed build.",
+         load_template("gallery.html").substitute(cards=render_showcase_cards(cfg)),
+         "/gallery/")
+
+    # The Instrument (product / how-it-works — the architecture, after the vision has landed)
+    emit("the-instrument", f"The Instrument — {site}",
+         "How Vivid works: a DAW-style Session View, a rewireable visual node graph, and the mapping "
+         "bridge that binds sound to picture.",
+         load_template("page.html").substitute(
+             title="The Instrument", body=render_markdown(CONTENT / "the-instrument.md")),
+         "/the-instrument/")
+
+    # Learn (hub over the kept routes + the coming getting-started series, ADR-0059)
+    emit("learn", f"Learn — {site}",
+         "Start here, work the tutorials, and browse the operator reference — the path from grasping "
+         "the vision to authoring your own.",
+         load_template("hub.html").substitute(
+             title="Learn",
+             lede="From “grasp the vision” to “I could make this.” Start here, work the tutorials in "
+                  "order, then browse every operator — and graduate into authoring your own with code and AI.",
+             cards=render_learn_hub()),
+         "/learn/")
+
+    # Community (honest: GitHub live, Discord coming soon)
+    emit("community", f"Community — {site}",
+         "Vivid is built in the open on GitHub — file an issue, join a discussion, or share what you make.",
+         load_template("page.html").substitute(
+             title="Community", body=render_markdown(CONTENT / "community.md")),
+         "/community/")
+
+    # About / Press (story + maker + press kit)
+    emit("about", f"About & Press — {site}",
+         "Why Vivid exists, who makes it, and a press kit for writing about a new instrument for live visuals.",
+         load_template("page.html").substitute(
+             title="About & Press", body=render_markdown(CONTENT / "about.md")),
+         "/about/")
 
     # Operator Reference (generated from reference.json; ADR-0038)
     render_reference(cfg, emit, site)
@@ -523,14 +632,27 @@ def build_site(output_dir: Path) -> None:
                   "see the tutorials."),
          "/packages/")
 
+    # Cloudflare Pages redirect: the old /showcase/ URL now lives at /gallery/ (ADR-0055 keeps URLs
+    # working). Applies on Cloudflare Pages, not the local http.server preview.
+    (output_dir / "_redirects").write_text("/showcase/  /gallery/  301\n/showcase  /gallery/  301\n")
+
     _self_check(cfg, output_dir)
 
 
 def _self_check(cfg: dict, output_dir: Path) -> None:
-    expected_pages = ["", "start-here", "tutorials", "free-plugins", "showcase", "reference", "packages"]
+    expected_pages = ["", "the-instrument", "gallery", "learn", "community", "about",
+                      "start-here", "tutorials", "free-plugins", "reference", "packages"]
     missing = [p or "(home)" for p in expected_pages if not (output_dir / p / "index.html").exists()]
     if missing:
         raise SystemExit(f"[build] self-check failed — missing pages: {', '.join(missing)}")
+    # Brand assets the craft bar depends on (ADR-0058): favicon + social-share image + wordmark/fonts.
+    required_assets = ["brand/favicon.svg", "brand/mark.svg", "brand/wordmark.svg", "brand/og-default.png",
+                       "fonts/space-grotesk-v22-latin-700.woff2", "fonts/inter-v20-latin-regular.woff2"]
+    missing_assets = [a for a in required_assets if not (output_dir / "assets" / a).exists()]
+    if missing_assets:
+        raise SystemExit(f"[build] self-check failed — missing brand assets: {', '.join(missing_assets)}")
+    if not (output_dir / "_redirects").exists():
+        raise SystemExit("[build] self-check failed — missing _redirects (Cloudflare Pages)")
     missing_heroes = [s["hero"] for s in cfg["showcase"]
                       if not (output_dir / "assets" / "showcase" / s["hero"]).exists()]
     if missing_heroes:
