@@ -75,8 +75,11 @@ The site expands from a docs index into a narrative product site. Top-level stru
   the vision has landed.
 - **Gallery** — "Made with Vivid," attributed to the artists who made it (see ADR-0057). This
   replaces today's passive showcase grid as the primary proof surface.
-- **Learn** — the existing Start Here, Tutorials, and generated Operator Reference (ADR-0038), kept
-  and folded under one section. The "author your own operators" story gets a real home here.
+- **Learn** — a first-class getting-started experience plus the generated Operator Reference
+  (ADR-0038). Getting started is a designed, on-site, motion-first, GUI-first tutorial series
+  (ADR-0059), not an index of GitHub links — it is where "grasp the vision" becomes "I could make
+  this," and where the "author your own operators" story finally lands as the learner graduates to
+  code and AI.
 - **Community** — Discord/GitHub/showcase submissions; the ecosystem this audience buys into.
 - **About / Press** — the story, the maker, and a press kit (logo, screenshots, one-liner, contact).
   This matters specifically for the partner/press audience and does not exist today.
@@ -137,4 +140,4 @@ Vivid 4 metadata), ADR-0039 (community packages are "coming soon" until registry
 ADR-0040 (MCP-native creative coding is the public promise — public-facing lead amended here),
 ADR-0041 (procedural 3D scene graph for audio-reactive visuals). Companions: ADR-0056 (the homepage
 hero and narrative), ADR-0057 (the gallery and social-proof system), ADR-0058 (the brand and visual
-system).
+system), ADR-0059 (fun, motion-first getting-started tutorials).
