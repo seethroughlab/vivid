@@ -388,7 +388,7 @@ def render_learn_hub() -> str:
     'coming soon' nod to the ADR-0059 getting-started series. The routes are stable, so hardcode them."""
     cards = [
         ("Start Here", "/start-here/", "Download, install the free beginner instrument, and build your first project."),
-        ("Tutorials", "/tutorials/", "Saved, loadable, MCP-inspectable sample projects — worked in order."),
+        ("Getting started", "/tutorials/", "The motion-first, GUI-first beginner path — make a sound, make a visual, make it react, perform, then author your own."),
         ("Operator Reference", "/reference/", "Every built-in operator, generated from Vivid's live metadata."),
         ("Free Plugins", "/free-plugins/", "The curated free-plugin path — Surge XT is the one required beginner instrument."),
     ]
@@ -400,13 +400,57 @@ def render_learn_hub() -> str:
             f'          <h3>{esc(title)}</h3>\n'
             f'          <p>{esc(body)}</p>\n'
             f'        </a>')
-    out.append(
-        '        <div class="hub-card hub-soon">\n'
-        '          <span class="hub-kicker">Guided</span>\n'
-        '          <h3>Getting-started series <span class="badge-soon">coming soon</span></h3>\n'
-        '          <p>A fun, motion-first, GUI-first walkthrough — make a sound, make a visual, make it '
-        'react, perform, then author your own with code and AI.</p>\n'
-        '        </div>')
+    return "\n".join(out)
+
+
+def render_guide_media(guide: dict, cfg: dict) -> str:
+    """A guide's motion-first result media (ADR-0059): the real captured showcase clip for this stage
+    when one exists, else an honest 'coming soon' placeholder (never a fabricated clip)."""
+    rid = guide.get("result_clip")
+    if rid:
+        entry = next((s for s in cfg["showcase"] if s["id"] == rid), None)
+        if entry:
+            return showcase_media_html(entry, cfg)
+    return ('<div class="guide-soon"><span aria-hidden="true">&#9654;</span> '
+            'Motion clip coming soon — captured from the real app.</div>')
+
+
+def render_guide_steps(guide: dict) -> str:
+    out = []
+    for i, st in enumerate(guide["steps"], 1):
+        out.append(
+            f'        <li class="guide-step">\n'
+            f'          <span class="step-n">{i}</span>\n'
+            f'          <div class="step-body">\n'
+            f'            <p class="step-do">{esc(st["do"])}</p>\n'
+            f'            <p class="step-see"><span class="step-check">&#10003;</span> {esc(st["see"])}</p>\n'
+            f'          </div>\n'
+            f'        </li>')
+    return "\n".join(out)
+
+
+def render_guide_next(guide: dict, by_slug: dict) -> str:
+    nxt = guide.get("next")
+    if nxt and nxt in by_slug:
+        n = by_slug[nxt]
+        return f'<a class="btn btn-primary btn-lg" href="/tutorials/{n["slug"]}/">Next: {esc(n["title"])} &rarr;</a>'
+    label = esc(guide.get("next_label") or "Back to all tutorials")
+    return f'<a class="btn btn-primary btn-lg" href="/tutorials/">{label} &rarr;</a>'
+
+
+def render_guide_cards(cfg: dict) -> str:
+    out = []
+    for g in cfg.get("guides", []):
+        out.append(
+            f'          <a class="guide-card" href="/tutorials/{g["slug"]}/">\n'
+            f'            <span class="guide-card-n">{g["num"]}</span>\n'
+            f'            <div class="guide-card-body">\n'
+            f'              <span class="hub-kicker">{esc(g["verb"])}</span>\n'
+            f'              <h3>{esc(g["title"])}</h3>\n'
+            f'              <p>{esc(g["goal"])}</p>\n'
+            f'              <span class="guide-card-meta">&#9201; {esc(g["time"])}</span>\n'
+            f'            </div>\n'
+            f'          </a>')
     return "\n".join(out)
 
 
@@ -636,11 +680,28 @@ def build_site(output_dir: Path) -> None:
              title="Start Here", body=render_markdown(CONTENT / "start-here.md")),
          "/start-here/")
 
-    # Tutorials (index of cards)
-    emit("tutorials", f"Tutorials — {site}",
-         "Release-gated tutorials: each one is a saved, loadable, MCP-inspectable sample project.",
-         load_template("tutorials.html").substitute(cards=render_tutorial_cards(cfg)),
+    # Tutorials — the Learn getting-started (ADR-0059): a motion-first, GUI-first beginner path plus the
+    # existing runnable code tutorials as the "graduate to code & AI" tier.
+    emit("tutorials", f"Learn Vivid — {site}",
+         "A motion-first, GUI-first beginner path: make a sound, make a visual, make it react, perform "
+         "it, then author your own — graduating into the runnable code tutorials.",
+         load_template("tutorials.html").substitute(
+             guide_cards=render_guide_cards(cfg),
+             code_cards=render_tutorial_cards(cfg)),
          "/tutorials/")
+    # Each beginner guide as a designed on-site page (per-guide result clip + steps + checkpoints).
+    guide_tpl = load_template("guide.html")
+    guides_by_slug = {g["slug"]: g for g in cfg.get("guides", [])}
+    for g in cfg.get("guides", []):
+        media = render_guide_media(g, cfg)
+        emit(f"tutorials/{g['slug']}", f"{g['title']} — Learn Vivid — {site}", g["goal"],
+             guide_tpl.substitute(
+                 num=g["num"], verb=esc(g["verb"]), title=esc(g["title"]), goal=esc(g["goal"]),
+                 time=esc(g["time"]), prereqs=esc(g["prereqs"]),
+                 media=media, steps=render_guide_steps(g), recap=esc(g["recap"]),
+                 next=render_guide_next(g, guides_by_slug),
+                 player_js=(SHOWCASE_PLAYER_JS if "showcase-player" in media else "")),
+             "/tutorials/")
 
     # Free Plugins (markdown)
     emit("free-plugins", f"Free Plugins — {site}",
@@ -755,6 +816,14 @@ def _self_check(cfg: dict, output_dir: Path) -> None:
     for i, q in enumerate(cfg.get("testimonials") or []):
         if not (q.get("name") and q.get("quote")):
             raise SystemExit(f"[build] self-check failed — testimonial #{i} missing name/quote")
+    # ADR-0059: every beginner guide renders an on-site page; any result clip is a real showcase id.
+    show_ids = {s["id"] for s in cfg["showcase"]}
+    for g in cfg.get("guides", []):
+        if not (output_dir / "tutorials" / g["slug"] / "index.html").exists():
+            raise SystemExit(f"[build] self-check failed — missing guide page: tutorials/{g['slug']}")
+        rc = g.get("result_clip")
+        if rc and rc not in show_ids:
+            raise SystemExit(f"[build] self-check failed — guide '{g['slug']}' result_clip '{rc}' unknown")
     # Showcase clips are hosted separately (gitignored); a missing local clip is NOT a build failure —
     # the card degrades to the hero still, or references the external base. So no video self-check here.
     # No unresolved $template placeholders leaked into any page.

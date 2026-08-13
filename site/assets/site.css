@@ -336,6 +336,44 @@ main {
 .quote blockquote { margin: 0 0 12px; font-size: var(--fs-lead); color: var(--text); line-height: 1.45; }
 .quote figcaption .quote-meta { font-size: var(--fs-sm); color: var(--muted); }
 
+/* --- guides / getting-started (ADR-0059) -------------------------------------------------- */
+.guide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.guide-card { display: flex; gap: 14px; border: 1px solid var(--border); background: var(--card);
+  border-radius: var(--radius); padding: 18px 20px; transition: border-color var(--dur) var(--ease), transform .1s; }
+.guide-card:hover { border-color: var(--border-lit); transform: translateY(-2px); text-decoration: none; }
+.guide-card-n { font-family: var(--font-display); font-size: 26px; font-weight: 700; line-height: 1;
+  color: var(--signal-cyan); flex: none; width: 30px; }
+.guide-card-body h3 { font-size: var(--fs-h3); margin: 4px 0 6px; color: var(--text); }
+.guide-card-body p { color: var(--muted); font-size: var(--fs-sm); margin: 0 0 10px; line-height: 1.5; }
+.guide-card-meta { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--faint); }
+.guide { max-width: 820px; }
+.guide-head { margin: 6px 0 22px; }
+.guide-kicker { font-family: var(--font-mono); font-size: var(--fs-xs); text-transform: uppercase;
+  letter-spacing: 0.14em; color: var(--faint); margin: 0 0 8px; }
+.guide-kicker b { color: var(--signal-cyan); font-weight: 400; }
+.guide-goal { color: var(--muted); font-size: var(--fs-lead); margin: 6px 0 14px; max-width: var(--measure); }
+.guide-meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0; }
+.guide-meta span { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--faint); }
+.guide-media { position: relative; border: 1px solid var(--border); border-radius: var(--radius-lg);
+  overflow: hidden; background: #000; aspect-ratio: 16 / 9; margin: 0 0 28px; box-shadow: 0 10px 40px var(--shadow); }
+.guide-media > .showcase-player, .guide-media > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.guide-soon { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  gap: 10px; color: var(--faint); font-family: var(--font-mono); font-size: var(--fs-sm); text-align: center; padding: 0 20px;
+  background: repeating-linear-gradient(45deg, var(--bg2), var(--bg2) 12px, var(--card) 12px, var(--card) 24px); }
+.guide-steps { list-style: none; padding: 0; margin: 0 0 28px; display: grid; gap: 14px; }
+.guide-step { display: flex; gap: 16px; border: 1px solid var(--border); background: var(--card);
+  border-radius: var(--radius); padding: 16px 18px; }
+.step-n { font-family: var(--font-display); font-weight: 700; font-size: 20px; color: var(--signal-cyan);
+  flex: none; width: 26px; }
+.step-body { display: flex; flex-direction: column; gap: 8px; }
+.step-do { margin: 0; color: var(--text); font-size: var(--fs-body); }
+.step-see { margin: 0; color: var(--muted); font-size: var(--fs-sm); }
+.step-check { color: var(--signal-cyan); font-weight: 700; }
+.guide-recap { border-left: 3px solid var(--signal-magenta); background: var(--bg2);
+  border-radius: 0 var(--radius) var(--radius) 0; padding: 14px 18px; margin: 0 0 24px; }
+.guide-recap p { margin: 0; color: var(--muted); }
+.guide-next { margin: 8px 0 0; }
+
 /* --- tutorial grid ------------------------------------------------------------------------ */
 .tutorial-grid {
   display: grid;

@@ -143,6 +143,119 @@
       "hero": ""
     }
   ],
+  "guides": [
+    {
+      "slug": "make-a-sound",
+      "num": 1,
+      "verb": "Play",
+      "title": "Make your first sound",
+      "time": "3 min",
+      "prereqs": "Vivid + Surge XT",
+      "goal": "Get a note out of Vivid — the shortest possible first win, no code, no visuals yet.",
+      "result_clip": null,
+      "steps": [
+        {
+          "do": "Add a track and load the free Surge XT synth on it — Vivid finds it automatically once it's installed.",
+          "see": "A new track with Surge XT ready to play."
+        },
+        {
+          "do": "Draw a short MIDI clip (a few notes) and press play.",
+          "see": "You hear Surge XT — Vivid is making sound."
+        }
+      ],
+      "recap": "That's the musical half of the instrument. Next, put something on screen.",
+      "next": "make-a-visual"
+    },
+    {
+      "slug": "make-a-visual",
+      "num": 2,
+      "verb": "Play",
+      "title": "Put something on screen",
+      "time": "3 min",
+      "prereqs": "Guide 1",
+      "goal": "Get a visual rendering in the output window — still no code.",
+      "result_clip": null,
+      "steps": [
+        {
+          "do": "Open the visual node graph and add a visual operator — start with a built-in look or a shader.",
+          "see": "A shape or field appears in the graph."
+        },
+        {
+          "do": "Add an Output node and connect your operator into it.",
+          "see": "Your visual fills the output window."
+        }
+      ],
+      "recap": "You have sound and picture. They're not talking to each other yet — that's the next, best part.",
+      "next": "make-it-react"
+    },
+    {
+      "slug": "make-it-react",
+      "num": 3,
+      "verb": "Rewire",
+      "title": "Make it react to the sound",
+      "time": "5 min",
+      "prereqs": "Guides 1–2",
+      "goal": "Map the sound onto the picture so the visual moves with the music — the aha.",
+      "result_clip": "first-project",
+      "steps": [
+        {
+          "do": "Open the mapping bridge and map an audio signal — a note's pitch, an envelope, a transient — onto a visual parameter like size or brightness.",
+          "see": "That parameter moves the instant the sound plays."
+        },
+        {
+          "do": "Add a few more mappings — size, colour, glow — so several things react at once.",
+          "see": "The picture visibly moves with the music. This is the aha."
+        }
+      ],
+      "recap": "This is Vivid's whole idea: sound and picture are one signal path. The clip above is exactly this project, captured live.",
+      "next": "perform-it"
+    },
+    {
+      "slug": "perform-it",
+      "num": 4,
+      "verb": "Play",
+      "title": "Perform it live",
+      "time": "5 min",
+      "prereqs": "Guide 3",
+      "goal": "Arrange scenes and play sound and picture together in real time.",
+      "result_clip": "pulse-song",
+      "steps": [
+        {
+          "do": "Arrange your clips into scenes in the Session View.",
+          "see": "You can launch scenes and the visuals follow the change."
+        },
+        {
+          "do": "Play the set — trigger scenes live and watch the look shift with the music.",
+          "see": "You're performing sound and picture as one instrument."
+        }
+      ],
+      "recap": "You can play Vivid. The clip above is a scene-driven performance made this way.",
+      "next": "author-your-own"
+    },
+    {
+      "slug": "author-your-own",
+      "num": 5,
+      "verb": "Author",
+      "title": "Author your own — with code and AI",
+      "time": "10 min",
+      "prereqs": "Guides 1–4",
+      "goal": "Graduate from playing the built-ins to writing your own operator — the deep end, and the point of Vivid.",
+      "result_clip": "shader-edit",
+      "steps": [
+        {
+          "do": "Open a shader node's backing WGSL file and edit it live — Vivid hot-reloads the change.",
+          "see": "Your edit shows up in the output immediately; break it and Vivid's diagnostics help you recover."
+        },
+        {
+          "do": "Bring in an AI agent over MCP — ask it to author or tweak an operator, then inspect and verify the result together.",
+          "see": "You and the agent authored a new look, in code, over MCP."
+        }
+      ],
+      "recap": "You've gone from playing built-ins to authoring your own operators. From here, the tested code tutorials go deeper.",
+      "next": null,
+      "next_label": "Graduate to the code tutorials"
+    }
+  ],
   "showcase": [
     {
       "id": "first-project",
