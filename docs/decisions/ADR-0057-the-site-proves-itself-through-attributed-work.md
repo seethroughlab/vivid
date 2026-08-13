@@ -1,6 +1,6 @@
 # ADR-0057: The Site Proves Itself Through Attributed Work
 
-Status: proposed
+Status: accepted
 
 Date: 2026-08-12
 
