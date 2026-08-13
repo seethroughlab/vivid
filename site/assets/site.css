@@ -380,19 +380,26 @@ main {
 .coming-soon { text-align: left; max-width: 640px; }
 .coming-soon .page-lede { margin-bottom: 22px; }
 
-/* --- footer ------------------------------------------------------------------------------- */
-.site-footer { border-top: 1px solid var(--border); margin-top: 40px; }
+/* --- footer (ADR-0056 rich footer) -------------------------------------------------------- */
+.site-footer { border-top: 1px solid var(--border); margin-top: var(--sp-24); background: var(--bg2); }
 .footer-inner {
-  max-width: var(--maxw);
-  margin: 0 auto;
-  padding: 24px 20px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 20px;
-  justify-content: space-between;
-  color: var(--faint);
-  font-size: 12px;
+  max-width: var(--maxw); margin: 0 auto; padding: clamp(32px, 5vh, 56px) 20px 28px;
+  display: grid; grid-template-columns: 1.5fr repeat(4, 1fr); gap: 28px 24px;
 }
+.footer-brand .brand { margin-bottom: 12px; }
+.footer-brand p { color: var(--muted); font-size: var(--fs-sm); margin: 0; max-width: 30ch; }
+.footer-col { display: flex; flex-direction: column; gap: 9px; align-items: flex-start; }
+.footer-col h2 { font-family: var(--font-mono); font-size: var(--fs-xs); text-transform: uppercase;
+  letter-spacing: 0.12em; color: var(--faint); margin: 0 0 4px; font-weight: 400; }
+.footer-col a { color: var(--muted); font-size: var(--fs-sm); }
+.footer-col a:hover { color: var(--text); text-decoration: none; }
+.footer-soon { color: var(--faint); font-size: var(--fs-sm); }
+.footer-base {
+  max-width: var(--maxw); margin: 0 auto; padding: 16px 20px; border-top: 1px solid var(--border);
+  display: flex; flex-wrap: wrap; gap: 10px 20px; justify-content: space-between;
+  color: var(--faint); font-size: var(--fs-xs);
+}
+.footer-base a { color: var(--muted); }
 
 /* --- operator reference ------------------------------------------------------------------- */
 :root {
@@ -503,6 +510,55 @@ body { overflow-x: clip; }   /* let full-bleed bands span the viewport without a
 .hero-note { color: var(--faint); font-size: var(--fs-sm); margin: 0; }
 .hero-note code { font-family: var(--font-mono); font-size: 0.9em; }
 
+/* --- hero reel (ADR-0056): full-bleed audio-reactive clip with overlaid manifesto ----------- */
+.hero-reel {
+  position: relative;
+  margin-top: -40px;                 /* sit flush under the sticky header */
+  min-height: clamp(460px, 78vh, 760px);
+  display: flex;
+  overflow: hidden;
+  background: #000;
+  border-bottom: 1px solid var(--border);
+}
+.hero-reel-media { position: absolute; inset: 0; }
+.hero-reel-media > .showcase-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.hero-reel-scrim {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(6,7,9,0.92) 0%, rgba(6,7,9,0.72) 38%, rgba(6,7,9,0.24) 70%, rgba(6,7,9,0.12) 100%),
+    linear-gradient(0deg, rgba(6,7,9,0.85) 0%, transparent 44%);
+}
+.hero-reel-overlay { position: relative; z-index: 2; align-self: center; width: 100%; padding: clamp(28px, 6vh, 80px) 0; }
+.hero-reel .showcase-unmute { z-index: 3; bottom: 1rem; right: 1rem; width: 2.4rem; height: 2.4rem; font-size: 1.05rem; }
+
+/* --- one-line "what it is" band ------------------------------------------------------------- */
+.what-is { background: var(--bg2); border-bottom: 1px solid var(--border); }
+.what-is > .wrap { padding-top: 20px; padding-bottom: 20px; }
+.what-is p { margin: 0; color: var(--text); font-family: var(--font-display); font-weight: 500;
+  font-size: var(--fs-lead); letter-spacing: -0.01em; max-width: 68ch; }
+
+/* --- Rewire beat: the node graph, shown moving (ADR-0056) ---------------------------------- */
+.rewire-beat { }
+.graph-figure { border: 1px solid var(--border); background: linear-gradient(180deg, var(--card), var(--bg2));
+  border-radius: var(--radius-lg); padding: clamp(16px, 3vw, 32px); box-shadow: 0 10px 40px var(--shadow); }
+.node-graph { display: block; width: 100%; height: auto; max-height: 300px; }
+.node-graph .ng-edge { fill: none; stroke: url(#ngEdge); stroke-width: 2.5; opacity: 0.5; }
+.node-graph .ng-node rect { fill: var(--card); stroke: var(--border-lit); stroke-width: 1.5; }
+.node-graph .ng-node text { fill: var(--text); font-family: var(--font-mono); font-size: 15px; text-anchor: middle; }
+.node-graph .ng-in rect { stroke: var(--signal-cyan); }
+.node-graph .ng-out rect { stroke: var(--signal-magenta); }
+.node-graph .ng-sig { fill: var(--signal-cyan); opacity: 0; filter: drop-shadow(0 0 5px var(--signal-cyan)); }
+.node-graph .ng-sig-out { fill: var(--signal-magenta); filter: drop-shadow(0 0 5px var(--signal-magenta)); }
+.graph-caption { color: var(--muted); font-size: var(--fs-sm); max-width: 62ch; margin: 16px 0 0; }
+.graph-caption em { color: var(--text); font-style: normal; border-bottom: 1px solid var(--signal-cyan); }
+@media (prefers-reduced-motion: no-preference) {
+  .node-graph .ng-sig { animation: ngflow 1.6s linear infinite; }
+  .node-graph .ng-sig-out { animation-delay: 0.8s; }
+  .node-graph .ng-out rect { animation: ngpulse 1.6s var(--ease) infinite; animation-delay: 0.8s; }
+}
+@keyframes ngflow { 0% { offset-distance: 0%; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { offset-distance: 100%; opacity: 0; } }
+@keyframes ngpulse { 0%, 100% { stroke-width: 1.5; } 50% { stroke-width: 3; } }
+
 /* --- verbs: Play · Rewire · Author · Fork ------------------------------------------------- */
 .verbs { margin-top: var(--sp-24); display: flex; flex-direction: column; gap: clamp(48px, 9vh, 104px); }
 .verb { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(24px, 4vw, 56px); align-items: center; }
@@ -560,10 +616,10 @@ body { overflow-x: clip; }   /* let full-bleed bands span the viewport without a
 
 /* --- disciplined entrance motion (load only; scroll motion is the product, not the chrome) - */
 @media (prefers-reduced-motion: no-preference) {
-  .hero-manifesto .eyebrow { animation: rise .6s var(--ease) both; }
-  .hero-manifesto .manifesto-title { animation: rise .6s var(--ease) both; animation-delay: .06s; }
-  .hero-manifesto .manifesto-lede { animation: rise .6s var(--ease) both; animation-delay: .12s; }
-  .hero-manifesto .hero-cta { animation: rise .6s var(--ease) both; animation-delay: .18s; }
+  .hero-reel-overlay .eyebrow { animation: rise .6s var(--ease) both; }
+  .hero-reel-overlay .manifesto-title { animation: rise .6s var(--ease) both; animation-delay: .06s; }
+  .hero-reel-overlay .manifesto-lede { animation: rise .6s var(--ease) both; animation-delay: .12s; }
+  .hero-reel-overlay .hero-cta { animation: rise .6s var(--ease) both; animation-delay: .18s; }
 }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
@@ -572,6 +628,8 @@ body { overflow-x: clip; }   /* let full-bleed bands span the viewport without a
   .verb { grid-template-columns: 1fr; gap: 20px; }
   .verb:nth-child(even) .verb-media { order: 0; }
   .verb-media { order: -1; }              /* media above copy on narrow screens */
+  .footer-inner { grid-template-columns: 1fr 1fr; }
+  .footer-brand { grid-column: 1 / -1; }
 }
 @media (max-width: 640px) {
   main { padding: 28px 16px 56px; }

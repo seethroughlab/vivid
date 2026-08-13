@@ -36,6 +36,8 @@
   ],
   "manifesto": "Vivid is a new instrument for live visuals — play sound and picture as one, rewire the signal path live, author your own operators with code and AI, and fork the whole thing.",
   "hero_lede": "Play sound and picture as one signal path. Rewire the path between them live. Author your own operators with code and AI. Fork the whole thing — a project is a folder you own.",
+  "hero_reel": "blob",
+  "one_liner": "A macOS app where a DAW-style Session View and a rewireable visual node graph are one project — so you play sound and picture together.",
   "verbs": [
     {
       "key": "play",

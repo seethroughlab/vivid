@@ -281,6 +281,30 @@ def render_showcase_cards(cfg: dict, items: list[dict] | None = None, include_js
     return html
 
 
+def render_hero_reel(cfg: dict) -> str:
+    """Full-bleed homepage hero (ADR-0056): the chosen showcase clip as an autoplaying, muted, looping
+    reel — sound visibly driving picture. Reuses the shipping showcase-player (HLS + one-click unmute)
+    and its still fallback (no clip URL -> the hero degrades to the high-quality poster, never empty).
+    No `.showcase-expand` here, so the hero has no lightbox — it is the page, not a thumbnail."""
+    by_id = {s["id"]: s for s in cfg["showcase"]}
+    s = by_id.get(cfg.get("hero_reel")) or cfg["showcase"][0]
+    title = esc(s["title"])
+    poster = f'/assets/showcase/{s["hero"]}'
+    video_url = showcase_video_url(s, cfg)
+    if not video_url:
+        return (f'<div class="hero-reel-media">'
+                f'<img class="showcase-poster" src="{poster}" alt="{title}" width="1280" height="720"></div>')
+    return (
+        f'<div class="hero-reel-media showcase-player" data-hls-src="{esc(video_url)}">'
+        f'<img class="showcase-poster" src="{poster}" alt="{title}" width="1280" height="720">'
+        f'<video class="showcase-video" poster="{poster}" width="1280" height="720" '
+        f'muted loop playsinline preload="none" aria-label="{title}"></video>'
+        f'<button class="showcase-unmute" type="button" aria-label="Unmute" title="Unmute" hidden>'
+        f'<span aria-hidden="true">\U0001F507</span></button>'
+        f'</div>'
+    )
+
+
 def render_verbs(cfg: dict) -> str:
     """The homepage spine: Play · Rewire · Author · Fork, each with an inline showcase clip (reusing
     the showcase-player). The 'author' verb is the MCP/authoring reveal, flagged with a tag + accent."""
@@ -548,7 +572,9 @@ def build_site(output_dir: Path) -> None:
     # Home — the manifesto spine (ADR-0055): hero → Play·Rewire·Author·Fork → capabilities →
     # audiences → gallery teaser → CTA. One copy of the player JS at page end wires every clip.
     home = load_template("home.html").substitute(
+        hero_reel=render_hero_reel(cfg),
         hero_lede=esc(cfg["hero_lede"]),
+        one_liner=esc(cfg["one_liner"]),
         verbs=render_verbs(cfg),
         supports=render_supports(cfg),
         audiences=render_audiences(cfg),
