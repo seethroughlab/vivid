@@ -1,6 +1,6 @@
 # ADR-0040: MCP-Native Creative Coding Is the Public Promise
 
-Status: accepted
+Status: accepted, **partially amended by [ADR-0055](ADR-0055-the-website-is-a-manifesto-for-a-new-instrument.md)** (2026-08-12) — the *public-facing headline lead* is reframed to the instrument/manifesto ("a new instrument for live visuals"); MCP + LLM-authored operators become the site's reveal rather than the H1. The product gate, lean-core rules, and fulfillment gates below stand unchanged.
 
 Date: 2026-07-26
 
