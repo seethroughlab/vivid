@@ -1,6 +1,6 @@
 # ADR-0055: The Website Is a Manifesto for a New Instrument
 
-Status: proposed
+Status: accepted
 
 Date: 2026-08-12
 

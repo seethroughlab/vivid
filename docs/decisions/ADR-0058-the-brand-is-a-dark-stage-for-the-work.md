@@ -1,6 +1,6 @@
 # ADR-0058: The Brand Is a Dark Stage for the Work
 
-Status: proposed
+Status: accepted
 
 Date: 2026-08-12
 
