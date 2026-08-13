@@ -6,7 +6,7 @@ for HTML shells + `markdown` for prose. No web framework. One data file (`conten
 site config, nav and section metadata; `content/*.md` holds prose; `templates/*.html` are thin shells.
 
 Showcase hero images are copied at build time from the QA harness output
-(`examples/demos/showcase/heroes/`) — the single source of truth (ADR-0037: site media is a release
+(`examples/demos/showcase/heroes/`) - the single source of truth (ADR-0037: site media is a release
 artifact of the demo QA path). A build self-check fails the build if any section page or hero is
 missing, so CI catches a broken site.
 
@@ -60,6 +60,9 @@ def nav_links_html(cfg: dict, active_href: str) -> str:
 
 
 def esc(s: str) -> str:
+    # Normalize em/en dashes to a plain hyphen so none reach the page, including generated operator
+    # text from reference.json (the ADR-0038 snapshot), which we do not hand-edit.
+    s = s.replace("—", "-").replace("–", "-")
     return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
@@ -73,7 +76,7 @@ def render_supports(cfg: dict) -> str:
 def showcase_video_url(s: dict, cfg: dict) -> str | None:
     """Resolve the clip URL for a showcase, or None to fall back to the still <img>.
 
-    Showcase clips are NOT committed (gitignored — see examples/demos/showcase/heroes/ + processed/)
+    Showcase clips are NOT committed (gitignored - see examples/demos/showcase/heroes/ + processed/)
     to keep the repo free of media binaries. They are hosted separately, HLS-encoded + uploaded to
     S3/CloudFront by site/scripts/{process,upload}-showcase-video.*:
       - production: `showcase_video_base` in content.json is the CloudFront base; the clip is the HLS
@@ -93,7 +96,7 @@ def showcase_video_url(s: dict, cfg: dict) -> str | None:
 
 def showcase_media_html(s: dict, cfg: dict) -> str:
     """The card's media: the hero still as a poster <img> with a lazily-attached, scroll-triggered
-    muted-autoplay <video> that fades in over it, plus an unmute control (these clips are AV-synced —
+    muted-autoplay <video> that fades in over it, plus an unmute control (these clips are AV-synced -
     the audio IS the point). Falls back to the still <img> alone when no clip URL resolves. The hero
     PNG stays the single source of truth (poster + fallback); the video is enhancement."""
     hero = s["hero"]
@@ -119,7 +122,7 @@ def showcase_media_html(s: dict, cfg: dict) -> str:
 # Inline player: lazy hls.js (jsDelivr, Safari native HLS), IntersectionObserver muted-autoplay on
 # scroll, and a click-to-unmute control (only one card plays sound at a time). Respects
 # prefers-reduced-motion (no autoplay; unmute still plays on the user gesture). Emitted once per page
-# that has showcase cards. No `${...}` template literals — this string is inserted as a value, but keep
+# that has showcase cards. No `${...}` template literals - this string is inserted as a value, but keep
 # it substitution-safe anyway.
 SHOWCASE_PLAYER_JS = """
 <script>
@@ -266,7 +269,7 @@ STRAND_LABEL = {"makers": "From the makers", "community": "Made with Vivid"}
 
 def resolve_creator(entry: dict, cfg: dict) -> dict:
     """The creator of a gallery piece. First-party demos fall back to the makers (a real, honest
-    attribution — See Through Lab made them); external entries carry their own `creator`."""
+    attribution - See Through Lab made them); external entries carry their own `creator`."""
     c = dict(entry.get("creator") or cfg.get("makers") or {})
     c.setdefault("strand", "community" if entry.get("creator") else "makers")
     return c
@@ -300,7 +303,7 @@ def render_showcase_cards(cfg: dict, items: list[dict] | None = None, include_js
         ))
     html = "\n".join(cards)
     if include_js and any_video:
-        html += "\n" + SHOWCASE_PLAYER_JS   # inserted as a value — not re-substituted
+        html += "\n" + SHOWCASE_PLAYER_JS   # inserted as a value - not re-substituted
     return html
 
 
@@ -326,9 +329,9 @@ def render_proof_teaser(cfg: dict) -> str:
 
 def render_hero_reel(cfg: dict) -> str:
     """Full-bleed homepage hero (ADR-0056): the chosen showcase clip as an autoplaying, muted, looping
-    reel — sound visibly driving picture. Reuses the shipping showcase-player (HLS + one-click unmute)
+    reel - sound visibly driving picture. Reuses the shipping showcase-player (HLS + one-click unmute)
     and its still fallback (no clip URL -> the hero degrades to the high-quality poster, never empty).
-    No `.showcase-expand` here, so the hero has no lightbox — it is the page, not a thumbnail."""
+    No `.showcase-expand` here, so the hero has no lightbox - it is the page, not a thumbnail."""
     by_id = {s["id"]: s for s in cfg["showcase"]}
     s = by_id.get(cfg.get("hero_reel")) or cfg["showcase"][0]
     title = esc(s["title"])
@@ -388,9 +391,9 @@ def render_learn_hub() -> str:
     'coming soon' nod to the ADR-0059 getting-started series. The routes are stable, so hardcode them."""
     cards = [
         ("Start Here", "/start-here/", "Download, install the free beginner instrument, and build your first project."),
-        ("Getting started", "/tutorials/", "The motion-first, GUI-first beginner path — make a sound, make a visual, make it react, perform, then author your own."),
+        ("Getting started", "/tutorials/", "The motion-first, GUI-first beginner path - make a sound, make a visual, make it react, perform, then author your own."),
         ("Operator Reference", "/reference/", "Every built-in operator, generated from Vivid's live metadata."),
-        ("Free Plugins", "/free-plugins/", "The curated free-plugin path — Surge XT is the one required beginner instrument."),
+        ("Free Plugins", "/free-plugins/", "The curated free-plugin path - Surge XT is the one required beginner instrument."),
     ]
     out = []
     for i, (title, href, body) in enumerate(cards, 1):
@@ -412,7 +415,7 @@ def render_guide_media(guide: dict, cfg: dict) -> str:
         if entry:
             return showcase_media_html(entry, cfg)
     return ('<div class="guide-soon"><span aria-hidden="true">&#9654;</span> '
-            'Motion clip coming soon — captured from the real app.</div>')
+            'Motion clip coming soon - captured from the real app.</div>')
 
 
 def render_guide_steps(guide: dict) -> str:
@@ -506,7 +509,7 @@ def _param_rows(params: list[dict]) -> list[list[str]]:
         choices = p.get("choices")
         typ = "choice" if choices else esc(str(p.get("type", "")))
         lo, hi = p.get("min"), p.get("max")
-        rng = f"{_num(lo)} – {_num(hi)}" if lo is not None and hi is not None else ""
+        rng = f"{_num(lo)} - {_num(hi)}" if lo is not None and hi is not None else ""
         default = _num(p["default"]) if "default" in p else ""
         desc = p.get("description") or p.get("semantic_intent") or ""
         if choices:
@@ -581,7 +584,7 @@ def render_reference(cfg: dict, emit, site: str) -> None:
     Falls back to a coming-soon page if the snapshot is absent (so the build never breaks)."""
     ref_path = HERE / "reference.json"
     if not ref_path.exists():
-        emit("reference", f"Operator Reference — {site}", "The operator reference is coming soon.",
+        emit("reference", f"Operator Reference - {site}", "The operator reference is coming soon.",
              load_template("coming_soon.html").substitute(
                  heading="Operator Reference",
                  body="Generated from Vivid 4's live operator metadata. Run "
@@ -597,12 +600,12 @@ def render_reference(cfg: dict, emit, site: str) -> None:
         count=ref.get("count", len(ops)), app_version=esc(str(ref.get("app_version", ""))),
         operator_abi=esc(str(ref.get("operator_abi", ""))),
         domain_options="\n".join(opts), domain_sections=render_reference_cards(ops))
-    emit("reference", f"Operator Reference — {site}",
+    emit("reference", f"Operator Reference - {site}",
          f"{ref.get('count', len(ops))} Vivid operators, generated from live metadata.",
          index_html, "/reference/")
     detail_tpl = load_template("reference_detail.html")
     for o in ops:
-        emit(f"reference/{o['slug']}", f"{o['name']} — Operator Reference — {site}",
+        emit(f"reference/{o['slug']}", f"{o['name']} - Operator Reference - {site}",
              (o.get("summary") or f"The {o['name']} operator."),
              detail_tpl.substitute(render_reference_detail_content(o)), "/reference/")
 
@@ -625,7 +628,7 @@ def build_site(output_dir: Path) -> None:
         # Per-showcase clip: NOT committed (gitignored) and hosted separately. Copy it into the build
         # only for LOCAL preview (present under the harness heroes dir AND no external base configured).
         # With an external `showcase_video_base`, the clip is referenced by URL, never copied. Absent
-        # and unconfigured, the card degrades to the hero still — never a hard build failure.
+        # and unconfigured, the card degrades to the hero still - never a hard build failure.
         video_base = (cfg.get("showcase_video_base") or "").strip()
         if s.get("video") and not video_base:
             vsrc = HEROES_SRC / s["video"]
@@ -656,7 +659,7 @@ def build_site(output_dir: Path) -> None:
 
     site = cfg["title"]
 
-    # Home — the manifesto spine (ADR-0055): hero → Play·Rewire·Author·Fork → capabilities →
+    # Home - the manifesto spine (ADR-0055): hero → Play·Rewire·Author·Fork → capabilities →
     # audiences → gallery teaser → CTA. One copy of the player JS at page end wires every clip.
     home = load_template("home.html").substitute(
         hero_reel=render_hero_reel(cfg),
@@ -674,17 +677,17 @@ def build_site(output_dir: Path) -> None:
     emit("", site, cfg["meta_description"], home, "/")
 
     # Start Here (markdown)
-    emit("start-here", f"Start Here — {site}",
+    emit("start-here", f"Start Here - {site}",
          "Download Vivid, install the free beginner instrument, and build your first project.",
          load_template("page.html").substitute(
              title="Start Here", body=render_markdown(CONTENT / "start-here.md")),
          "/start-here/")
 
-    # Tutorials — the Learn getting-started (ADR-0059): a motion-first, GUI-first beginner path plus the
+    # Tutorials - the Learn getting-started (ADR-0059): a motion-first, GUI-first beginner path plus the
     # existing runnable code tutorials as the "graduate to code & AI" tier.
-    emit("tutorials", f"Learn Vivid — {site}",
+    emit("tutorials", f"Learn Vivid - {site}",
          "A motion-first, GUI-first beginner path: make a sound, make a visual, make it react, perform "
-         "it, then author your own — graduating into the runnable code tutorials.",
+         "it, then author your own - graduating into the runnable code tutorials.",
          load_template("tutorials.html").substitute(
              guide_cards=render_guide_cards(cfg),
              code_cards=render_tutorial_cards(cfg)),
@@ -694,7 +697,7 @@ def build_site(output_dir: Path) -> None:
     guides_by_slug = {g["slug"]: g for g in cfg.get("guides", [])}
     for g in cfg.get("guides", []):
         media = render_guide_media(g, cfg)
-        emit(f"tutorials/{g['slug']}", f"{g['title']} — Learn Vivid — {site}", g["goal"],
+        emit(f"tutorials/{g['slug']}", f"{g['title']} - Learn Vivid - {site}", g["goal"],
              guide_tpl.substitute(
                  num=g["num"], verb=esc(g["verb"]), title=esc(g["title"]), goal=esc(g["goal"]),
                  time=esc(g["time"]), prereqs=esc(g["prereqs"]),
@@ -704,13 +707,13 @@ def build_site(output_dir: Path) -> None:
              "/tutorials/")
 
     # Free Plugins (markdown)
-    emit("free-plugins", f"Free Plugins — {site}",
+    emit("free-plugins", f"Free Plugins - {site}",
          "The curated free-plugin path. Surge XT is the one required beginner instrument.",
          load_template("page.html").substitute(
              title="Free Plugins", body=render_markdown(CONTENT / "free-plugins.md")),
          "/free-plugins/")
 
-    # Gallery ("Made with Vivid", attributed — ADR-0057). First-party demos are the honest "from the
+    # Gallery ("Made with Vivid", attributed - ADR-0057). First-party demos are the honest "from the
     # makers" strand; the community strand is coming-soon with a real submission path (no fabrication).
     makers_items = [s for s in cfg["showcase"] if resolve_creator(s, cfg)["strand"] == "makers"]
     community_items = [s for s in cfg["showcase"] if resolve_creator(s, cfg)["strand"] == "community"]
@@ -722,22 +725,22 @@ def build_site(output_dir: Path) -> None:
         community_block = (
             '<div class="proof-soon">\n'
             '          <p><strong>Your work here.</strong> We’re gathering pieces made in Vivid by the '
-            'community. Real attributions only — this space stays a genuine “coming soon” until it’s '
+            'community. Real attributions only - this space stays a genuine “coming soon” until it’s '
             'full, never a stock-photo wall.</p>\n'
             '          <div class="cta-actions">\n'
             f'            <a class="btn btn-primary" href="{cfg["github_url"]}/discussions" rel="noopener" target="_blank">Submit your work</a>\n'
             '            <a class="btn btn-ghost" href="/community/">How submissions work &rarr;</a>\n'
             '          </div>\n'
             '        </div>')
-    emit("gallery", f"Gallery — {site}",
-         "Made with Vivid — work attributed to the artists who made it, captured live from the signed build.",
+    emit("gallery", f"Gallery - {site}",
+         "Made with Vivid - work attributed to the artists who made it, captured live from the signed build.",
          load_template("gallery.html").substitute(
              makers_cards=render_showcase_cards(cfg, items=makers_items),
              community_block=community_block),
          "/gallery/")
 
-    # The Instrument (product / how-it-works — the architecture, after the vision has landed)
-    emit("the-instrument", f"The Instrument — {site}",
+    # The Instrument (product / how-it-works - the architecture, after the vision has landed)
+    emit("the-instrument", f"The Instrument - {site}",
          "How Vivid works: a DAW-style Session View, a rewireable visual node graph, and the mapping "
          "bridge that binds sound to picture.",
          load_template("page.html").substitute(
@@ -745,25 +748,25 @@ def build_site(output_dir: Path) -> None:
          "/the-instrument/")
 
     # Learn (hub over the kept routes + the coming getting-started series, ADR-0059)
-    emit("learn", f"Learn — {site}",
-         "Start here, work the tutorials, and browse the operator reference — the path from grasping "
+    emit("learn", f"Learn - {site}",
+         "Start here, work the tutorials, and browse the operator reference - the path from grasping "
          "the vision to authoring your own.",
          load_template("hub.html").substitute(
              title="Learn",
              lede="From “grasp the vision” to “I could make this.” Start here, work the tutorials in "
-                  "order, then browse every operator — and graduate into authoring your own with code and AI.",
+                  "order, then browse every operator - and graduate into authoring your own with code and AI.",
              cards=render_learn_hub()),
          "/learn/")
 
     # Community (honest: GitHub live, Discord coming soon)
-    emit("community", f"Community — {site}",
-         "Vivid is built in the open on GitHub — file an issue, join a discussion, or share what you make.",
+    emit("community", f"Community - {site}",
+         "Vivid is built in the open on GitHub - file an issue, join a discussion, or share what you make.",
          load_template("page.html").substitute(
              title="Community", body=render_markdown(CONTENT / "community.md")),
          "/community/")
 
     # About / Press (story + maker + press kit)
-    emit("about", f"About & Press — {site}",
+    emit("about", f"About & Press - {site}",
          "Why Vivid exists, who makes it, and a press kit for writing about a new instrument for live visuals.",
          load_template("page.html").substitute(
              title="About & Press", body=render_markdown(CONTENT / "about.md")),
@@ -774,12 +777,12 @@ def build_site(output_dir: Path) -> None:
 
     # Coming soon
     coming = load_template("coming_soon.html")
-    emit("packages", f"Packages — {site}",
+    emit("packages", f"Packages - {site}",
          "Community packages are coming soon.",
          coming.substitute(
              heading="Packages",
              body="A community package catalog needs a remote registry and a trust model first. "
-                  "Until then, project-local operators and shaders are the creative-coding path — "
+                  "Until then, project-local operators and shaders are the creative-coding path - "
                   "see the tutorials."),
          "/packages/")
 
@@ -795,42 +798,42 @@ def _self_check(cfg: dict, output_dir: Path) -> None:
                       "start-here", "tutorials", "free-plugins", "reference", "packages"]
     missing = [p or "(home)" for p in expected_pages if not (output_dir / p / "index.html").exists()]
     if missing:
-        raise SystemExit(f"[build] self-check failed — missing pages: {', '.join(missing)}")
+        raise SystemExit(f"[build] self-check failed - missing pages: {', '.join(missing)}")
     # Brand assets the craft bar depends on (ADR-0058): favicon + social-share image + wordmark/fonts.
     required_assets = ["brand/favicon.svg", "brand/mark.svg", "brand/wordmark.svg", "brand/og-default.png",
                        "fonts/space-grotesk-v22-latin-700.woff2", "fonts/inter-v20-latin-regular.woff2"]
     missing_assets = [a for a in required_assets if not (output_dir / "assets" / a).exists()]
     if missing_assets:
-        raise SystemExit(f"[build] self-check failed — missing brand assets: {', '.join(missing_assets)}")
+        raise SystemExit(f"[build] self-check failed - missing brand assets: {', '.join(missing_assets)}")
     if not (output_dir / "_redirects").exists():
-        raise SystemExit("[build] self-check failed — missing _redirects (Cloudflare Pages)")
+        raise SystemExit("[build] self-check failed - missing _redirects (Cloudflare Pages)")
     missing_heroes = [s["hero"] for s in cfg["showcase"]
                       if not (output_dir / "assets" / "showcase" / s["hero"]).exists()]
     if missing_heroes:
-        raise SystemExit(f"[build] self-check failed — missing heroes: {', '.join(missing_heroes)}")
+        raise SystemExit(f"[build] self-check failed - missing heroes: {', '.join(missing_heroes)}")
     # ADR-0057 honesty rule: every gallery piece names a real creator; testimonials carry name + quote.
     for s in cfg["showcase"]:
         creator = s.get("creator") or cfg.get("makers") or {}
         if not creator.get("name"):
-            raise SystemExit(f"[build] self-check failed — gallery piece '{s.get('id')}' has no attribution")
+            raise SystemExit(f"[build] self-check failed - gallery piece '{s.get('id')}' has no attribution")
     for i, q in enumerate(cfg.get("testimonials") or []):
         if not (q.get("name") and q.get("quote")):
-            raise SystemExit(f"[build] self-check failed — testimonial #{i} missing name/quote")
+            raise SystemExit(f"[build] self-check failed - testimonial #{i} missing name/quote")
     # ADR-0059: every beginner guide renders an on-site page; any result clip is a real showcase id.
     show_ids = {s["id"] for s in cfg["showcase"]}
     for g in cfg.get("guides", []):
         if not (output_dir / "tutorials" / g["slug"] / "index.html").exists():
-            raise SystemExit(f"[build] self-check failed — missing guide page: tutorials/{g['slug']}")
+            raise SystemExit(f"[build] self-check failed - missing guide page: tutorials/{g['slug']}")
         rc = g.get("result_clip")
         if rc and rc not in show_ids:
-            raise SystemExit(f"[build] self-check failed — guide '{g['slug']}' result_clip '{rc}' unknown")
-    # Showcase clips are hosted separately (gitignored); a missing local clip is NOT a build failure —
+            raise SystemExit(f"[build] self-check failed - guide '{g['slug']}' result_clip '{rc}' unknown")
+    # Showcase clips are hosted separately (gitignored); a missing local clip is NOT a build failure -
     # the card degrades to the hero still, or references the external base. So no video self-check here.
     # No unresolved $template placeholders leaked into any page.
     for html in output_dir.rglob("index.html"):
         text = html.read_text()
         if "$title" in text or "${" in text:
-            raise SystemExit(f"[build] self-check failed — unresolved template var in {html}")
+            raise SystemExit(f"[build] self-check failed - unresolved template var in {html}")
     # Operator reference: every operator in the snapshot must have a detail page.
     ref_path = HERE / "reference.json"
     ref_ops = 0
@@ -839,8 +842,8 @@ def _self_check(cfg: dict, output_dir: Path) -> None:
         ref_ops = len(ops)
         missing = [o["slug"] for o in ops if not (output_dir / "reference" / o["slug"] / "index.html").exists()]
         if missing:
-            raise SystemExit(f"[build] self-check failed — missing operator pages: {', '.join(missing[:5])}")
-    print(f"[build] ok — {len(expected_pages)} pages, {len(cfg['showcase'])} heroes, "
+            raise SystemExit(f"[build] self-check failed - missing operator pages: {', '.join(missing[:5])}")
+    print(f"[build] ok - {len(expected_pages)} pages, {len(cfg['showcase'])} heroes, "
           f"{ref_ops} operator pages -> {output_dir}")
 
 
