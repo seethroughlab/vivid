@@ -1,6 +1,6 @@
 # ADR-0059: The Site Teaches Through Fun, Motion-First Tutorials
 
-Status: proposed
+Status: accepted
 
 Date: 2026-08-12
 
