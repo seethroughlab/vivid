@@ -163,7 +163,10 @@ void draw_gemini_key_modal(Renderer2D& ui, Window& win) {
 // constant) so the digits don't jitter. The string is only re-formatted a few times a
 // second, snprintf'd into a static buffer, so the draw path allocates nothing. The text
 // tints green / gold / red as the frame rate drops, an at-a-glance load hint.
-void draw_perf_hud(Renderer2D& ui, const Window& win) {
+// Placement comes from ui::perf_hud_rect, which anchors off the health dot's gutter so the two
+// can't overlap (they used to: the dot sat inside this chip). Its width is text-driven, so the
+// measured rect is stashed on the Window for the tooltip to hit-test.
+void draw_perf_hud(Renderer2D& ui, Window& win) {
     static double last_t = glfwGetTime();
     static double ema_ms = 1000.0 / 60.0;   // smoothed frame time (ms), seeded at 60 fps
     static double refresh_acc = 0.25;       // seconds since the string was last formatted (force 1st)
@@ -184,15 +187,12 @@ void draw_perf_hud(Renderer2D& ui, const Window& win) {
     }
     const Style& s = style();
     const float scale = s.fs_value;         // small numeric read-out (0.70x)
-    const float tw = ui.text_width(buf, scale);
-    const float pad = 6.f, bh = 16.f;
-    const float bw = tw + pad * 2.f;
-    const float x = static_cast<float>(win.win_w) - bw - 8.f;
-    const float y = 8.f;
-    ui.draw_rect(x, y, bw, bh, s.recess[0], s.recess[1], s.recess[2], 0.60f);                         // semi-transparent chip
-    ui.draw_rect_outline(x, y, bw, bh, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 0.5f);
+    const vivid::ui::Rect b = vivid::ui::perf_hud_rect(win.win_w, ui.text_width(buf, scale));
+    win.perf_chip = b;                      // for the hover tooltip (its width is text-driven)
+    ui.draw_rect(b.x, b.y, b.w, b.h, s.recess[0], s.recess[1], s.recess[2], 0.60f);                   // semi-transparent chip
+    ui.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 0.5f);
     const float* c = fps >= 55.0 ? s.green : (fps >= 30.0 ? s.gold : s.red);                          // load hint
-    ui.draw_text(x + pad, y + 3.f, buf, c[0], c[1], c[2], 0.95f, scale);
+    ui.draw_text(b.x + 6.f, b.y + 3.f, buf, c[0], c[1], c[2], 0.95f, scale);
 }
 
 }  // namespace
@@ -913,7 +913,12 @@ void run_frame_loop(App& app, Window& win) {
                              0.98f, 0.80f, 0.30f, 1.0f, 0.82f);
             draw_toasts(ui, win.toasts, glfwGetTime(), win.win_w, win.win_h);
             if (win.show_presets) draw_preset_popover(ui, app, win.presets_node, win.win_w, win.win_h);
-            draw_perf_hud(ui, win);   // always-on FPS / frame-time read-out, drawn last (on top)
+            draw_perf_hud(ui, win);   // always-on FPS / frame-time read-out (stashes win.perf_chip)
+            // The hover tooltip is resolved AFTER the perf HUD (whose rect it can tip) and drawn
+            // last of all, so the pill sits above every other overlay.
+            {   const double tip_now = glfwGetTime();
+                tick_top_bar_tooltip(win.tip, win, mx, my, tip_now);
+                draw_tooltip(ui, win.tip, win.win_w, tip_now);   }
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
             gpu.end_frame(frame);
             // This frame's Output RT is now submitted to the queue and can be read back. TWO consumers

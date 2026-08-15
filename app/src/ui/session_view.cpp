@@ -753,7 +753,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         AudioNodeGraph& agr = *w.app->audio_graph;
         agr.prime(*w.app, w);   // node-canvas bounds (this pane) + param bounds (dock) + selection
         const int tr = std::min(std::max(w.sel_track, 0), vivid::session::session_track_count(s) - 1);
-        const Rect pane = audio_graph_pane(w.split_x, w.win_h, w.dock_h, scenes);
+        const Rect pane = audio_graph_pane(w.split_x, w.sidebar_w, w.win_h, w.dock_h, scenes);
         ui.draw_rect(pane.x, pane.y - 6.f, pane.w, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
         const Rect hdr = audio_pane_hdr_rect(pane);
         ui.draw_text(hdr.x + 2.f, hdr.y + 5.f, vivid::session::session_track_name(s, tr),
@@ -871,6 +871,46 @@ void draw_output_preview(Renderer2D& ui, const Window& w, double mx, double my) 
           ui.draw_rect(g.x + g.w - o, g.y + g.h - 3.f, o, 1.f, c[0], c[1], c[2], 1.0f);
           ui.draw_rect(g.x + g.w - 3.f, g.y + g.h - o, 1.f, o, c[0], c[1], c[2], 1.0f);
       } }
+}
+
+// The transport bar's tooltips. The table lives here, next to draw_ui, because that function owns
+// every rect in it — the tips walk the SAME layout.h helpers the draw and the hit-tests use, so a
+// moved control can't leave its tooltip behind. Keyboard hints are the ones the cheat-sheet lists
+// (draw_shortcuts_overlay): Space play/stop, R record, H diagnostics.
+void tick_top_bar_tooltip(TipState& tip, const Window& w, double mx, double my, double now) {
+    // Never tip over a modal, and never follow a drag — a pill under the cursor mid-gesture is noise.
+    if (w.show_gemini_key || w.split_drag || w.dock_drag || my >= kTopBarH) { tip_clear(tip); return; }
+
+    // Placement anchor: the control's x/width, but the FULL bar height — so every tip in the row
+    // hangs at the same y instead of bobbing with each control's own height.
+    auto band = [](const Rect& r) { return Rect{ r.x, 0.f, r.w, kTopBarH }; };
+
+    struct Item { Rect r; const char* text; };
+    const Item items[] = {
+        { sidebar_toggle_rect(),   "Clips browser \xE2\x80\x94 stash clips out of the grid" },
+        { transport_play_rect(),   "Play / Stop  (Space)" },
+        { transport_record_rect(), "Record \xE2\x80\x94 arm a track first  (R)" },
+        { transport_metro_rect(),  "Metronome click" },
+        { transport_quant_rect(),  "Scene-launch quantize \xE2\x80\x94 click to cycle 1 / 2 / 4 / 8 bars" },
+        { w.perf_chip,             "Frame rate \xC2\xB7 frame time (smoothed)" },
+    };
+    for (const Item& it : items)
+        if (hit(it.r, mx, my)) { tip_set(tip, band(it.r), it.text, now); return; }
+
+    // The health dot's tip carries its current rollup, so hovering answers "is anything wrong?"
+    // without opening the panel.
+    const Rect hd = health_dot_rect(w.win_w);
+    if (hit(hd, mx, my)) {
+        const Severity sev = severity(w.health);
+        const char* what = sev == Severity::Error   ? "errors"
+                         : sev == Severity::Warning ? "warnings"
+                                                    : "all clear";
+        char buf[96];
+        std::snprintf(buf, sizeof buf, "Diagnostics \xE2\x80\x94 %s  (H)", what);
+        tip_set(tip, band(hd), buf, now);
+        return;
+    }
+    tip_clear(tip);
 }
 
 // Which visuals source is under (mx,my): -1 = master, >=0 = track, -2 = none.
