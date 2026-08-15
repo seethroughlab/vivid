@@ -41,7 +41,7 @@ namespace S = vivid::session;
 inline bool ag_pane_hit(const vivid::Window& win, vivid::App& app, double mx, double my) {
     if (!app.session) return false;
     const int scenes = S::session_scene_count(app.session);
-    const Rect pane = audio_graph_pane(win.split_x, win.win_h, win.dock_h, scenes);
+    const Rect pane = audio_graph_pane(win.split_x, win.sidebar_w, win.win_h, win.dock_h, scenes);
     // The below-session pane (node canvas + header) is ALWAYS live — it's a persistent pane now, not a
     // dock drill-in. The bottom dock's param strip only counts as ours when the dock is actually showing
     // audio params (focus AudioGraph); when the clip editor or a visual node owns the dock, it isn't.
@@ -702,7 +702,7 @@ void AudioNodeGraph::prime(App& app, const Window& win) {
     const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
     set_source(app.session, tr);
     const int scenes = S::session_scene_count(app.session);
-    const Rect canv = audio_pane_canvas_rect(audio_graph_pane(win.split_x, win.win_h, win.dock_h, scenes));
+    const Rect canv = audio_pane_canvas_rect(audio_graph_pane(win.split_x, win.sidebar_w, win.win_h, win.dock_h, scenes));
     set_bounds(canv.x, canv.y, canv.x + canv.w, canv.y + canv.h);
     const Rect dp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
     set_param_bounds(dp.x, dp.y, dp.x + dp.w, dp.y + dp.h);
@@ -719,7 +719,7 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my, int mo
     const bool m_super = (mods & GLFW_MOD_SUPER) != 0;
     const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
     prime(app, win);
-    const Rect ag_pane = audio_graph_pane(win.split_x, win.win_h, win.dock_h, S::session_scene_count(app.session));
+    const Rect ag_pane = audio_graph_pane(win.split_x, win.sidebar_w, win.win_h, win.dock_h, S::session_scene_count(app.session));
     // (Audio-pane "Re-layout" is now a native View menu item — ⌘L relays out the current audio graph.)
     // "Editor" button (audio-pane header) → open the selected node's native plugin editor (VST3 or CLAP).
     if (win.sel_audio_node >= 0

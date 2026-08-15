@@ -84,8 +84,17 @@ inline Rect transport_play_rect() { return { 300.f, 11.f, 18.f, 18.f }; }
 inline Rect transport_record_rect() { return { 500.f, 11.f, 18.f, 18.f }; }   // record toggle
 inline Rect transport_metro_rect()  { return { 524.f, 11.f, 18.f, 18.f }; }   // metronome toggle
 inline Rect transport_quant_rect()  { return { 600.f, 10.f, 60.f, 20.f }; }   // scene-launch quantize pill
-// ADR-0019 health rollup: a status dot right-aligned in the transport bar; click opens diagnostics.
-inline Rect health_dot_rect(int win_w) { return { static_cast<float>(win_w) - 26.f, 14.f, 12.f, 12.f }; }
+// The top-right status cluster: the ADR-0019 health rollup dot pins to the right gutter, and the
+// always-on perf read-out chip sits to its LEFT. Both derive from the same gutter constant so they
+// can't drift into each other again (they used to be two independent right-edge anchors, and the
+// dot landed inside the chip). The chip's width is text-driven, so the caller measures the string
+// and passes it in. Both are vertically centred on the 40px bar (14+12 and 12+16 → centre 20).
+constexpr float kTopRightPad = 8.f;
+inline Rect health_dot_rect(int win_w) { return { static_cast<float>(win_w) - kTopRightPad - 12.f, 14.f, 12.f, 12.f }; }
+inline Rect perf_hud_rect(int win_w, float text_w) {
+    const float bw = text_w + 12.f;                       // 6px pad each side of the text
+    return { health_dot_rect(win_w).x - 8.f - bw, 12.f, bw, 16.f };
+}
 inline Rect track_header_rect(int t) { return { track_x(t), kHeaderY, kTrackW, kHeaderH }; }
 inline Rect track_add_rect(int tracks) { return { track_x(tracks), kHeaderY, kTrackW, kHeaderH }; }  // "+ Track" header
 inline Rect track_header_x_rect(int t) { return { track_x(t) + kTrackW - 15.f, kHeaderY + 3.f, 12.f, 12.f }; }  // remove ×
@@ -112,12 +121,18 @@ inline float mixer_divider_y(int scenes) { return mixer_y(scenes) - 6.f; }  // r
 
 // The AUDIO GRAPH pane: the lower-left column, below the session mixer, down to the dock. Its top
 // clears the mixer's ARM/VIZ button row (mixer_y+48 + 16h) plus a gap. A header strip hosts the
-// track label + Re-layout/Editor buttons; the node canvas fills the rest. The bottom dock is a
-// pure param inspector now, so the audio node graph lives HERE (below the session).
-inline Rect audio_graph_pane(float split_x, int win_h, float dock_h, int scenes) {
+// track label + Editor button; the node canvas fills the rest. The bottom dock is a pure param
+// inspector now, so the audio node graph lives HERE (below the session).
+// Sidebar-aware like sidebar_panel/pool_item_rect: the pane starts past the browser column. It is
+// drawn in SCREEN space (outside the DAW pane's set_transform shift, which agr.draw would clobber
+// with its own camera anyway), so the offset has to be in the rect itself — otherwise the graph
+// paints over the CLIPS panel and scroll over the browser zooms the graph.
+inline Rect audio_graph_pane(float split_x, float sidebar_w, int win_h, float dock_h, int scenes) {
     const float top = mixer_y(scenes) + 48.f + 16.f + 12.f;
     const float bottom = dock_top(win_h, dock_h) - kPaneMargin;
-    return { kPaneMargin, top, split_x - 2.f * kPaneMargin, std::max(48.f, bottom - top) };
+    return { sidebar_w + kPaneMargin, top,
+             std::max(48.f, split_x - sidebar_w - 2.f * kPaneMargin),
+             std::max(48.f, bottom - top) };
 }
 inline Rect audio_pane_hdr_rect(const Rect& pane)      { return { pane.x, pane.y, pane.w, kPanelHdH }; }
 inline Rect audio_pane_canvas_rect(const Rect& pane)   { return { pane.x, pane.y + kPanelHdH, pane.w, pane.h - kPanelHdH }; }

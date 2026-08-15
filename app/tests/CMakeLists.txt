@@ -49,6 +49,7 @@ vivid_add_test(test_port_compat)    # ADR-0047 typed-port compatibility rule (vi
 vivid_add_test(test_operator_ports) # operator_api/ports.h authoring helpers (port builders + param readers)
 vivid_add_test(test_editor_controls)  # ADR-0048 clip/sample editor control substrate hit geometry
 vivid_add_test(test_output_preview) # ADR-0025 OutputPreview::clamp geometry (float-preview stays in-column)
+vivid_add_test(test_shell_layout)   # shell geometry: top-right status cluster + sidebar-aware audio pane
 vivid_add_test(test_shader_library_view)  # ADR-0021/P1 shader-view geometry + fork-name helpers
 vivid_add_test(test_examples)             # ADR-0021/P2 example-project enumerator
 target_sources(test_examples PRIVATE
