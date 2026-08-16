@@ -37,7 +37,9 @@ struct SDFParamsUniform {
     float instance_count;    // ADR-0053 demo: # of note-metaball spheres smooth-unioned into the field
     float instance_k;        // smooth-union blend radius for those instance spheres
     float shadow;            // soft SELF-shadow strength (0 = off); marches a shadow ray to light 0
-    float _pad2[3];
+    float tex_scale;         // triplanar tiling scale for the PBR maps
+    float normal_strength;   // normal-map perturbation strength
+    float use_textures;      // >0.5 = sample the PBR map inputs (triplanar); 0 = scalar material only
 };
 static_assert(sizeof(SDFParamsUniform) == 192, "SDFParamsUniform must be 192 bytes");
 
@@ -79,9 +81,9 @@ struct SDFParams {
     instance_count:    f32,
     instance_k:        f32,
     shadow:            f32,
-    _p2:               f32,
-    _p3:               f32,
-    _p4:               f32,
+    tex_scale:         f32,
+    normal_strength:   f32,
+    use_textures:      f32,
 }
 
 // Light / LightsUniform come from the shared LIGHTS_3D_WGSL preamble (ADR-0051 P3) — this shader
@@ -95,6 +97,16 @@ struct MetaInstance {
     color: vec4f,   // per-instance rgba (from the InstanceArray3D — composable, not note-specific)
 }
 @group(0) @binding(3) var<storage, read> instances: array<MetaInstance, 32>;
+
+// PBR map inputs (triplanar-projected — no UVs needed on a raymarched SDF). Unwired ports bind a 1x1
+// default (white albedo / flat normal / white rough+metal / black emission), so the look is unchanged
+// unless a map is connected. Order matches the collect_ports() texture-input order.
+@group(0) @binding(4) var pbr_sampler:   sampler;
+@group(0) @binding(5) var albedo_map:    texture_2d<f32>;
+@group(0) @binding(6) var metallic_map:  texture_2d<f32>;
+@group(0) @binding(7) var roughness_map: texture_2d<f32>;
+@group(0) @binding(8) var normal_map:    texture_2d<f32>;
+@group(0) @binding(9) var emission_map:  texture_2d<f32>;
 
 struct SDFVertexOutput {
     @builtin(position) position: vec4f,
@@ -271,6 +283,34 @@ fn soft_shadow(ro: vec3f, rd: vec3f, k: f32) -> f32 {
     return clamp(res, 0.0, 1.0);
 }
 
+// --- Triplanar PBR sampling. No UVs on a raymarched SDF, so project the local hit position onto the
+//     three axis planes and blend by the surface normal (sharpened). Sampling in LOCAL space makes the
+//     texture stick to the surface and rotate with the object, and it survives the smooth-union merge. ---
+fn tri_weights(n: vec3f) -> vec3f {
+    let w = pow(abs(n), vec3f(4.0));           // sharpen so plane seams are tight
+    return w / max(w.x + w.y + w.z, 1e-4);
+}
+fn tri_sample(t: texture_2d<f32>, s: sampler, p: vec3f, w: vec3f) -> vec4f {
+    let x = textureSample(t, s, p.zy);
+    let y = textureSample(t, s, p.xz);
+    let z = textureSample(t, s, p.xy);
+    return x * w.x + y * w.y + z * w.z;
+}
+// Whiteout triplanar normal blend (Ben Golus): unpack each plane's tangent-space normal, reorient it to
+// the plane, fold in the geometric normal `n`, then blend. Returns a perturbed LOCAL-space normal.
+fn tri_normal(t: texture_2d<f32>, s: sampler, p: vec3f, n: vec3f, w: vec3f, strength: f32) -> vec3f {
+    var tx = textureSample(t, s, p.zy).xyz * 2.0 - 1.0;
+    var ty = textureSample(t, s, p.xz).xyz * 2.0 - 1.0;
+    var tz = textureSample(t, s, p.xy).xyz * 2.0 - 1.0;
+    tx = vec3f(tx.xy * strength, tx.z);
+    ty = vec3f(ty.xy * strength, ty.z);
+    tz = vec3f(tz.xy * strength, tz.z);
+    tx = vec3f(tx.xy + n.zy, abs(tx.z) * n.x);
+    ty = vec3f(ty.xy + n.xz, abs(ty.z) * n.y);
+    tz = vec3f(tz.xy + n.xy, abs(tz.z) * n.z);
+    return normalize(tx.zyx * w.x + ty.xzy * w.y + tz.xyz * w.z);
+}
+
 struct SDFFragOutput {
     @location(0) color: vec4f,
     @builtin(frag_depth) depth: f32,
@@ -352,23 +392,40 @@ fn fs_main(in: SDFVertexOutput) -> SDFFragOutput {
     }
     let alpha = params.color.a;
 
+    // Triplanar PBR maps — only when a map input is wired (use_textures). Unwired ports bind 1x1 defaults
+    // (white albedo / flat normal / white rough+metal / black emission), so this stays a no-op otherwise.
+    var m_local_normal = local_normal;
+    var m_roughness = params.roughness;
+    var m_metallic  = params.metallic;
+    var m_emission  = params.emission;
+    if (params.use_textures > 0.5) {
+        let tp = local_hit * params.tex_scale;
+        let tw = tri_weights(local_normal);
+        base_color     = base_color * tri_sample(albedo_map, pbr_sampler, tp, tw).rgb;
+        m_local_normal = tri_normal(normal_map, pbr_sampler, tp, local_normal, tw, params.normal_strength);
+        m_roughness    = clamp(params.roughness * tri_sample(roughness_map, pbr_sampler, tp, tw).r, 0.02, 1.0);
+        m_metallic     = clamp(params.metallic  * tri_sample(metallic_map,  pbr_sampler, tp, tw).r, 0.0, 1.0);
+        m_emission     = params.emission + tri_sample(emission_map, pbr_sampler, tp, tw).r;
+    }
+    let m_world_normal = normalize((vec4f(m_local_normal, 0.0) * params.inv_model).xyz);
+
     var out: SDFFragOutput;
 
     if (params.flags > 0.5) {
         // Unlit
-        out.color = vec4f(base_color * (1.0 + params.emission), alpha);
+        out.color = vec4f(base_color * (1.0 + m_emission), alpha);
         out.depth = depth;
         return out;
     }
 
-    let N = world_normal;
+    let N = m_world_normal;
     let V = normalize(camera.camera_pos - world_hit);
     let ambient = vec3f(lighting.ambient_r, lighting.ambient_g, lighting.ambient_b);
 
-    let diffuse_color  = base_color * (1.0 - params.metallic);
-    let specular_color = mix(vec3f(0.04), base_color, params.metallic);
+    let diffuse_color  = base_color * (1.0 - m_metallic);
+    let specular_color = mix(vec3f(0.04), base_color, m_metallic);
 
-    let shininess = pow(2.0, (1.0 - params.roughness) * 7.0) + 2.0;
+    let shininess = pow(2.0, (1.0 - m_roughness) * 7.0) + 2.0;
 
     var color = diffuse_color * ambient;
     for (var i: u32 = 0u; i < min(lighting.light_count, 4u); i++) {
@@ -405,7 +462,7 @@ fn fs_main(in: SDFVertexOutput) -> SDFFragOutput {
                  * intensity * attenuation * sh;
     }
 
-    color += base_color * params.emission;
+    color += base_color * m_emission;
 
     out.color = vec4f(color, alpha);
     out.depth = depth;
@@ -670,6 +727,12 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> emission  {"emission",  0.0f, 0.0f, 5.0f};
     vivid::Param<int>   unlit     {"unlit",     0, {"Off", "On"}};
 
+    // Triplanar PBR maps — optional albedo/metallic/roughness/normal/emission texture INPUTS (wire an
+    // Image/Video node in). Projected triplanar in local space, so they stick to the merged metaball
+    // surface with no UVs. Unwired ports fall back to 1x1 defaults → identical to the untextured look.
+    vivid::Param<float> tex_scale       {"tex_scale",       1.0f, 0.01f, 20.0f};
+    vivid::Param<float> normal_strength {"normal_strength", 1.0f, 0.0f,  4.0f};
+
     // Transform
     vivid::Param<float> pos_x {"pos_x", 0.0f, -50.0f, 50.0f};
     vivid::Param<float> pos_y {"pos_y", 0.0f, -50.0f, 50.0f};
@@ -714,6 +777,8 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::param_group(metallic, "Material");
         vivid::param_group(emission, "Material");
         vivid::param_group(unlit, "Material");
+        vivid::param_group(tex_scale, "Textures");
+        vivid::param_group(normal_strength, "Textures");
 
         vivid::param_group(pos_x, "Transform");
         vivid::param_group(pos_y, "Transform");
@@ -750,6 +815,8 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back(&metallic);
         out.push_back(&emission);
         out.push_back(&unlit);
+        out.push_back(&tex_scale);
+        out.push_back(&normal_strength);
         out.push_back(&pos_x);
         out.push_back(&pos_y);
         out.push_back(&pos_z);
@@ -765,6 +832,12 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
         // Optional note-metaball points (custom_inputs[0]): an InstanceArray3D whose elements become
         // smooth-unioned spheres in the field (see instances_only / instance_smooth).
         out.push_back(VIVID_CUSTOM_REF_PORT("instances", VIVID_PORT_INPUT, vivid::gpu::InstanceArray3D));
+        // Triplanar PBR map inputs — order here defines input_texture_views[0..4] (see process_gpu).
+        out.push_back(vivid::texture_input("albedo"));
+        out.push_back(vivid::texture_input("metallic"));
+        out.push_back(vivid::texture_input("roughness"));
+        out.push_back(vivid::texture_input("normal"));
+        out.push_back(vivid::texture_input("emission"));
         out.push_back(vivid::gpu::scene_port("scene", VIVID_PORT_OUTPUT));
     }
 
@@ -829,6 +902,22 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
         }
         wgpuQueueWriteBuffer(ctx->queue, sphere_buf_, 0, sphere_data, kMaxSDFInstances * 32);
 
+        // Resolve the 5 PBR-map inputs (albedo, metallic, roughness, normal, emission), falling back to
+        // the 1x1 defaults for any unwired port. `any_tex` gates the shader's triplanar branch (zero cost
+        // when nothing is wired), and drives whether we rebuild the bind group below.
+        WGPUTextureView tv[5];
+        bool any_tex = false;
+        for (int i = 0; i < 5; ++i) {
+            // A port counts as CONNECTED only when it supplies a real (>1x1) texture. A disconnected port
+            // can surface a non-null 1x1 default view, which must NOT enable triplanar — its (black/zero)
+            // albedo would multiply the surface to black. Fall back to our neutral 1x1 default in that case.
+            const bool connected =
+                ctx->input_texture_views && (uint32_t)i < ctx->input_texture_count && ctx->input_texture_views[i]
+                && ctx->input_texture_widths && ctx->input_texture_widths[i] > 1;
+            tv[i] = connected ? ctx->input_texture_views[i] : fallback_view_[i];
+            if (connected) any_tex = true;
+        }
+
         // Upload SDF params
         SDFParamsUniform params_data{};
         params_data.shape_a_type = static_cast<float>(shape.int_value());
@@ -864,7 +953,15 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
         std::memcpy(params_data.inv_model, inv_model, 64);
         params_data.max_steps        = static_cast<float>(max_steps.int_value());
         params_data.surface_threshold = threshold.value;
+        params_data.tex_scale        = tex_scale.value;
+        params_data.normal_strength  = normal_strength.value;
+        params_data.use_textures     = any_tex ? 1.0f : 0.0f;
         wgpuQueueWriteBuffer(ctx->queue, params_ubo_, 0, &params_data, sizeof(params_data));
+
+        // Rebuild the bind group only when a wired PBR map's texture view changed this frame.
+        bool tex_changed = false;
+        for (int i = 0; i < 5; ++i) if (tv[i] != bound_view_[i]) tex_changed = true;
+        if (tex_changed) rebuild_bind_group(ctx, tv);
 
         // ADR-0051 P3: a FALLBACK light, not the light. Render3D writes the scene's real lights
         // into this same buffer via `custom_lights_ubo` after every operator has run, so this only
@@ -925,6 +1022,9 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::gpu::release(pipe_layout_);
         vivid::gpu::release(bind_group_);
         vivid::gpu::release(bind_layout_);
+        vivid::gpu::release(tex_sampler_);
+        for (auto& v : fallback_view_) vivid::gpu::release(v);
+        for (auto& t : fallback_tex_) vivid::gpu::release(t);
         vivid::gpu::release(camera_ubo_);
         vivid::gpu::release(params_ubo_);
         vivid::gpu::release(lights_ubo_);
@@ -947,6 +1047,13 @@ private:
     WGPUBindGroup       bind_group_  = nullptr;
     WGPUBindGroupLayout bind_layout_ = nullptr;
 
+    // Triplanar PBR maps: a shared repeat sampler + 1x1 fallback textures for unwired ports, and a cache
+    // of the currently-bound views so the bind group is only rebuilt when an input actually changes.
+    WGPUSampler     tex_sampler_ = nullptr;
+    WGPUTexture     fallback_tex_[5]  = {};
+    WGPUTextureView fallback_view_[5] = {};
+    WGPUTextureView bound_view_[5]    = {};
+
     WGPUBuffer camera_ubo_ = nullptr;
     WGPUBuffer params_ubo_ = nullptr;
     WGPUBuffer lights_ubo_ = nullptr;
@@ -967,6 +1074,62 @@ private:
     ProxyBuffers proxy_[kProxyCount]{};
 
     void ensure_proxy(const VividThumbnailContext*, int) { /* thumbnail proxy geometry; stubbed with draw_thumbnail (ADR-0041 Phase 1) */ }
+
+    // 1x1 fallback textures for the 5 PBR-map ports (order: albedo, metallic, roughness, normal, emission)
+    // so every texture binding is valid even when a port is unwired — and the defaults are neutral (white
+    // albedo/metal/rough → *=1, flat normal → no perturbation, black emission → +=0).
+    void make_fallback_textures(const VividGpuContext* ctx) {
+        struct Spec { const char* label; uint8_t rgba[4]; };
+        const Spec specs[5] = {
+            {"SDF3D Fallback Albedo",    {255, 255, 255, 255}},
+            {"SDF3D Fallback Metallic",  {255, 255, 255, 255}},
+            {"SDF3D Fallback Roughness", {255, 255, 255, 255}},
+            {"SDF3D Fallback Normal",    {128, 128, 255, 255}},
+            {"SDF3D Fallback Emission",  {  0,   0,   0,   0}},
+        };
+        for (int i = 0; i < 5; ++i) {
+            WGPUTextureDescriptor td{};
+            td.label = vivid_sv(specs[i].label);
+            td.size = {1, 1, 1};
+            td.mipLevelCount = 1;
+            td.sampleCount = 1;
+            td.dimension = WGPUTextureDimension_2D;
+            td.format = WGPUTextureFormat_RGBA8Unorm;
+            td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+            fallback_tex_[i] = wgpuDeviceCreateTexture(ctx->device, &td);
+
+            WGPUTexelCopyTextureInfo dst{};
+            dst.texture = fallback_tex_[i];
+            dst.aspect  = WGPUTextureAspect_All;
+            WGPUTexelCopyBufferLayout lay{};
+            lay.bytesPerRow  = 4;
+            lay.rowsPerImage = 1;
+            WGPUExtent3D ext = {1, 1, 1};
+            wgpuQueueWriteTexture(ctx->queue, &dst, specs[i].rgba, 4, &lay, &ext);
+
+            fallback_view_[i] = wgpuTextureCreateView(fallback_tex_[i], nullptr);
+        }
+    }
+
+    // (Re)build the group-0 bind group: 4 buffers + sampler + the 5 map views. Called from lazy_init with
+    // the fallbacks, then from process_gpu whenever a wired map's texture view changes.
+    void rebuild_bind_group(const VividGpuContext* ctx, WGPUTextureView views[5]) {
+        if (bind_group_) { vivid::gpu::release(bind_group_); bind_group_ = nullptr; }
+        WGPUBindGroupEntry e[10]{};
+        e[0].binding = 0; e[0].buffer = camera_ubo_; e[0].size = sizeof(vivid::gpu::CustomCamera3D);
+        e[1].binding = 1; e[1].buffer = params_ubo_; e[1].size = sizeof(SDFParamsUniform);
+        e[2].binding = 2; e[2].buffer = lights_ubo_; e[2].size = sizeof(SDFLightsUniform);
+        e[3].binding = 3; e[3].buffer = sphere_buf_; e[3].size = kMaxSDFInstances * 32;
+        e[4].binding = 4; e[4].sampler = tex_sampler_;
+        for (int i = 0; i < 5; ++i) { e[5 + i].binding = (uint32_t)(5 + i); e[5 + i].textureView = views[i]; }
+        WGPUBindGroupDescriptor d{};
+        d.label = vivid_sv("SDF3D Bind Group");
+        d.layout = bind_layout_;
+        d.entryCount = 10;
+        d.entries = e;
+        bind_group_ = wgpuDeviceCreateBindGroup(ctx->device, &d);
+        for (int i = 0; i < 5; ++i) bound_view_[i] = views[i];
+    }
 
     bool lazy_init(const VividGpuContext* ctx) {
         // Compile shader
@@ -991,8 +1154,13 @@ private:
             sphere_buf_ = wgpuDeviceCreateBuffer(ctx->device, &bd);
         }
 
-        // Bind group layout
-        WGPUBindGroupLayoutEntry entries[4]{};
+        // PBR-map sampler + 1x1 fallbacks (bound for any unwired map port)
+        tex_sampler_ = vivid::gpu::create_repeat_sampler(ctx->device, "SDF3D PBR Sampler");
+        make_fallback_textures(ctx);
+
+        // Bind group layout: 4 buffers + a sampler + 5 map textures (all group 0, since Render3D only
+        // binds group 0 for custom raymarch fragments).
+        WGPUBindGroupLayoutEntry entries[10]{};
         entries[0].binding = 0;
         entries[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
         entries[0].buffer.type = WGPUBufferBindingType_Uniform;
@@ -1013,9 +1181,19 @@ private:
         entries[3].buffer.type = WGPUBufferBindingType_ReadOnlyStorage;
         entries[3].buffer.minBindingSize = kMaxSDFInstances * 32;
 
+        entries[4].binding = 4;   // PBR sampler
+        entries[4].visibility = WGPUShaderStage_Fragment;
+        entries[4].sampler.type = WGPUSamplerBindingType_Filtering;
+        for (int i = 5; i < 10; ++i) {   // albedo, metallic, roughness, normal, emission maps
+            entries[i].binding = (uint32_t)i;
+            entries[i].visibility = WGPUShaderStage_Fragment;
+            entries[i].texture.sampleType = WGPUTextureSampleType_Float;
+            entries[i].texture.viewDimension = WGPUTextureViewDimension_2D;
+        }
+
         WGPUBindGroupLayoutDescriptor bgl_desc{};
         bgl_desc.label = vivid_sv("SDF3D BGL");
-        bgl_desc.entryCount = 4;
+        bgl_desc.entryCount = 10;
         bgl_desc.entries = entries;
         bind_layout_ = wgpuDeviceCreateBindGroupLayout(ctx->device, &bgl_desc);
 
@@ -1026,34 +1204,8 @@ private:
         pl_desc.bindGroupLayouts = &bind_layout_;
         pipe_layout_ = wgpuDeviceCreatePipelineLayout(ctx->device, &pl_desc);
 
-        // Bind group
-        WGPUBindGroupEntry bg_entries[4]{};
-        bg_entries[0].binding = 0;
-        bg_entries[0].buffer  = camera_ubo_;
-        bg_entries[0].offset  = 0;
-        bg_entries[0].size    = sizeof(vivid::gpu::CustomCamera3D);
-
-        bg_entries[1].binding = 1;
-        bg_entries[1].buffer  = params_ubo_;
-        bg_entries[1].offset  = 0;
-        bg_entries[1].size    = sizeof(SDFParamsUniform);
-
-        bg_entries[2].binding = 2;
-        bg_entries[2].buffer  = lights_ubo_;
-        bg_entries[2].offset  = 0;
-        bg_entries[2].size    = sizeof(SDFLightsUniform);
-
-        bg_entries[3].binding = 3;
-        bg_entries[3].buffer  = sphere_buf_;
-        bg_entries[3].offset  = 0;
-        bg_entries[3].size    = kMaxSDFInstances * 32;
-
-        WGPUBindGroupDescriptor bg_desc{};
-        bg_desc.label = vivid_sv("SDF3D Bind Group");
-        bg_desc.layout = bind_layout_;
-        bg_desc.entryCount = 4;
-        bg_desc.entries = bg_entries;
-        bind_group_ = wgpuDeviceCreateBindGroup(ctx->device, &bg_desc);
+        // Bind group — texture slots start as the fallbacks; process_gpu rebuilds when an input changes.
+        rebuild_bind_group(ctx, fallback_view_);
 
         // Render pipeline
         WGPUVertexBufferLayout vbl = vivid::gpu::vertex3d_layout();
