@@ -19,7 +19,7 @@ so the same op drives off any onset/Beat source. The 3D chain is fully composabl
 Run with the app running:  uv run examples/demos/blob.py
 """
 import os
-from vivid_demo import Vivid, find, save_geo, surge_preset
+from vivid_demo import Vivid, find, save_geo, surge_preset, SURGE_FX, SURGE_FX_TYPE
 import theory
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -39,40 +39,56 @@ def build(v: Vivid, save: bool = True):
     S_INTRO, S_VERSE, S_CHORUS = v.scenes(["intro", "verse", "chorus"])
     prog = ["Fm", "Db", "Ab", "Eb"]
     DRUMS = v.add_track(kind="instrument", instrument=CASSETTE)
-    v.set_track_gain(DRUMS, 0.9)
-    BASS = v.add_graph_track("bass"); surge_preset(v, BASS, "bass", prefer="Square", gain=0.78)
-    LEAD = v.add_graph_track("lead"); surge_preset(v, LEAD, "pluck", prefer="Sync", gain=0.5)
+    v.set_track_gain(DRUMS, 0.95)
+    BASS = v.add_graph_track("bass"); surge_preset(v, BASS, "bass", prefer="Rubber", gain=0.52)   # round sub, well back in the mix
+    STAB = v.add_graph_track("stab"); surge_preset(v, STAB, "stab", prefer="Smooth", gain=0.40)    # a dubby chord stab for space
+    LEAD = v.add_graph_track("lead"); surge_preset(v, LEAD, "pluck", prefer="Sync", gain=0.36)     # arp = atmospheric shimmer (also drives the wheel)
+    try:                                    # dub echo/space on the stab (Surge FX; a low `type` ≈ delay/reverb family)
+        fx = v.clap_effect(STAB, SURGE_FX); v.node_param(STAB, fx, SURGE_FX_TYPE, 0.12)
+    except Exception as e:                  # never let an FX quirk break the build
+        print("  (stab FX skipped:", e, ")")
 
-    def bass_seq(step):   # roots an octave down, every `step` beats
-        s = []
+    def bass_sustained():   # intro: one long sub root per chord — a deep bed, out of the kick's way
+        return [(theory.chord(c, octave=2)[0], i * 4.0, 3.6) for i, c in enumerate(prog)]
+
+    def bass_offbeat():     # verse/chorus: sub on the OFF-beats (the "&" of each beat) so it interlocks
+        s = []              # with the four-on-the-floor kick instead of doubling it — bounce, not a wall
         for i, c in enumerate(prog):
             root = theory.chord(c, octave=2)[0]
-            k = 0
-            while k * step < 4.0:
-                s.append((root, i * 4.0 + k * step, step * 0.9)); k += 1
+            for off in (0.5, 1.5, 2.5, 3.5):
+                s.append((root, i * 4.0 + off, 0.42))
         return s
 
-    def arp_notes(count, vel):   # a 16th run UP-and-DOWN the F-minor scale — MANY distinct pitches, so the
-        rate = 0.25              # wheel lights a bead per scale tone all the way around (not just a triad).
-        tones = theory.scale_notes("F", "minor", octave=4, count=count)   # `count` ascending scale pitches
-        seq = tones + tones[-2:0:-1]                                      # …then back down (no end repeats)
+    def arp_notes(count, vel):   # a 16th run up-and-down the F-minor scale — one wheel bead per scale tone
+        rate = 0.25
+        tones = theory.scale_notes("F", "minor", octave=4, count=count)
+        seq = tones + tones[-2:0:-1]
         ns, t, i = [], 0.0, 0
         while t < 16.0 - 1e-6:
             ns.append({"p": seq[i % len(seq)], "s": t, "d": rate * 0.9, "v": vel}); t += rate; i += 1
         return ns
 
-    # intro: kick + sparse hat, slow sub bass (half-notes) — a few big spheres drift, no swarm yet
-    v.drums(DRUMS, S_INTRO, {"kick": "x...x...x...x...", "hat": "..x...x...x...x."}, bars=4, vel=0.85)
-    v.bassline(BASS, S_INTRO, bass_seq(2.0), length=16.0, vel=0.85)
-    # verse: full four-on-floor + clap + driving 8th bass, and a quiet one-octave arp enters
-    v.drums(DRUMS, S_VERSE, {"kick": "x...x...x...x...", "clap": "....x.......x...", "hat": "..x...x...x...x."}, bars=4, vel=0.9)
-    v.bassline(BASS, S_VERSE, bass_seq(0.5), length=16.0, vel=0.95)
-    v.set_clip(LEAD, S_VERSE, arp_notes(count=8, vel=0.6), 16.0)     # one octave → ~8 beads fill part of the wheel
-    # chorus: + open-hats + a fuller two-octave arp — the swarm blooms & spins
-    v.drums(DRUMS, S_CHORUS, {"kick": "x...x...x...x...", "clap": "....x.......x...", "hat": "x.x.x.x.x.x.x.x."}, bars=4, vel=0.92)
-    v.euclid(DRUMS, S_CHORUS, "openhat", pulses=3, steps=16, bars=4, vel=0.45)
-    v.bassline(BASS, S_CHORUS, bass_seq(0.5), length=16.0, vel=0.95)
-    v.set_clip(LEAD, S_CHORUS, arp_notes(count=15, vel=0.7), 16.0)   # two octaves → ~15 beads bloom the full wheel
+    def stab_notes(vel):   # sparse minor-chord stabs on the off-beats — the FX smears them into dub space
+        ns = []
+        for i, c in enumerate(prog):
+            for beat in (2.5, 3.5):
+                for p in theory.chord(c, octave=4):
+                    ns.append({"p": p, "s": i * 4.0 + beat, "d": 0.3, "v": vel})
+        return ns
+
+    # intro: deep kick + off-beat open hat, slow sub — a few big blobs drift, no swarm yet
+    v.drums(DRUMS, S_INTRO, {"kick": "x...x...x...x...", "openhat": "..x...x...x...x."}, bars=4, vel=0.9)
+    v.bassline(BASS, S_INTRO, bass_sustained(), length=16.0, vel=0.7)
+    # verse: rolling 8th sub, the arp shimmer enters, first dub stabs
+    v.drums(DRUMS, S_VERSE, {"kick": "x...x...x...x...", "openhat": "..x...x...x...x."}, bars=4, vel=0.9)
+    v.bassline(BASS, S_VERSE, bass_offbeat(), length=16.0, vel=0.8)
+    v.set_clip(LEAD, S_VERSE, arp_notes(count=8, vel=0.5), 16.0)
+    v.set_clip(STAB, S_VERSE, stab_notes(0.42), 16.0)
+    # chorus: + a 16th closed-hat roll + two-octave arp bloom + fuller stabs (kick + off-beat open hats stay the spine)
+    v.drums(DRUMS, S_CHORUS, {"kick": "x...x...x...x...", "openhat": "..x...x...x...x.", "hat": ".x.x.x.x.x.x.x.x"}, bars=4, vel=0.9)
+    v.bassline(BASS, S_CHORUS, bass_offbeat(), length=16.0, vel=0.82)
+    v.set_clip(LEAD, S_CHORUS, arp_notes(count=15, vel=0.6), 16.0)
+    v.set_clip(STAB, S_CHORUS, stab_notes(0.5), 16.0)
 
     out = find(v.graph()["nodes"], "Output")
 
@@ -149,21 +165,19 @@ def build(v: Vivid, save: bool = True):
     for k, val in dict(type=3, intensity=0.35, r=0.14, g=0.17, b=0.38).items():
         v.set_node_param(amb, k, float(val))
 
-    # A PARTICLE NEBULA that INTERACTS with the melody and is DRIVEN by the audio (not a free-running field):
-    #   - the arp note-instances are wired to the `attractors` port (it takes an InstanceArray3D — the same
-    #     thing the wheel draws), so attract_strength makes the swarm CHASE each note-bead as it lights
-    #     around the wheel: the particles and the melody become one system.
-    #   - baseline curl is LOW (a calm drift at rest) so the audio-driven surges below actually read; drag
-    #     is high so a beat shockwave settles back instead of flinging everything to the bounds.
-    # Calmer at REST (lower count/curl/lifetime) so the audio-driven surges read as caused, not busy: the
-    # field barely drifts until a beat shockwaves it out and the melody pulls it in.
+    # A beat-locked RADIAL particle field — NOT a melody-chaser. The earlier version wired the moving arp
+    # beads to the `attractors` port, so the swarm chased them around the wheel and just read as aimless
+    # "swarming to different places." Here attract is OFF and the baseline emission_rate is ZERO: each kick
+    # SPAWNS a fresh wave near the centre (small emit_radius) that `speed` flings outward, and a short
+    # lifetime + high drag clears it before the next beat — you see the motes BORN on the kick rather than
+    # an old cloud glowing. The mappings that drive it are #6 below.
     neb = v.add_node("Particles3D")
-    for k, val in dict(count=2200, emission_rate=850, lifetime=3.2, emit_radius=4.5, speed=0.5,
-                       gravity=0.0, spread=360, drag=0.75, attract_strength=9.0, curl_strength=0.6,
-                       noise_scale=0.7, noise_speed=0.3, size=0.055, elongation=3.0, bounds=44,
-                       r=0.5, g=0.72, b=1.0, a=0.8, emission=1.0, unlit=1).items():
+    for k, val in dict(count=4000, emission_rate=0, lifetime=0.6, emit_radius=2.8, speed=2.8,
+                       gravity=0.0, spread=360, drag=0.55, attract_strength=0.0, curl_strength=0.15,
+                       noise_scale=0.7, noise_speed=0.3, size=0.075, elongation=2.4, bounds=44,
+                       r=0.6, g=0.82, b=1.0, a=0.9, emission=1.5, unlit=1).items():   # emission_rate=0 → nothing at rest; the kick spawns each wave
         v.set_node_param(neb, k, float(val))
-    v.connect(neb, lead_inst, 1)              # attractors ← the arp note-instances: the swarm CHASES the melody
+    # (attractors intentionally NOT wired — the field is beat-driven/radial, not a melody-chaser)
 
     # SceneMerge is 4-in, and there are 8 elements (4 geometry/particles + 4 lights) → a small merge tree:
     # geometry into one, the four lights into another, then combine.
@@ -185,8 +199,8 @@ def build(v: Vivid, save: bool = True):
     # ORBIT camera for PARALLAX: the eye circles the scene (radius/height) instead of sitting static, so the
     # blobs, wheel and nebula slide past each other in depth. orbit_phase is driven by a Clock below — one
     # smooth revolution per 4-bar section (0≡1 on the circle, so the loop is seamless, no snap).
-    for k, val in dict(orbit=1, orbit_radius=17.0, orbit_height=3.0, target_y=0, fov=48, far=140, near=0.05,
-                       bg_r=0.02, bg_g=0.02, bg_b=0.05).items():
+    for k, val in dict(orbit=1, orbit_radius=12.5, orbit_height=2.4, target_y=0, fov=48, far=140, near=0.05,
+                       bg_r=0.008, bg_g=0.008, bg_b=0.018).items():   # near-black dark stage so the glows pop
         v.set_node_param(render, k, float(val))
     v.connect(render, merge2, 0)
 
@@ -202,7 +216,7 @@ def build(v: Vivid, save: bool = True):
     # BLOOM (post) — the emissive core flashes, the bright beads, and the glowing motes bleed into a soft
     # halo. This is most of the "atmosphere" upgrade: matte 3D shapes → a luminous, alive scene.
     bloom = v.add_node("Bloom")
-    for k, val in dict(threshold=0.62, intensity=0.9, radius=2.4).items():
+    for k, val in dict(threshold=0.58, intensity=1.1, radius=2.6).items():
         v.set_node_param(bloom, k, float(val))
     v.connect(bloom, render, 0)
     v.connect(out, bloom, 0)
@@ -222,7 +236,7 @@ def build(v: Vivid, save: bool = True):
     v.map(f"track_{bid}.gate", blob, "emission", amount=0.16, attack=0.004, release=0.18)  # subtle now the coloured lights carry it
     #   3) energy GLOW — sustained low energy swells the background's blue (the room breathing) WITHOUT
     #      over-lighting the centre mass (driving the lights blew it out to white).
-    v.map("master.low", render, "bg_b", amount=0.08, attack=0.03, release=0.28)
+    v.map("master.low", render, "bg_b", amount=0.015, attack=0.03, release=0.28)   # a whisper of breathing; keep the stage dark
     #   4) high SHIMMER — highs (hats + arp detail) brighten the note metaball field (→ more Bloom glow).
     v.map("master.high", lead_draw, "emission", amount=0.25, attack=0.01, release=0.12)
     #   5) blob MERGE + ORBIT — the bass rides lobe B UP into A (pos_by) while the mids swing it sideways
@@ -239,18 +253,17 @@ def build(v: Vivid, save: bool = True):
     v.map("master.mid", blob2, "scale",  amount=0.05, attack=0.01, release=0.18)
     v.map("master.mid", blob2, "pos_by", amount=0.09, attack=0.02, release=0.24)
     v.map("master.high", blob2, "emission", amount=0.5, attack=0.01, release=0.14)
-    #   6) nebula = the curl noise made REACTIVE + INTERACTIVE:
-    #      • beat SHOCKWAVE — transport.beat_pulse blasts the motes OUTWARD from the blob on each beat
-    #        (punctual → unmistakably caused by the kick); drag + attract then pull them back = a breathing
-    #        swarm locked to the blob's pulse.
-    v.map("transport.beat_pulse", neb, "repel_strength", amount=0.7, attack=0.005, release=0.22)
-    #      • bass CHURN — the low end drives the curl swirl itself, so the whole field boils with the blob
-    #        (monotonic-large, sharing the bass with the blob so they move together).
-    v.map("master.low", neb, "curl_strength", amount=0.22, attack=0.02, release=0.26)
-    #      • high SPARKLE — highs brighten the motes (→ more Bloom bleed).
-    v.map("master.high", neb, "emission", amount=0.4, attack=0.01, release=0.15)
+    #   6) nebula = particles BORN on the beat. Base emission_rate is ZERO — at rest there are NO particles.
+    #      Every kick spawns a fresh WAVE (0 → ~8500 for a brief 0.09s burst) from the centre that flies
+    #      outward and fades before the next beat: you SEE them born on the kick, not an old cloud glowing.
+    v.map("transport.beat_pulse", neb, "emission_rate", amount=0.95, attack=0.002, release=0.13)
+    #      • bass = the newborn wave is a touch fatter and faster on a heavy kick.
+    v.map("master.low", neb, "size", amount=0.06, attack=0.02, release=0.22)
+    v.map("master.low", neb, "speed", amount=0.25, attack=0.02, release=0.22)
+    #      • high SPARKLE — highs brighten the newborn motes.
+    v.map("master.high", neb, "emission", amount=0.35, attack=0.01, release=0.14)
 
-    v.master_gain(0.55)   # extra headroom so the kick + square-bass lows never pile toward 0 dBFS
+    v.master_gain(0.5)    # extra headroom now there's a stab track too, so the summed lows stay clean
     v.launch_scene(0)
     v.play()
     if save:
