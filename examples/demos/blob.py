@@ -125,10 +125,27 @@ def build(v: Vivid, save: bool = True):
     for k, val in dict(shape=0, size_x=1.4, size_y=1.4, size_z=1.4,                         # lobe A (a sphere)
                        operation=1, shape_b=1, size_bx=1.05, size_by=1.05, size_bz=1.05,    # lobe B, SMOOTH UNION
                        pos_bx=0.0, pos_by=-2.4, pos_bz=0.0, smooth_k=0.55, max_steps=96,     # B well below A → clearly TWO at rest
-                       r=0.34, g=0.36, b=0.42, roughness=0.4, metallic=0.15, emission=0.05,  # DARK near-neutral → coloured light reads as colour, not a white clip
+                       r=0.42, g=0.44, b=0.52, roughness=1.0, metallic=1.0, emission=0.05,  # base rough/metal = 1.0 → the PBR maps ARE the material (liquid sheen); mid albedo so oily speculars read
                        shadow=0.7,                                                    # soft self-shadow: the two lobes shadow each other
                        scale=1.2).items():
         v.set_node_param(blob, k, float(val))
+
+    # --- TRIPLANAR PBR on the hero blob (#355). Four maps sampled on X/Y/Z and blended by the surface
+    #     normal (no UVs), so a bump/roughness/metallic microtexture rides the gooey mass through the smooth
+    #     union. Kept subtle — the coloured light rig still does the shading; the texture adds micro-detail
+    #     the tight beauty-shot below reveals. NOTE: these are the /tmp prototype maps — swap for committed
+    #     art (into the project folder) once the look is signed off. ---
+    PBR = os.environ.get("BLOB_PBR_DIR", os.path.join(HERE, "media", "blob"))   # committed liquid/molten maps (tracked)
+    def _image(fname):
+        n = v.add_node("Image")
+        v.call("set_node_file_param", node_id=n, name="file", value=os.path.join(PBR, fname))
+        return n
+    v.connect(blob, _image("albedo.png"),    1)   # albedo   → port 1
+    v.connect(blob, _image("metallic.png"),  2)   # metallic → port 2
+    v.connect(blob, _image("roughness.png"), 3)   # roughness→ port 3
+    v.connect(blob, _image("normal.png"),    4)   # normal   → port 4
+    v.set_node_param(blob, "tex_scale", 1.9)          # flow ripples, a touch finer for tactile relief
+    v.set_node_param(blob, "normal_strength", 2.4)    # deeper bump — bring the surface texture back forward
 
     # A SECOND, smaller companion metaball, up and to the side, reacting to the MIDS (the main mass is
     # bass-driven) — so two gooey masses breathe to different parts of the music. Teal, to echo the beads.
@@ -213,12 +230,38 @@ def build(v: Vivid, save: bool = True):
     v.call("connect_control_to_param", node_id=render, param="orbit_phase",
            src_node_id=clock, signal="phase")
 
+    # --- Occasional TIGHT BEAUTY SHOT so the PBR shading reads. A second camera frames JUST the hero blob
+    #     up close (its own little scene = the blob + the same light rig), slow-orbiting so highlights sweep
+    #     across the bump/roughness detail. A 2D Switch hard-cuts wide↔tight: render_wide feeds THREE of its
+    #     four inputs and the tight cam the fourth, and a Clock stepping every 2 bars cycles 0→1→2→3 — so it
+    #     sits wide for 6 bars, then cuts to the close-up for 2, every 8-bar phrase. ---
+    merge_tight = v.add_node("SceneMerge")          # the hero blob alone, under the SAME coloured lights
+    v.connect(merge_tight, blob,         0)
+    v.connect(merge_tight, merge_lights, 1)
+    render_tight = v.add_node("Render3D")           # close, slightly tele, targeted on the blob's mass
+    for k, val in dict(orbit=1, orbit_radius=4.6, orbit_height=1.1, target_y=-0.7, fov=42,
+                       far=140, near=0.03, bg_r=0.008, bg_g=0.008, bg_b=0.018).items():
+        v.set_node_param(render_tight, k, float(val))
+    v.connect(render_tight, merge_tight, 0)
+    v.call("connect_control_to_param", node_id=render_tight, param="orbit_phase",
+           src_node_id=clock, signal="phase")       # same slow orbit source → a gentle push-in drift
+
+    cut = v.add_node("Clock")                        # steps every 2 bars, wraps 0..3 → an 8-bar cut cycle
+    for k, val in dict(sync=1, unit=1, period=2.0, steps=4).items():
+        v.set_node_param(cut, k, float(val))
+    sw = v.add_node("Switch")
+    v.connect(sw, render,       0)                   # in_0 wide  ┐
+    v.connect(sw, render,       1)                   # in_1 wide  ├ same render, wired 3× → 3 steps wide
+    v.connect(sw, render,       2)                   # in_2 wide  ┘
+    v.connect(sw, render_tight, 3)                   # in_3 tight → the 1-step beauty shot
+    v.connect(sw, cut, 4, src_port=0)                # clock port (input ordinal 4) ← Clock `step` lane (0)
+
     # BLOOM (post) — the emissive core flashes, the bright beads, and the glowing motes bleed into a soft
-    # halo. This is most of the "atmosphere" upgrade: matte 3D shapes → a luminous, alive scene.
+    # halo. Applied AFTER the cut, so both the wide stage and the tight close-up get the same glow.
     bloom = v.add_node("Bloom")
     for k, val in dict(threshold=0.58, intensity=1.1, radius=2.6).items():
         v.set_node_param(bloom, k, float(val))
-    v.connect(bloom, render, 0)
+    v.connect(bloom, sw, 0)
     v.connect(out, bloom, 0)
 
     # --- Reactivity: the arp wheel IS the notes (via the signal edge). The bass core is driven by the
