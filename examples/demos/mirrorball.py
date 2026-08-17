@@ -24,26 +24,18 @@ def build(v: Vivid, save: bool = True):
     # ENVIRONMENT: the IBL source. royal_esplanade is loaded as an equirect .hdr and baked into
     # irradiance + prefiltered cubemaps; Render3D also draws it as the skybox behind the ball.
     env = v.add_node("Environment")
-    v.set_node_param(env, "intensity", 0.5)      # keep the bright hall from blowing the background out
+    v.set_node_param(env, "intensity", 0.4)      # keep the bright hall from blowing the background out
     v.call("set_node_file_param", node_id=env, name="file",
            value=os.path.join(MEDIA, "royal_esplanade_1k.hdr"))
 
-    # The chrome ball: metallic, near-mirror. Base roughness = 1.0 so the tarnish roughness map IS the
-    # material; a light albedo so the reflected environment stays bright and neutral.
+    # The chrome ball: a PERFECT mirror — metallic 1, roughness 0 (samples the sharp base environment
+    # cube directly, so the hall reflects crisply with no prefilter blur), light neutral albedo. The
+    # orbit camera below sweeps the reflection across it, which is what reads as rotation.
     ball = v.add_node("SDF3D")
     for k, val in dict(shape=0, size_x=2.0, size_y=2.0, size_z=2.0,
-                       r=0.97, g=0.98, b=1.0, roughness=1.0, metallic=1.0,
+                       r=0.97, g=0.98, b=1.0, roughness=0.0, metallic=1.0,
                        max_steps=96, shadow=0.0).items():
         v.set_node_param(ball, k, float(val))
-
-    def image(fname):
-        n = v.add_node("Image")
-        v.call("set_node_file_param", node_id=n, name="file", value=os.path.join(MEDIA, fname))
-        return n
-    v.connect(ball, image("tarnish_roughness.png"), 3)   # roughness → faint tarnish smudges
-    v.connect(ball, image("tarnish_normal.png"),    4)   # normal    → fine scratches/dust
-    v.set_node_param(ball, "tex_scale", 2.2)
-    v.set_node_param(ball, "normal_strength", 0.22)      # just a hint — mostly mirror, faint tarnish so it reads as rotating
 
     merge = v.add_node("SceneMerge")
     v.connect(merge, ball, 0)

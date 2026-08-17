@@ -43,10 +43,15 @@ inline uint16_t f32_to_f16(float f) {
 
 constexpr WGPUTextureFormat kCubeFmt = WGPUTextureFormat_RGBA16Float;
 constexpr WGPUTextureFormat kLutFmt  = WGPUTextureFormat_RG16Float;
-constexpr uint32_t kBaseSize   = 256;   // base sky + prefiltered face size (crisp enough for a mirror)
+constexpr uint32_t kBaseSize   = 1024;  // base sky + prefiltered face size — high, for a crisp mirror
 constexpr uint32_t kIrrSize    = 32;    // irradiance face size (low-freq, cheap)
 constexpr uint32_t kLutSize    = 256;   // BRDF LUT
 constexpr uint32_t kPrefMips   = 5;     // prefiltered roughness mips (0 = mirror … 4 = rough)
+// Per-face UBO slot stride. Every bake pass writes its own slot (offset) and binds it — otherwise all
+// 6 faces' wgpuQueueWriteBuffer calls coalesce to the LAST write before the frame's single submit, and
+// every face gets baked with one face's basis (the environment collapses to a repeated small patch).
+constexpr uint32_t kUboStride  = 256;   // >= minUniformBufferOffsetAlignment
+constexpr uint32_t kUboSlots   = 48;    // 6 sky + 6 irradiance + 6*kPrefMips prefilter ≤ 48
 
 // Per-face basis (right, up, forward) mapping a fullscreen uv in [-1,1] to a world direction, in the
 // standard cube-face order the WGSL texture_cube sampler expects: +X,-X,+Y,-Y,+Z,-Z.
@@ -182,6 +187,9 @@ fn importanceGGX(xi: vec2f, N: vec3f, rough: f32) -> vec3f {
     let N = normalize(u.fwd.xyz + uv.x * u.right.xyz + uv.y * u.up.xyz);
     let R = N; let V = N;
     let rough = u.params.x;
+    // Mirror (mip 0 / roughness 0) = the base cube exactly, sampled sharp — no GGX loop, no coherence
+    // rings, and cheap at high resolution.
+    if (rough < 0.001) { return vec4f(textureSampleLevel(env, samp, N, 0.0).rgb, 1.0); }
     let NUM = 256u;
     var prefiltered = vec3f(0.0);
     var wsum = 0.0;
@@ -373,7 +381,7 @@ private:
 
         if (!sky_pipe_ || !irr_pipe_ || !pref_pipe_ || !brdf_pipe_) return false;
 
-        face_ubo_ = vivid::gpu::create_uniform_buffer(ctx->device, sizeof(FaceUniform), "Env Face UBO");
+        face_ubo_ = vivid::gpu::create_uniform_buffer(ctx->device, kUboStride * kUboSlots, "Env Face UBO");
         sampler_  = vivid::gpu::create_clamp_linear_sampler(ctx->device, "Env IBL Sampler");
 
         sky_tex_  = vivid::gpu::create_cubemap_texture(ctx->device, kBaseSize, 1, kCubeFmt, "Env Sky Cube");
@@ -445,16 +453,17 @@ private:
         std::fprintf(stderr, "[Environment] loaded HDR %dx%d: %s\n", w, h, loaded_file_.c_str());
     }
 
+    // Write this pass's face basis into its OWN slot (offset). Call once per pass, before make_bg.
     void write_face(const VividGpuContext* ctx, uint32_t face, float roughness) {
         FaceUniform fu{};
         for (int i = 0; i < 3; ++i) { fu.right[i] = kFaces[face].r[i]; fu.up[i] = kFaces[face].u[i]; fu.fwd[i] = kFaces[face].f[i]; }
         fu.params[0] = roughness;
-        wgpuQueueWriteBuffer(ctx->queue, face_ubo_, 0, &fu, sizeof(fu));
+        wgpuQueueWriteBuffer(ctx->queue, face_ubo_, ubo_slot_ * kUboStride, &fu, sizeof(fu));
     }
 
     WGPUBindGroup make_bg(const VividGpuContext* ctx, WGPUBindGroupLayout layout, bool with_env, WGPUTextureView envv) {
         WGPUBindGroupEntry e[3]{};
-        e[0].binding = 0; e[0].buffer = face_ubo_; e[0].size = sizeof(FaceUniform);
+        e[0].binding = 0; e[0].buffer = face_ubo_; e[0].offset = ubo_slot_ * kUboStride; e[0].size = sizeof(FaceUniform);
         uint32_t n = 1;
         if (with_env) {
             e[1].binding = 1; e[1].sampler = sampler_;
@@ -466,13 +475,14 @@ private:
     }
 
     void bake(const VividGpuContext* ctx) {
+        ubo_slot_ = 0;   // each pass below consumes one slot (unique UBO offset), then increments
         // 1) Base cube (6 faces): the loaded equirect HDR if present, else the procedural sky.
-        for (uint32_t f = 0; f < 6; ++f) {
+        for (uint32_t f = 0; f < 6; ++f, ++ubo_slot_) {
             write_face(ctx, f, 0.0f);
             WGPUTextureView tv = vivid::gpu::create_cubemap_face_view(sky_tex_, kCubeFmt, f, 0, "base face");
             if (has_equirect_) {
                 WGPUBindGroupEntry e[3]{};
-                e[0].binding = 0; e[0].buffer = face_ubo_; e[0].size = sizeof(FaceUniform);
+                e[0].binding = 0; e[0].buffer = face_ubo_; e[0].offset = ubo_slot_ * kUboStride; e[0].size = sizeof(FaceUniform);
                 e[1].binding = 1; e[1].sampler = sampler_;
                 e[2].binding = 2; e[2].textureView = equirect_view_;
                 WGPUBindGroupDescriptor d{}; d.layout = equirect_layout_; d.entryCount = 3; d.entries = e;
@@ -487,7 +497,7 @@ private:
             wgpuTextureViewRelease(tv);
         }
         // 2) Irradiance ← convolve sky (6 faces).
-        for (uint32_t f = 0; f < 6; ++f) {
+        for (uint32_t f = 0; f < 6; ++f, ++ubo_slot_) {
             write_face(ctx, f, 0.0f);
             WGPUBindGroup bg = make_bg(ctx, bake_layout_, true, sky_view_);
             WGPUTextureView tv = vivid::gpu::create_cubemap_face_view(irr_tex_, kCubeFmt, f, 0, "irr face");
@@ -497,7 +507,7 @@ private:
         // 3) Prefilter ← GGX importance-sample sky, per roughness mip (6 faces × mips).
         for (uint32_t mip = 0; mip < kPrefMips; ++mip) {
             float rough = (kPrefMips > 1) ? (float)mip / (float)(kPrefMips - 1) : 0.0f;
-            for (uint32_t f = 0; f < 6; ++f) {
+            for (uint32_t f = 0; f < 6; ++f, ++ubo_slot_) {
                 write_face(ctx, f, rough);
                 WGPUBindGroup bg = make_bg(ctx, bake_layout_, true, sky_view_);
                 WGPUTextureView tv = vivid::gpu::create_cubemap_face_view(pref_tex_, kCubeFmt, f, mip, "pref face");
@@ -530,6 +540,7 @@ private:
     bool                has_equirect_ = false;
 
     vivid::gpu::VividSceneFragment fragment_{};
+    uint32_t ubo_slot_ = 0;   // current per-face UBO slot during bake()
     bool ready_ = false, baked_ = false, init_failed_ = false;
 };
 
