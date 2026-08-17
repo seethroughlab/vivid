@@ -460,6 +460,12 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
         // texture-only op is byte-for-byte unchanged (texv == the old inview). Storage lives for the
         // process_gpu call below; the edge `inputs[k]` is indexed by input-PORT ordinal (all inputs).
         std::vector<WGPUTextureView> texv;
+        // Parallel to texv (ABI input_texture_widths/heights): the SOURCE size, or 0 when the port is
+        // DISCONNECTED. A disconnected input still gets a non-null full-size black `fallback_.view` (so
+        // ops need not null-check), which means views/sizes alone can't tell "wired" from "unwired" — this
+        // width==0 sentinel is how an op (e.g. SDF3D's triplanar PBR gate) detects a REAL wired texture.
+        std::vector<uint32_t>        texw;
+        std::vector<uint32_t>        texh;
         std::vector<void*>           custin;
         std::vector<VividValueView>  valv;   // one per INPUT port ordinal (ABI: values[input port ordinal])
         int in_ord = 0;
@@ -483,8 +489,11 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
                     vv.multiplicity = VIVID_MULTIPLICITY_MANY;
                 }
             } else {
-                WGPUTextureView v = (e >= 0 && e < nnodes) ? rts_[e].view : fallback_.view;
+                const bool tex_connected = (e >= 0 && e < nnodes);
+                WGPUTextureView v = tex_connected ? rts_[e].view : fallback_.view;
                 texv.push_back(v ? v : fallback_.view);
+                texw.push_back(tex_connected ? static_cast<uint32_t>(rtW_) : 0u);   // 0 = disconnected
+                texh.push_back(tex_connected ? static_cast<uint32_t>(rtH_) : 0u);
             }
             valv.push_back(vv);
             ++in_ord;
@@ -558,6 +567,8 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
         ctx.output_width = rtW_; ctx.output_height = rtH_; ctx.output_format = fmt_;
         ctx.input_texture_views = texv.empty() ? nullptr : texv.data();
         ctx.input_texture_count = static_cast<uint32_t>(texv.size());
+        ctx.input_texture_widths  = texw.empty() ? nullptr : texw.data();
+        ctx.input_texture_heights = texh.empty() ? nullptr : texh.data();
         ctx.custom_inputs = custin.empty() ? nullptr : custin.data();
         ctx.custom_input_count = static_cast<uint32_t>(custin.size());
         ctx.custom_outputs = pub.empty() ? nullptr : pub.data();
