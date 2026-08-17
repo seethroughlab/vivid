@@ -420,14 +420,15 @@ fn fs_main(in: SDFVertexOutput) -> SDFFragOutput {
 
     let N = m_world_normal;
     let V = normalize(camera.camera_pos - world_hit);
+    let NdotV = max(dot(N, V), 0.0);
     let ambient = vec3f(lighting.ambient_r, lighting.ambient_g, lighting.ambient_b);
 
-    let diffuse_color  = base_color * (1.0 - m_metallic);
-    let specular_color = mix(vec3f(0.04), base_color, m_metallic);
+    // Metallic-roughness PBR (ADR-0060 Phase 1): the SAME Cook-Torrance BRDF the mesh path runs, from
+    // the shared PBR_BRDF_WGSL preamble (D_GGX * G_Smith * F_Schlick), so an SDF surface and a Render3D
+    // mesh shade identically. `base_color` is the albedo (after the triplanar map + per-instance blend).
+    let F0 = mix(vec3f(0.04), base_color, m_metallic);
 
-    let shininess = pow(2.0, (1.0 - m_roughness) * 7.0) + 2.0;
-
-    var color = diffuse_color * ambient;
+    var color = base_color * (1.0 - m_metallic) * ambient;   // flat ambient until the Phase 2 IBL term
     for (var i: u32 = 0u; i < min(lighting.light_count, 4u); i++) {
         let light = lighting.lights[i];
         let light_color = light.color_and_radius.xyz;
@@ -445,21 +446,29 @@ fn fs_main(in: SDFVertexOutput) -> SDFFragOutput {
             attenuation = saturate(1.0 - ratio * ratio);
         }
 
-        let H = normalize(L + V);
         let intensity = light.direction_and_intensity.w;
-        let diffuse  = max(dot(N, L), 0.0);
-        let specular = pow(max(dot(N, H), 0.0), shininess);
+        let H = normalize(L + V);
+        let NdotL = max(dot(N, L), 0.0);
+        let NdotH = max(dot(N, H), 0.0);
+        let HdotV = max(dot(H, V), 0.0);
 
-        // Soft self-shadow from the KEY (light 0) only — one march per pixel, the big depth win; fill /
-        // rim lights deliberately don't cast (they lift shadows). Marched in local space toward the light.
+        // Cook-Torrance specular (shared with render_3d.cpp) + an energy-conserving Lambert diffuse:
+        // kD = (1 - F)(1 - metallic) removes the energy the specular took and the metal's diffuse.
+        let D = D_GGX(NdotH, m_roughness);
+        let G = G_Smith(NdotV, NdotL, m_roughness);
+        let F = F_Schlick(HdotV, F0);
+        let spec = (D * G * F) / (4.0 * NdotV * NdotL + 0.0001);
+        let kD = (1.0 - F) * (1.0 - m_metallic);
+
+        // Soft self-shadow from the KEY (light 0) only — the two lobes / merged instances shadow each
+        // other. One march per pixel, the big depth win; fill / rim lights deliberately don't cast.
         var sh: f32 = 1.0;
         if (i == 0u && params.shadow > 0.001) {
             let L_local = normalize((params.inv_model * vec4f(L, 0.0)).xyz);
             let shade = soft_shadow(local_hit + local_normal * 0.04, L_local, 12.0);
             sh = mix(1.0, shade, params.shadow);
         }
-        color += light_color * (diffuse_color * diffuse + specular_color * specular)
-                 * intensity * attenuation * sh;
+        color += (kD * base_color / PI + spec) * light_color * NdotL * intensity * attenuation * sh;
     }
 
     color += base_color * m_emission;
@@ -1135,6 +1144,7 @@ private:
         // Compile shader
         std::string src = std::string(vivid::gpu::CUSTOM_CAMERA_3D_WGSL)
                         + std::string(vivid::gpu::LIGHTS_3D_WGSL)   // ADR-0051 P3: the shared one
+                        + std::string(vivid::gpu::PBR_BRDF_WGSL)    // ADR-0060 P1: the shared Cook-Torrance BRDF
                         + kSDF3DShader;
         shader_ = vivid::gpu::create_wgsl_shader(ctx->device, src.c_str(), "SDF3D Shader");
         if (!shader_) return false;
