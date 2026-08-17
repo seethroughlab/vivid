@@ -142,7 +142,7 @@ endif()
 # load_project). particles3d stays for now — it backs the flagship blob showcase + storm/lattice.
 # instances_from_signal (ADR-0046 recipe) + particles3d (single-look content) moved OUT of core into
 # packages/content-3d (they reuse its vendored vivid-3d 3D headers). No committed demo uses them.
-foreach(_v3d render_3d scene_merge shape3d light3d
+foreach(_v3d render_3d scene_merge shape3d light3d environment
              instancer3d instances_from_lanes
              sdf3d audio_spectrum reactive_master reactive_track lane_ramp lane_palette clock switch3d)
     add_vivid_operator(vivid_${_v3d} packages/vivid-3d/${_v3d}.cpp)

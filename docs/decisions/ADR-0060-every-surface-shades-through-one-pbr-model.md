@@ -1,6 +1,6 @@
 # ADR-0060: Every Surface Shades Through the Same PBR Model
 
-Status: accepted (Phase 1 implemented; Phases 2–3 proposed — see As Built)
+Status: accepted (Phases 1–2 implemented — the Phase 2 delivery also builds the environment source Phase 3 called for; see As Built)
 
 Date: 2026-08-16
 
@@ -177,4 +177,34 @@ static scenes for the mechanism checks.
   lights are still tuned to the old Blinn-Phong lobe and may want a light re-tune, tracked with the
   demo, not this ADR.
 
-- **Phases 2 (IBL) and 3 (one environment + dark-stage fallback) — proposed, not started.**
+- **Phase 2 (IBL on the SDF path) — implemented, and it folds in Phase 3.** Reading the code first
+  surfaced that Vivid's IBL was entirely *dormant*: the `ENVIRONMENT` fragment machinery + fallback cube
+  existed, but **no operator produced an environment**, so meshes had no reflections either. So Phase 2
+  couldn't be "bind the existing cubemaps" — it had to build the source. The result:
+
+  - **New `Environment` operator** (`environment.cpp`, `VIVID_OP_ROLE_SOURCE`, emits the `ENVIRONMENT`
+    fragment). It bakes — once, cached, all render-pass based via the shared cube helpers — a base cube
+    → an **irradiance** cube (hemisphere convolution), a **GGX-prefiltered** specular cube (roughness
+    mips), and a split-sum **BRDF LUT**. The base cube comes from a **procedural dark-stage sky**
+    (ADR-0058: near-black with a horizon glow + cyan/magenta studio accents) *or*, when a `file` param is
+    set, a loaded **equirectangular `.hdr`** (`stbi_loadf` → RGBA16Float → an equirect→cube pass). This
+    is the "one environment + procedural dark-stage fallback" Phase 3 asked for, delivered here because
+    the SDF binding is pointless without a source.
+  - **Shared `create_ibl_bind_group_layout` in `gpu_3d.h`** so SDF3D's group-1 layout is group-equivalent
+    to Render3D's group-2 layout — a bind group built by Render3D binds onto the SDF pipeline unchanged.
+    A `custom_ibl` flag on `VividSceneFragment` marks a custom pipeline that declares the slot.
+  - **SDF3D** gained a **group-1 IBL** on its pipeline and the split-sum ambient/diffuse + specular terms
+    in its shader (reusing the Phase 1 `F0`/`NdotV`/`m_roughness`), gated on `has_environment`. It sets
+    `custom_ibl = true`. **Render3D** binds the scene's IBL bind group — the real environment, or its
+    existing black `fallback_ibl_bg_` when none — at group 1 on the custom SDF dispatch (one added block).
+    No new fallback machinery needed: Render3D already built real + fallback IBL bind groups for meshes.
+
+  Verified: **full ctest green**, 0 GPU validation errors (the cross-op bind-group compatibility holds).
+  A `Render3D` metal sphere, an `SDF3D` metal sphere, and the `blob` metaballs all reflect the
+  environment — the procedural dark-stage sky (cyan/magenta studio reflections on the wet liquid metal)
+  and real CC0 HDRIs (studio / overcast day / night), which were byte-black on the SDF path before. ABI
+  stayed additive (a `bool` fragment field; group-1 is pipeline-internal).
+
+- **Follow-ups (not blocking):** the demo defaults to the asset-free procedural sky; committing a small
+  moody `.hdr` for the blob is a taste call. Skybox/IBL currently render without tone mapping, so a bright
+  HDRI blows the background out — an exposure/tonemap control is a reasonable later addition.

@@ -208,9 +208,22 @@ def build(v: Vivid, save: bool = True):
     v.connect(merge_lights, fill, 1)
     v.connect(merge_lights, rim,  2)
     v.connect(merge_lights, amb,  3)
-    merge2 = v.add_node("SceneMerge")        # combine geometry + lights
+    # ENVIRONMENT (ADR-0060 Phase 2): an IBL source so the metaballs get real reflections, not just
+    # direct-light speculars. Default = a procedural dark-stage sky (on-brand, no asset); set BLOB_HDRI
+    # to an equirect .hdr to reflect a photographic environment instead. Merged into BOTH the wide stage
+    # and the tight beauty-shot scenes so the chrome reads up close.
+    env = v.add_node("Environment")
+    v.set_node_param(env, "intensity", 0.85)
+    # Default: reflect the committed royal_esplanade HDRI (Poly Haven, CC0). Override with BLOB_HDRI=/path
+    # to another .hdr, or BLOB_HDRI="" (empty) for the procedural dark-stage sky.
+    _hdri = os.environ.get("BLOB_HDRI", os.path.join(HERE, "media", "blob", "royal_esplanade_1k.hdr"))
+    if _hdri:
+        v.call("set_node_file_param", node_id=env, name="file", value=_hdri)
+
+    merge2 = v.add_node("SceneMerge")        # combine geometry + lights + environment
     v.connect(merge2, merge,        0)
     v.connect(merge2, merge_lights, 1)
+    v.connect(merge2, env,          2)
 
     render = v.add_node("Render3D")
     # ORBIT camera for PARALLAX: the eye circles the scene (radius/height) instead of sitting static, so the
@@ -238,6 +251,7 @@ def build(v: Vivid, save: bool = True):
     merge_tight = v.add_node("SceneMerge")          # the hero blob alone, under the SAME coloured lights
     v.connect(merge_tight, blob,         0)
     v.connect(merge_tight, merge_lights, 1)
+    v.connect(merge_tight, env,          2)         # the tight beauty shot reflects the environment too
     render_tight = v.add_node("Render3D")           # close, slightly tele, targeted on the blob's mass
     for k, val in dict(orbit=1, orbit_radius=4.6, orbit_height=1.1, target_y=-0.7, fov=42,
                        far=140, near=0.03, bg_r=0.008, bg_g=0.008, bg_b=0.018).items():

@@ -429,6 +429,10 @@ struct VividSceneFragment {
     WGPUTextureView ibl_brdf_lut      = nullptr;  // BRDF LUT (2D, RG16Float)
     WGPUSampler     ibl_sampler       = nullptr;  // linear, clamp-to-edge
     float           ibl_intensity     = 1.0f;     // environment intensity multiplier
+
+    // ADR-0060 Phase 2: set by a custom (SDF) pipeline that declares a group-1 IBL slot, so Render3D
+    // binds the scene's IBL bind group (or the fallback) there when dispatching the custom pipeline.
+    bool            custom_ibl        = false;
 };
 
 struct InstanceData3D {
@@ -781,6 +785,25 @@ inline WGPUSampler create_clamp_linear_sampler(WGPUDevice device, const char* la
     desc.mipmapFilter = WGPUMipmapFilterMode_Linear;
     desc.maxAnisotropy = 1;
     return wgpuDeviceCreateSampler(device, &desc);
+}
+
+// Shared IBL bind-group layout (ADR-0060 Phase 2) — the SAME entries used by Render3D (its group 2)
+// and SDF3D (its group 1), so a bind group built by Render3D is compatible with the SDF pipeline:
+// sampler(0), irradiance cube(1), prefiltered cube(2), BRDF LUT 2D(3), IBL params UBO(4, 16 bytes).
+inline WGPUBindGroupLayout create_ibl_bind_group_layout(WGPUDevice device, const char* label) {
+    WGPUBindGroupLayoutEntry e[5]{};
+    e[0].binding = 0; e[0].visibility = WGPUShaderStage_Fragment;
+    e[0].sampler.type = WGPUSamplerBindingType_Filtering;
+    e[1].binding = 1; e[1].visibility = WGPUShaderStage_Fragment;
+    e[1].texture.sampleType = WGPUTextureSampleType_Float; e[1].texture.viewDimension = WGPUTextureViewDimension_Cube;
+    e[2].binding = 2; e[2].visibility = WGPUShaderStage_Fragment;
+    e[2].texture.sampleType = WGPUTextureSampleType_Float; e[2].texture.viewDimension = WGPUTextureViewDimension_Cube;
+    e[3].binding = 3; e[3].visibility = WGPUShaderStage_Fragment;
+    e[3].texture.sampleType = WGPUTextureSampleType_Float; e[3].texture.viewDimension = WGPUTextureViewDimension_2D;
+    e[4].binding = 4; e[4].visibility = WGPUShaderStage_Fragment;
+    e[4].buffer.type = WGPUBufferBindingType_Uniform; e[4].buffer.minBindingSize = 16;
+    WGPUBindGroupLayoutDescriptor d{}; d.label = vivid_sv(label); d.entryCount = 5; d.entries = e;
+    return wgpuDeviceCreateBindGroupLayout(device, &d);
 }
 
 // ---------------------------------------------------------------------------

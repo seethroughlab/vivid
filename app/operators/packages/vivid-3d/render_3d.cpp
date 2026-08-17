@@ -1780,6 +1780,11 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
                 wgpuRenderPassEncoderSetPipeline(pass, dc.frag->pipeline);
                 if (dc.frag->material_binds)
                     wgpuRenderPassEncoderSetBindGroup(pass, 0, dc.frag->material_binds, 0, nullptr);
+                // ADR-0060 P2: bind the scene IBL at group 1 for custom pipelines that declare it (SDF3D),
+                // so SDF surfaces reflect the environment — the real env, or the black fallback otherwise.
+                if (dc.frag->custom_ibl)
+                    wgpuRenderPassEncoderSetBindGroup(pass, 1,
+                        has_ibl ? ibl_bind_group_ : fallback_ibl_bg_, 0, nullptr);
                 wgpuRenderPassEncoderSetVertexBuffer(pass, 0, dc.frag->vertex_buffer,
                                                       0, dc.frag->vertex_buf_size);
                 wgpuRenderPassEncoderSetIndexBuffer(pass, dc.frag->index_buffer,

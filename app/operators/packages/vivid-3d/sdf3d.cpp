@@ -108,6 +108,15 @@ struct MetaInstance {
 @group(0) @binding(8) var normal_map:    texture_2d<f32>;
 @group(0) @binding(9) var emission_map:  texture_2d<f32>;
 
+// ADR-0060 P2: IBL environment (group 1). Render3D binds the scene's environment here — or a black
+// fallback with has_environment = 0 — mirroring the mesh path's IBL group (create_ibl_bind_group_layout).
+struct IBLParams { intensity: f32, has_environment: f32, _p0: f32, _p1: f32 };
+@group(1) @binding(0) var ibl_samp:        sampler;
+@group(1) @binding(1) var irradiance_map:  texture_cube<f32>;
+@group(1) @binding(2) var prefiltered_map: texture_cube<f32>;
+@group(1) @binding(3) var brdf_lut:        texture_2d<f32>;
+@group(1) @binding(4) var<uniform> ibl:    IBLParams;
+
 struct SDFVertexOutput {
     @builtin(position) position: vec4f,
     @location(0) uv: vec2f,
@@ -469,6 +478,19 @@ fn fs_main(in: SDFVertexOutput) -> SDFFragOutput {
             sh = mix(1.0, shade, params.shadow);
         }
         color += (kD * base_color / PI + spec) * light_color * NdotL * intensity * attenuation * sh;
+    }
+
+    // ADR-0060 P2: image-based lighting — diffuse irradiance + split-sum specular (prefiltered env ×
+    // BRDF LUT), the SAME terms the mesh path applies, so an SDF metaball reflects the environment like
+    // a mesh. Gated on has_environment (a black fallback is bound when no Environment is in the scene).
+    if (ibl.has_environment > 0.5) {
+        let R = reflect(-V, N);
+        let irr = textureSample(irradiance_map, ibl_samp, N).rgb;
+        let ambient_diffuse = irr * base_color * (1.0 - m_metallic);
+        let pref = textureSampleLevel(prefiltered_map, ibl_samp, R, m_roughness * 4.0).rgb;
+        let env_brdf = textureSample(brdf_lut, ibl_samp, vec2f(NdotV, m_roughness)).rg;
+        let ambient_specular = pref * (F0 * env_brdf.x + env_brdf.y);
+        color += (ambient_diffuse + ambient_specular) * ibl.intensity;
     }
 
     color += base_color * m_emission;
@@ -1006,6 +1028,7 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
         fragment_.material_binds   = bind_group_;
         fragment_.custom_camera_ubo = camera_ubo_;
         fragment_.custom_lights_ubo = lights_ubo_;   // ADR-0051 P3: let Render3D light this SDF
+        fragment_.custom_ibl        = true;          // ADR-0060 P2: bind the scene IBL at group 1
         fragment_.depth_write      = true;
 
         fragment_.color[0] = r.value;
@@ -1031,6 +1054,7 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::gpu::release(pipe_layout_);
         vivid::gpu::release(bind_group_);
         vivid::gpu::release(bind_layout_);
+        vivid::gpu::release(ibl_layout_);
         vivid::gpu::release(tex_sampler_);
         for (auto& v : fallback_view_) vivid::gpu::release(v);
         for (auto& t : fallback_tex_) vivid::gpu::release(t);
@@ -1055,6 +1079,7 @@ private:
     WGPUPipelineLayout  pipe_layout_ = nullptr;
     WGPUBindGroup       bind_group_  = nullptr;
     WGPUBindGroupLayout bind_layout_ = nullptr;
+    WGPUBindGroupLayout ibl_layout_  = nullptr;   // ADR-0060 P2: group-1 IBL layout
 
     // Triplanar PBR maps: a shared repeat sampler + 1x1 fallback textures for unwired ports, and a cache
     // of the currently-bound views so the bind group is only rebuilt when an input actually changes.
@@ -1207,11 +1232,17 @@ private:
         bgl_desc.entries = entries;
         bind_layout_ = wgpuDeviceCreateBindGroupLayout(ctx->device, &bgl_desc);
 
-        // Pipeline layout
+        // ADR-0060 P2: group 1 = the shared IBL layout. Render3D binds the scene's IBL bind group (or
+        // the fallback) here when it dispatches this custom pipeline, so SDF surfaces sample the same
+        // environment reflections meshes do.
+        ibl_layout_ = vivid::gpu::create_ibl_bind_group_layout(ctx->device, "SDF3D IBL BGL");
+
+        // Pipeline layout: group 0 = material/camera/lights/textures, group 1 = IBL.
+        WGPUBindGroupLayout groups[2] = { bind_layout_, ibl_layout_ };
         WGPUPipelineLayoutDescriptor pl_desc{};
         pl_desc.label = vivid_sv("SDF3D Pipeline Layout");
-        pl_desc.bindGroupLayoutCount = 1;
-        pl_desc.bindGroupLayouts = &bind_layout_;
+        pl_desc.bindGroupLayoutCount = 2;
+        pl_desc.bindGroupLayouts = groups;
         pipe_layout_ = wgpuDeviceCreatePipelineLayout(ctx->device, &pl_desc);
 
         // Bind group — texture slots start as the fallbacks; process_gpu rebuilds when an input changes.
