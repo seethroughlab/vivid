@@ -43,7 +43,7 @@ inline uint16_t f32_to_f16(float f) {
 
 constexpr WGPUTextureFormat kCubeFmt = WGPUTextureFormat_RGBA16Float;
 constexpr WGPUTextureFormat kLutFmt  = WGPUTextureFormat_RG16Float;
-constexpr uint32_t kBaseSize   = 128;   // base sky + prefiltered face size
+constexpr uint32_t kBaseSize   = 256;   // base sky + prefiltered face size (crisp enough for a mirror)
 constexpr uint32_t kIrrSize    = 32;    // irradiance face size (low-freq, cheap)
 constexpr uint32_t kLutSize    = 256;   // BRDF LUT
 constexpr uint32_t kPrefMips   = 5;     // prefiltered roughness mips (0 = mirror … 4 = rough)
@@ -182,7 +182,7 @@ fn importanceGGX(xi: vec2f, N: vec3f, rough: f32) -> vec3f {
     let N = normalize(u.fwd.xyz + uv.x * u.right.xyz + uv.y * u.up.xyz);
     let R = N; let V = N;
     let rough = u.params.x;
-    let NUM = 128u;
+    let NUM = 256u;
     var prefiltered = vec3f(0.0);
     var wsum = 0.0;
     for (var i = 0u; i < NUM; i++) {
@@ -235,7 +235,7 @@ fn gSmith(N: vec3f, V: vec3f, L: vec3f, rough: f32) -> f32 {
 @vertex fn vs_main(@builtin(vertex_index) vi: u32) -> FullscreenOutput { return fullscreenTriangle(vi, false); }
 @fragment fn fs_main(inp: FullscreenOutput) -> @location(0) vec2f {
     let ndv = max(inp.uv.x, 0.001);
-    let rough = 1.0 - inp.uv.y;   // uv.y 0=top; map so bottom = rough 0
+    let rough = inp.uv.y;   // y-axis IS roughness — must match the sampler's vec2f(NdotV, roughness)
     let V = vec3f(sqrt(1.0 - ndv * ndv), 0.0, ndv);
     let N = vec3f(0.0, 0.0, 1.0);
     var A = 0.0; var B = 0.0;
