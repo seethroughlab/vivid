@@ -314,9 +314,14 @@ void register_visual_analysis_handlers(Handlers& handlers_) {
         if (!c.app) return err(code::kBadArg, "no app context");
         const bool on = b.value("enabled", true);
         c.app->reactivity.set_enabled(on);
+        // Arm on enable so the ring starts filling IMMEDIATELY. Without this, enabling only flips the
+        // master switch — the ring stays cold until a subsequent analyze/judge call arms it, so an
+        // "enable -> wait -> read once" sequence read an empty past window and got insufficient_samples.
+        // Now the wait after enable actually accumulates frames (arm lasts kArmSeconds).
+        if (on) c.app->reactivity.arm(steady_seconds());
         json r = ok();
         r["enabled"] = on;
-        r["summary"] = on ? "perception ENABLED (ring samples on-demand while measuring)"
+        r["summary"] = on ? "perception ENABLED + armed (ring is now sampling; give it ~0.5s before the first analyze_output(av))"
                           : "perception DISABLED (zero readback cost; analyze_output(av|audio) returns no data until re-enabled)";
         return r;
     };
