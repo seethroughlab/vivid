@@ -298,6 +298,58 @@ json binding_json(const ControlCtx& c, const Mapping& m) {
              {"lo", m.out_lo}, {"hi", m.out_hi} };
 }
 
+// ADR-0053 Phase B4: the audio->visual mappings that connect_mapping creates are typed ParamControlEdges
+// on the CONSUMER node, NOT registry Mappings — so get_mappings/inspect_mappings (which read only
+// c.graph->mappings()) would show [] for them, and a user who wired `master.low -> node:N.pulse` could
+// not verify it from the API (the trap that bit the grid session). This reconstructs a mapping-shaped
+// record per control edge, reverse-resolving the source node+lane back to a canonical "master.<sig>" /
+// "track_<id>.<sig>" label (the inverse of value_lane_ordinal in control_handlers_mappings.cpp).
+json control_edges_as_mappings(const ControlCtx& c) {
+    json arr = json::array();
+    if (!c.graph || !c.vgraph) return arr;
+    auto& g = *c.graph;
+    auto& ns = c.vgraph->nodes();
+    auto src_index_by_id = [&](int id) -> int {
+        for (int j = 0; j < static_cast<int>(ns.size()); ++j) if (ns[j].id == id) return j;
+        return -1;
+    };
+    auto source_label_for = [&](int src_node, int src_lane) -> std::string {
+        const int si = src_index_by_id(src_node);
+        if (si < 0) return "";
+        std::string lane; int ord = 0;   // src_lane counts ONLY value-lane outputs, low->high
+        for (int p = 0; ; ++p) {
+            const VividPortDescriptor* pd = c.vgraph->output_port_desc(si, p);
+            if (!pd) break;
+            if (!(pd->type == VIVID_PORT_SCALAR && pd->multiplicity == VIVID_MULTIPLICITY_MANY)) continue;
+            if (ord == src_lane) { lane = pd->name ? pd->name : ""; break; }
+            ++ord;
+        }
+        const std::string& op = ns[si].op_type;
+        if (op == "ReactiveMaster") return "master." + lane;
+        if (op == "ReactiveTrack") {   // track_id is param 0 of the source node
+            const int tid = g.op_param_count_at(si) > 0
+                          ? static_cast<int>(std::lround(g.op_param_base_at(si, 0))) : -1;
+            return tid >= 0 ? ("track_" + std::to_string(tid) + "." + lane) : ("track." + lane);
+        }
+        return op + "." + lane;
+    };
+    for (int i = 0; i < static_cast<int>(ns.size()); ++i) {
+        const int consumer_id = ns[i].id;
+        for (const auto& ce : ns[i].control_edges) {
+            const char* pn = (ce.param_index >= 0 && ce.param_index < g.op_param_count_at(i))
+                           ? g.op_param_label_at(i, ce.param_index) : "";
+            arr.push_back({ {"src", source_label_for(ce.src_node, ce.src_lane)},
+                            {"dst", "node:" + std::to_string(consumer_id) + "." + (pn ? pn : "")},
+                            {"amount", ce.shape.amount}, {"curve", ce.shape.curve},
+                            {"invert", ce.shape.invert}, {"lo", ce.shape.out_lo}, {"hi", ce.shape.out_hi},
+                            {"attack", ce.shape.attack}, {"release", ce.shape.release},
+                            {"src_node_id", ce.src_node}, {"src_lane", ce.src_lane},
+                            {"kind", "control_edge"} });
+        }
+    }
+    return arr;
+}
+
 std::string lower_copy(std::string s) {
     for (auto& ch : s) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
     return s;
@@ -1098,6 +1150,7 @@ void register_introspection_handlers(Handlers& handlers_) {
         for (const auto& m : c.graph->mappings())
             arr.push_back({ {"src", m.source}, {"dst", m.dest}, {"amount", m.amount},
                             {"curve", m.curve}, {"invert", m.invert}, {"lo", m.out_lo}, {"hi", m.out_hi} });
+        for (const auto& ce : control_edges_as_mappings(c)) arr.push_back(ce);   // ADR-0053 audio->visual edges
         json r = ok(); r["mappings"] = arr; return r;
     };
     handlers_["inspect_bindings"] = [](const ControlCtx& c, const json& b) {
@@ -1105,6 +1158,7 @@ void register_introspection_handlers(Handlers& handlers_) {
         const std::string detail = b.value("detail", std::string("summary"));
         json bindings = json::array();
         for (const auto& m : c.graph->mappings()) bindings.push_back(binding_json(c, m));
+        for (const auto& ce : control_edges_as_mappings(c)) bindings.push_back(ce);   // ADR-0053 audio->visual edges
         json r = ok();
         std::ostringstream ss;
         ss << bindings.size() << " binding" << (bindings.size() == 1 ? "" : "s");
