@@ -38,7 +38,7 @@ struct GradientOp : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> hue {"hue",  0.0f, 0.f, 1.f};
     vivid::Param<float> tilt{"tilt", 0.0f, 0.f, 1.f};   // 0 = vertical, 1 = horizontal
 
-    bool tried_ = false;
+    bool tried_ = false; std::string err_;   // ADR-0019: surfaced per-frame via report_if_no_pipeline
     WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr;
     WGPUPipelineLayout pl_ = nullptr; WGPURenderPipeline pipe_ = nullptr;
     WGPUBuffer ubo_ = nullptr; WGPUBindGroup bg_ = nullptr;
@@ -53,7 +53,7 @@ struct GradientOp : vivid::OperatorBase, vivid::GpuProcessable {
     bool lazy_init(const VividGpuContext* c) {
         std::string err;
         sh_ = vivid::gpu::create_shader_checked(c->device, kGradientWGSL, "Gradient", err);
-        if (!sh_ || !err.empty()) return false;
+        if (!sh_ || !err.empty()) { err_ = vivid::gpu::concise_gpu_error(err); return false; }
         ubo_ = vivid::gpu::create_uniform_buffer(c->device, 32, "Gradient U");
         WGPUBindGroupLayoutEntry e{};
         e.binding = 0; e.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
@@ -70,7 +70,7 @@ struct GradientOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     void process_gpu(const VividGpuContext* c) override {
         if (!tried_) { tried_ = true; lazy_init(c); }
-        if (!pipe_) return;
+        if (vivid::gpu::report_if_no_pipeline(c, pipe_, err_)) return;
         const float h = c->param_values ? c->param_values[0] : hue.value;
         const float t = c->param_values ? c->param_values[1] : tilt.value;
         float u[8] = { float(c->output_width), float(c->output_height), float(c->time), h, t, 0, 0, 0 };

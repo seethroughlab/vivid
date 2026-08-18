@@ -93,6 +93,40 @@ inline WGPUShaderModule create_shader_checked(WGPUDevice device, const char* fra
     return sm;
 }
 
+// Reduce a multi-line wgpu validation dump to the single most useful diagnostic line (the "error:"
+// line if present, else the first substantive line) — a legible message for a node badge / toast /
+// log rather than the full boilerplate. Returns the input unchanged when nothing better is found.
+inline std::string concise_gpu_error(const std::string& msg) {
+    std::string best;
+    size_t start = 0;
+    while (start <= msg.size()) {
+        const size_t nl = msg.find('\n', start);
+        std::string line = msg.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
+        while (!line.empty() && (line.front() == ' ' || line.front() == '\t')) line.erase(line.begin());
+        if (const size_t at = line.find("error: "); at != std::string::npos)
+            best = line.substr(at + 7);
+        else if (line.find("Validation Error") == std::string::npos &&
+                 line.find("In wgpu") == std::string::npos && !line.empty() && best.empty())
+            best = line;
+        if (nl == std::string::npos) break;
+        start = nl + 1;
+    }
+    return best.empty() ? msg : best;
+}
+
+// ADR-0019: surface a GPU operator's failed pipeline init instead of silently rendering black. Call
+// this in process_gpu's pipeline guard: `if (report_if_no_pipeline(c, pipe_, init_err_)) return;`.
+// When `pipe` is null it reports `err` (or a generic message) through the per-node error channel
+// (vivid_report_gpu_error), which the runtime promotes to the node badge + log/toast/health. Must be
+// called EVERY frame while the pipeline is down (the runtime re-reads the flag per frame), so `err`
+// must outlive the call — store it in an operator std::string member. Returns true when it reported.
+inline bool report_if_no_pipeline(const VividGpuContext* c, WGPURenderPipeline pipe,
+                                  const std::string& err) {
+    if (pipe) return false;
+    vivid_report_gpu_error(c, err.empty() ? "GPU pipeline failed to initialize" : err.c_str());
+    return true;
+}
+
 // ---------------------------------------------------------------------------
 // Helper: create a fullscreen render pipeline with N color targets (MRT).
 // `formats[i]` is the WGPUTextureFormat of color attachment i; the fragment

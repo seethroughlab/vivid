@@ -82,7 +82,7 @@ struct MeshOp : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> spin{"spin", 0.35f, 0.f, 1.f}, tilt{"tilt", 0.5f, 0.f, 1.f};
     vivid::Param<float> r{"r", 0.9f, 0.f, 1.f}, g{"g", 0.92f, 0.f, 1.f}, b{"b", 1.f, 0.f, 1.f};
     vivid::Param<float> bg_r{"bg_r", 0.03f, 0.f, 1.f}, bg_g{"bg_g", 0.03f, 0.f, 1.f}, bg_b{"bg_b", 0.05f, 0.f, 1.f};
-    bool tried_ = false;
+    bool tried_ = false; std::string err_;   // ADR-0019: surfaced per-frame via report_if_no_pipeline
     WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
     WGPURenderPipeline solid_pipe_ = nullptr, wire_pipe_ = nullptr; WGPUBuffer ubo_ = nullptr; WGPUBindGroup bg_ = nullptr;
     WGPUBuffer tri_vbo_ = nullptr, line_vbo_ = nullptr; uint32_t tri_n_ = 0, line_n_ = 0;
@@ -194,7 +194,7 @@ struct MeshOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     bool lazy_init(const VividGpuContext* c) {
         std::string err; sh_ = vivid::gpu::create_shader_checked(c->device, kMeshWGSL, "Mesh", err);
-        if (!sh_ || !err.empty()) return false;
+        if (!sh_ || !err.empty()) { err_ = vivid::gpu::concise_gpu_error(err); return false; }
         ubo_ = vivid::gpu::create_uniform_buffer(c->device, 160, "Mesh U");
         WGPUBindGroupLayoutEntry e{}; e.binding = 0; e.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
         e.buffer.type = WGPUBufferBindingType_Uniform; e.buffer.minBindingSize = 160;
@@ -211,7 +211,10 @@ struct MeshOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     void process_gpu(const VividGpuContext* c) override {
         if (!tried_) { tried_ = true; lazy_init(c); }
-        if (!solid_pipe_ || !wire_pipe_) return;
+        if (!solid_pipe_ || !wire_pipe_) {   // ADR-0019: surface the init failure, don't render silent
+            vivid_report_gpu_error(c, err_.empty() ? "GPU pipeline failed to initialize" : err_.c_str());
+            return;
+        }
         const float* p = c->param_values; auto pv = [&](int i, float d) { return p ? p[i] : d; };
         const int s = static_cast<int>(std::lround(pv(0, shape.value) * 3.f));           // 0..3
         if (s != shape_) rebuild_geometry(c, s);

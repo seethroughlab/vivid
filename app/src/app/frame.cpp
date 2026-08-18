@@ -596,6 +596,24 @@ void apply_shader_reloads(App& app) {
     }
 }
 
+// ADR-0019: promote a GPU operator's per-frame runtime error (set via vivid_report_gpu_error, read
+// back into VisualNode::runtime_error) to a log line — which the log→toast promotion below turns into
+// a toast, and the header dot reflects. Edge-triggered per node so a persistent error logs ONCE, and
+// re-logs if it clears then recurs. Mirrors apply_shader_reloads' loudness for the shader-file path;
+// without this a broken compiled op only showed a node badge (easy to miss, invisible to headless/MCP).
+void promote_operator_errors(App& app) {
+    if (!app.vgraph) return;
+    for (auto& n : app.vgraph->nodes()) {
+        if (!n.runtime_error.empty() && !n.runtime_error_reported) {
+            n.runtime_error_reported = true;
+            VLOG_ERR(app, "operator '%s' error: %s",
+                     (n.label.empty() ? n.op_type : n.label).c_str(), n.runtime_error.c_str());
+        } else if (n.runtime_error.empty() && n.runtime_error_reported) {
+            n.runtime_error_reported = false;   // cleared — allow a fresh report if it recurs
+        }
+    }
+}
+
 void run_frame_loop(App& app, Window& win) {
     // Local aliases to the shared engine (App) + this view (Window) so the tick
     // body reads naturally; every object is owned by main(), not here.
@@ -809,6 +827,7 @@ void run_frame_loop(App& app, Window& win) {
                 vgraph.set_metronome(static_cast<float>(transport.bpm.load(std::memory_order_relaxed)),
                                      transport.beats_per_bar.load(std::memory_order_relaxed), beats);
                 vgraph.run_chain(frame.encoder, tsec);
+                promote_operator_errors(app);   // ADR-0019: a compiled op that failed init is now loud
             }
             gpu.gpu_mark(frame.encoder, "visuals");   // GPU timing: end of the output render (vs. the editor UI that follows)
             win.preview.out_aspect = vgraph.rt_aspect();   // cache: drives the preview's height + hit-rects

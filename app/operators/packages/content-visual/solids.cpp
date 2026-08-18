@@ -106,7 +106,7 @@ struct SolidsOp : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> trail{"trail", 0.3f, 0.f, 1.f};
     vivid::Param<float> wireframe{"wireframe", 0.f, 0.f, 1.f};
 
-    bool tried_ = false;
+    bool tried_ = false; std::string err_;   // ADR-0019: surfaced per-frame via report_if_no_pipeline
     WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
     WGPURenderPipeline pipe_ = nullptr; WGPUBuffer ubo_ = nullptr; WGPUBindGroup bg_ = nullptr;
     WGPUBuffer vbuf_[3] = {nullptr,nullptr,nullptr}; uint32_t vcount_[3] = {0,0,0};   // cube/tetra/octa
@@ -151,7 +151,7 @@ struct SolidsOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     bool lazy_init(const VividGpuContext* c) {
         std::string err; sh_ = vivid::gpu::create_shader_checked(c->device, kWGSL, "Solids", err);
-        if (!sh_ || !err.empty()) { vivid_report_gpu_error(c, ("Solids WGSL: " + err).c_str()); return false; }
+        if (!sh_ || !err.empty()) { err_ = "Solids WGSL: " + vivid::gpu::concise_gpu_error(err); return false; }
         ubo_ = vivid::gpu::create_uniform_buffer(c->device, 80, "Solids U");   // mat4(64) + 4 f32(16)
         vbuf_[0] = make_vb(c, make_cube(),  vcount_[0]);
         vbuf_[1] = make_vb(c, make_tetra(), vcount_[1]);
@@ -199,7 +199,7 @@ struct SolidsOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     void process_gpu(const VividGpuContext* c) override {
         if (!tried_) { tried_ = true; lazy_init(c); }
-        if (!pipe_) return;
+        if (vivid::gpu::report_if_no_pipeline(c, pipe_, err_)) return;
         ensure_depth(c);
         const float* p = c->param_values; auto pv = [&](int i, float d){ return p ? p[i] : d; };
         const int   si    = std::clamp(static_cast<int>(std::round(pv(0, shape.value))), 0, 2);

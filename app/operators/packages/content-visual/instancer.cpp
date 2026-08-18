@@ -78,7 +78,7 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> sides{"sides", 6.f, 3.f, 8.f};       // polygon sides (shape=2)
     vivid::Param<float> pulse{"pulse", 0.6f, 0.f, 1.f};      // pop amount on each note-on FIRE (re-strikes re-pop)
 
-    bool tried_ = false;
+    bool tried_ = false; std::string err_;   // ADR-0019: surfaced per-frame via report_if_no_pipeline
     WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
     WGPURenderPipeline pipe_ = nullptr; WGPUBuffer ubo_ = nullptr; WGPUBindGroup bg_ = nullptr;
     WGPUBuffer quad_ = nullptr;                              // static unit quad (6 verts)
@@ -105,7 +105,7 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
 
     bool lazy_init(const VividGpuContext* c) {
         std::string err; sh_ = vivid::gpu::create_shader_checked(c->device, kWGSL, "Instancer", err);
-        if (!sh_ || !err.empty()) { vivid_report_gpu_error(c, ("Instancer WGSL: " + err).c_str()); return false; }
+        if (!sh_ || !err.empty()) { err_ = "Instancer WGSL: " + vivid::gpu::concise_gpu_error(err); return false; }
         ubo_ = vivid::gpu::create_uniform_buffer(c->device, 32, "Instancer U");
         const QVert quad[6] = { {-1,-1},{1,-1},{1,1}, {-1,-1},{1,1},{-1,1} };
         WGPUBufferDescriptor qd{}; qd.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst; qd.size = sizeof(quad);
@@ -150,7 +150,7 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     void process_gpu(const VividGpuContext* c) override {
         if (!tried_) { tried_ = true; lazy_init(c); }
-        if (!pipe_) return;
+        if (vivid::gpu::report_if_no_pipeline(c, pipe_, err_)) return;
         const float* p = c->param_values; auto pv = [&](int i, float d) { return p ? p[i] : d; };
         const float base = 0.02f + 0.22f * pv(0, size.value);
         const float spr  = pv(1, spread.value);

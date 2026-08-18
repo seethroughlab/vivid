@@ -63,7 +63,7 @@ struct EmitterOp : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> size{"size", 0.4f, 0.f, 1.f};      // particle radius
     vivid::Param<float> spread{"spread", 0.8f, 0.f, 1.f};  // horizontal emit spread by pos
 
-    bool tried_ = false;
+    bool tried_ = false; std::string err_;   // ADR-0019: surfaced per-frame via report_if_no_pipeline
     WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
     WGPURenderPipeline pipe_ = nullptr; WGPUBuffer ubo_ = nullptr; WGPUBindGroup bg_ = nullptr;
     WGPUBuffer quad_ = nullptr;
@@ -93,7 +93,7 @@ struct EmitterOp : vivid::OperatorBase, vivid::GpuProcessable {
 
     bool lazy_init(const VividGpuContext* c) {
         std::string err; sh_ = vivid::gpu::create_shader_checked(c->device, kWGSL, "Emitter", err);
-        if (!sh_ || !err.empty()) { vivid_report_gpu_error(c, ("Emitter WGSL: " + err).c_str()); return false; }
+        if (!sh_ || !err.empty()) { err_ = "Emitter WGSL: " + vivid::gpu::concise_gpu_error(err); return false; }
         ubo_ = vivid::gpu::create_uniform_buffer(c->device, 16, "Emitter U");
         const QVert quad[6] = { {-1,-1},{1,-1},{1,1}, {-1,-1},{1,1},{-1,1} };
         WGPUBufferDescriptor qd{}; qd.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst; qd.size = sizeof(quad);
@@ -138,7 +138,7 @@ struct EmitterOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     void process_gpu(const VividGpuContext* c) override {
         if (!tried_) { tried_ = true; lazy_init(c); }
-        if (!pipe_) return;
+        if (vivid::gpu::report_if_no_pipeline(c, pipe_, err_)) return;
         const float* p = c->param_values; auto pv = [&](int i, float d) { return p ? p[i] : d; };
         const int   nper  = 6 + static_cast<int>(54.f * pv(0, count.value));   // particles per burst
         const float spd   = 0.3f + 1.4f * pv(1, speed.value);
