@@ -101,6 +101,11 @@ jobs:
       - name: MIDI file import/export
         run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_midi_import.py
 
+      # P4: clip-level controller automation — lanes must survive note edits, RMW transforms, save,
+      # the clip pool, and undo. The separation from set_clip is the whole point.
+      - name: Clip controller automation
+        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_clip_cc.py
+
       # Import the Developer ID cert into a dedicated temporary keychain so codesign can reach the
       # private key non-interactively (a locked/service-context login keychain gives
       # errSecInternalComponent on a self-hosted runner). Cleaned up below regardless of outcome.

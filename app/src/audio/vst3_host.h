@@ -327,6 +327,18 @@ void   session_set_clip(Session*, int track, int scene, const ClipNote* notes, i
 // In-clip loop region (beats). loop_end <= loop_start disables it (loop the whole clip).
 void   session_set_clip_loop(Session*, int track, int scene, double loop_start, double loop_end);
 void   session_get_clip_loop(Session*, int track, int scene, double* loop_start, double* loop_end);
+// Clip-level controller automation (P4). Separate from the note accessors above because a note edit
+// must NOT clobber recorded automation: every existing set_clip caller passes notes only, so folding
+// lanes into it would wipe them on any quantize/transpose. Both bump the shared `rev`, so a
+// read-modify-write tool still sees one optimistic-concurrency token for the whole clip.
+int    session_clip_cc_count(Session*, int track, int scene);
+int    session_get_clip_cc(Session*, int track, int scene, CcLane* out, int max);   // returns count
+void   session_set_clip_cc(Session*, int track, int scene, const CcLane* lanes, int n);  // full replace
+// Pool clips carry their lanes too, so stashing a clip out of the grid and placing it back does not
+// silently drop the automation.
+int    session_pool_cc_count(Session*, int index);
+int    session_pool_get_cc(Session*, int index, CcLane* out, int max);
+void   session_pool_set_cc(Session*, int index, const CcLane* lanes, int n);
 
 // Native audio operators. The shared registry is set once at init; a track can have
 // a native instrument (source op) + a chain of native audio effects, alongside VST3.

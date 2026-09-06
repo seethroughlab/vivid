@@ -2291,8 +2291,52 @@ void session_get_clip_loop(Session* s, int t, int sc, double* loop_start, double
     if (loop_end)   *loop_end   = c.loop_end;
 }
 
+// --- Clip-level controller automation (P4) ---
+// Deliberately separate writes from session_set_clip: every existing note-editing caller passes
+// notes only, so folding lanes into that call would wipe recorded automation on any transpose or
+// quantize. They share `rev`, so a read-modify-write client still has one token for the clip.
+int session_clip_cc_count(Session* s, int t, int sc) {
+    if (!clip_valid(s, t, sc)) return 0;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->edit_mtx);
+    return static_cast<int>(s->tracks[t]->edit_clips[sc].cc.size());
+}
+int session_get_clip_cc(Session* s, int t, int sc, CcLane* out, int max) {
+    if (!clip_valid(s, t, sc) || !out || max <= 0) return 0;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->edit_mtx);
+    const auto& lanes = s->tracks[t]->edit_clips[sc].cc;
+    const int n = std::min(static_cast<int>(lanes.size()), max);
+    for (int i = 0; i < n; ++i) out[i] = lanes[i];
+    return n;
+}
+void session_set_clip_cc(Session* s, int t, int sc, const CcLane* lanes, int n) {
+    if (!clip_valid(s, t, sc)) return;
+    Track& tr = *s->tracks[t];
+    {
+        std::lock_guard<std::mutex> lk(tr.edit_mtx);
+        tr.edit_clips[sc].cc.assign(lanes, lanes + (n > 0 ? std::min(n, kMaxCcLanes) : 0));
+        tr.edit_clips[sc].rev++;
+    }
+    tr.edit_gen.fetch_add(1, std::memory_order_release);
+    // No republish: unlike notes, a CC lane does not change whether the slot has a Clip node.
+}
+
 // --- Clip pool (loose clips outside the grid) — UI/main thread only. ---
 static bool pool_valid(Session* s, int i) { return s && i >= 0 && i < static_cast<int>(s->pool.size()); }
+int session_pool_cc_count(Session* s, int i) {
+    if (!pool_valid(s, i)) return 0;
+    return static_cast<int>(s->pool[i].clip.cc.size());
+}
+int session_pool_get_cc(Session* s, int i, CcLane* out, int max) {
+    if (!pool_valid(s, i) || !out || max <= 0) return 0;
+    const auto& lanes = s->pool[i].clip.cc;
+    const int n = std::min(static_cast<int>(lanes.size()), max);
+    for (int k = 0; k < n; ++k) out[k] = lanes[k];
+    return n;
+}
+void session_pool_set_cc(Session* s, int i, const CcLane* lanes, int n) {
+    if (!pool_valid(s, i)) return;
+    s->pool[i].clip.cc.assign(lanes, lanes + (n > 0 ? std::min(n, kMaxCcLanes) : 0));
+}
 int session_pool_count(Session* s) { return s ? static_cast<int>(s->pool.size()) : 0; }
 double session_pool_length(Session* s, int i) {
     if (!pool_valid(s, i)) return 0.0;
@@ -2591,6 +2635,9 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 const size_t ns = std::min(t.clips.size(), t.edit_clips.size());
                 for (size_t sc = 0; sc < ns; ++sc) {
                     t.clips[sc].notes      = t.edit_clips[sc].notes;
+                    t.clips[sc].cc         = t.edit_clips[sc].cc;           // P4 clip automation — omit
+                                                                            // this and lanes persist,
+                                                                            // edit and draw but never play
                     t.clips[sc].length     = t.edit_clips[sc].length;
                     t.clips[sc].loop_start = t.edit_clips[sc].loop_start;   // in-clip loop region
                     t.clips[sc].loop_end   = t.edit_clips[sc].loop_end;

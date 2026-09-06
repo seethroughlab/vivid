@@ -45,7 +45,16 @@ void register_audio_clip_pool_handlers(Handlers& handlers_) {
         if (n <= 0) return err(code::kBadArg, "clip is empty");
         const double len = P::session_clip_length(c.session, track, scene);
         const int idx = P::session_pool_add(c.session, buf.data(), n, len, name.c_str());
+        {   // carry the clip's controller automation with it (P4)
+            const int nc = P::session_clip_cc_count(c.session, track, scene);
+            if (nc > 0 && idx >= 0) {
+                std::vector<P::CcLane> lanes(static_cast<size_t>(nc));
+                const int got = P::session_get_clip_cc(c.session, track, scene, lanes.data(), nc);
+                P::session_pool_set_cc(c.session, idx, lanes.data(), got);
+            }
+        }
         P::session_set_clip(c.session, track, scene, nullptr, 0, len);   // take it out of the grid
+        P::session_set_clip_cc(c.session, track, scene, nullptr, 0);
         json r = ok(); r["index"] = idx; r["kind"] = "midi"; return r;
     };
     // Place a pool clip into a grid cell, overwriting it. Types must match: an audio clip
@@ -67,6 +76,12 @@ void register_audio_clip_pool_handlers(Handlers& handlers_) {
         std::vector<P::ClipNote> buf(static_cast<size_t>(cap > 0 ? cap : 1));
         const int n = P::session_pool_get(c.session, index, buf.data(), cap);
         P::session_set_clip(c.session, track, scene, buf.data(), n, P::session_pool_length(c.session, index));
+        {   // and back again
+            const int nc = P::session_pool_cc_count(c.session, index);
+            std::vector<P::CcLane> lanes(static_cast<size_t>(nc > 0 ? nc : 1));
+            const int got = nc > 0 ? P::session_pool_get_cc(c.session, index, lanes.data(), nc) : 0;
+            P::session_set_clip_cc(c.session, track, scene, lanes.data(), got);
+        }
         json r = ok(); r["notes"] = n; r["kind"] = "midi"; return r;
     };
     handlers_["pool_remove"] = [](const ControlCtx& c, const json& b) {

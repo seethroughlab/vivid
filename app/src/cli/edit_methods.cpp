@@ -106,6 +106,7 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "set_audio_op_param",    { "Set Param",           true  } },
         { "audio_graph_set_node_param",     { "Set Param",       true } },
         { "audio_graph_set_node_key_range", { "Set Key Range",   true } },
+        { "set_clip_cc",           { "Edit Automation",     true } },   // coalesces like set_clip: a lane drag is one entry
         { "set_clip",              { "Edit Clip",           true  } },
         { "set_clip_loop",         { "Set Loop",            true  } },
         { "audio_set_warp",        { "Warp Clip",           true  } },
