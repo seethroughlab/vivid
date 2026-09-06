@@ -308,8 +308,12 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
         } else {
             json clips = json::array();
             for (int sc = 0; sc < ns; ++sc) {
-                vivid::session::ClipNote buf[256];
-                const int n = vivid::session::session_get_clip(s, t, sc, buf, 256);
+                // Size to the clip, never a fixed buffer: a fixed 256 silently DROPPED notes past
+                // the cap on save (the control surface reads 1024), so a dense imported groove or a
+                // long recorded take lost work at save time with no error.
+                const int cap = vivid::session::session_clip_note_count(s, t, sc);
+                std::vector<vivid::session::ClipNote> buf(static_cast<size_t>(cap > 0 ? cap : 1));
+                const int n = vivid::session::session_get_clip(s, t, sc, buf.data(), cap);
                 json notes = json::array();
                 for (int i = 0; i < n; ++i) {
                     json jn = { {"p", buf[i].pitch}, {"s", buf[i].start}, {"d", buf[i].dur}, {"v", buf[i].vel} };
@@ -467,8 +471,9 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     json pool = json::array();
     for (int i = 0; i < vivid::session::session_pool_count(s); ++i) {
         if (vivid::session::session_pool_is_audio(s, i)) continue;
-        vivid::session::ClipNote buf[256];
-        const int n = vivid::session::session_pool_get(s, i, buf, 256);
+        const int cap = vivid::session::session_pool_note_count(s, i);   // see the grid-clip note above
+        std::vector<vivid::session::ClipNote> buf(static_cast<size_t>(cap > 0 ? cap : 1));
+        const int n = vivid::session::session_pool_get(s, i, buf.data(), cap);
         json notes = json::array();
         for (int k = 0; k < n; ++k) {
             json jn = { {"p", buf[k].pitch}, {"s", buf[k].start}, {"d", buf[k].dur}, {"v", buf[k].vel} };

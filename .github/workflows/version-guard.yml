@@ -24,6 +24,8 @@ jobs:
           else
             uv run tools/check_version.py
           fi
+      - name: Music theory selftest (chord/scale vocabulary, offline)
+        run: uv run --directory mcp test_theory.py
       - name: MCP <-> control-server parity (static)
         run: uv run mcp/tests/test_mcp_parity.py
       - name: Operator-ABI docs match types.h (static)

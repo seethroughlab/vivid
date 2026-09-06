@@ -305,6 +305,7 @@ int   session_audio_slices       (Session*, int track, int scene, int mode, floa
 // Clip pool: loose clips stashed outside the track grid (browser sidebar). UI/main-thread
 // only — the audio thread never touches the pool. Fully portable MidiClips (notes + length).
 int         session_pool_count(Session*);
+int         session_pool_note_count(Session*, int index);   // notes in a pool clip (size a buffer before session_pool_get)
 int         session_pool_get(Session*, int index, ClipNote* out, int max);   // returns count
 double      session_pool_length(Session*, int index);
 const char* session_pool_name(Session*, int index);

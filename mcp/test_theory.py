@@ -48,6 +48,44 @@ def test_chords():
     assert T.chord("Bb") == [70, 74, 77]             # flat root
 
 
+def test_extended_chords():
+    """The Lydian / altered / minor-major vocabulary. Every one of these used to fall through to
+    a bare triad, and the "maj*" spellings came back MINOR because the fallback tested
+    startswith("m") — Cmaj7#11 returned C minor with no error."""
+    assert T.chord("Cmaj7#11") == [60, 64, 67, 71, 78]     # C E G B F# — was [60,63,67] (C MINOR)
+    assert T.chord("Dbmaj7#11") == [61, 65, 68, 72, 79]    # was [61,64,68] (Db minor)
+    assert T.chord("Fmaj9#11") == [65, 69, 72, 76, 79, 83]
+    assert T.chord("G7#9") == [67, 71, 74, 77, 82]         # was a bare G major triad
+    assert T.chord("E7b9") == [64, 68, 71, 74, 77]
+    assert T.chord("C7#5") == [60, 64, 68, 70] == T.chord("Caug7")
+    assert T.chord("C7b5") == [60, 64, 66, 70]
+    assert T.chord("Galt") == [67, 71, 77, 82, 87]         # 1 3 b7 #9 b13
+    assert T.chord("C9sus4") == [60, 65, 67, 70, 74]
+    assert T.chord("Cadd11") == [60, 64, 67, 77]
+    # Parenthesised spellings normalise to the bare quality.
+    assert T.chord("Cm(maj7)") == T.chord("Cmmaj7") == [60, 63, 67, 71]
+    assert T.chord("Am(maj7)") == [69, 72, 76, 80]
+    assert T.chord("Cdim(maj7)") == [60, 63, 66, 71]
+    # A slash INSIDE a quality is not a slash bass — "C6/9" used to raise "bad note name: '9'".
+    assert T.chord("C6/9") == [60, 64, 67, 69, 74]
+    assert T.chord("Cm6/9") == [60, 63, 67, 69, 74]
+    # ...but a real slash bass still splits.
+    assert T.chord("Cmaj7/E") == [52, 60, 64, 67, 71]
+    assert T.chord("Bb/D") == [62, 70, 74, 77]
+
+
+def test_unknown_quality_raises():
+    """An unrecognised quality must ERROR, never resolve to a plausible-looking wrong chord —
+    a caller can fix a bad symbol, but cannot tell that silently-wrong notes are wrong."""
+    for bad in ("Cwobble", "Cmaj77", "Cxyz", "Dbogus"):
+        try:
+            T.chord(bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"chord({bad!r}) should have raised, not guessed a triad")
+
+
 def test_scales():
     assert T.scale_pcs("C", "major") == [0, 2, 4, 5, 7, 9, 11]
     assert T.scale_pcs("A", "minor") == [9, 11, 0, 2, 4, 5, 7]
@@ -127,7 +165,8 @@ def test_analysis():
     assert T.chords_per_bar(two, 8.0) == ["C", "G"]
 
 
-TESTS = [test_notes, test_norm_notes, test_chords, test_scales, test_roman, test_transforms,
+TESTS = [test_notes, test_norm_notes, test_chords, test_extended_chords,
+         test_unknown_quality_raises, test_scales, test_roman, test_transforms,
          test_rhythm, test_analysis]
 
 
