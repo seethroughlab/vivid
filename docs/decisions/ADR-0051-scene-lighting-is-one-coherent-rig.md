@@ -232,7 +232,7 @@ lighting to regenerate and no showcase re-shoot implied by this ADR.
 
 Each phase carries its own acceptance check. Build with `cmake --build app/build -j` and run the
 **full** ctest suite, not a subset — a removed API has broken test targets before. Drive the app
-by direct binary path (`app/build/vivid.app/Contents/MacOS/vivid` with `VIVID_NO_RECOVER=1`);
+by direct binary path (`app/build/Vivid.app/Contents/MacOS/Vivid` with `VIVID_NO_RECOVER=1`);
 `open -a` can launch a stale copy.
 
 1. **Phase 1** — a persist round-trip test in `app/tests/test_persist_chain_migration.cpp`

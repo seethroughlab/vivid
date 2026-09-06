@@ -21,7 +21,7 @@ experimental, not part of the day-one promise. Video export is release but secon
 
 ## Run
 
-1. Launch the app (`app/build/vivid.app/Contents/MacOS/vivid`) — it logs
+1. Launch the app (`app/build/Vivid.app/Contents/MacOS/Vivid`) — it logs
    `control server listening on 127.0.0.1:9876`. Override the port with `VIVID_PORT`.
 2. Run the bridge (Python deps via [uv](https://docs.astral.sh/uv/)):
    ```sh
@@ -42,7 +42,7 @@ repo. Launch Vivid and use **Help ▸ Connect Claude…**, which shows the exact
 path already filled in and a Copy button. It looks like:
 
 ```sh
-claude mcp add vivid -- uv run --script "/Applications/vivid.app/Contents/Resources/mcp/vivid_mcp.py"
+claude mcp add vivid -- uv run --script "/Applications/Vivid.app/Contents/Resources/mcp/vivid_mcp.py"
 ```
 
 (`--script`, not `--directory`: script mode resolves deps from the PEP-723 header at the top of
@@ -58,7 +58,7 @@ claude mcp add vivid -- uv run --directory "$PWD/mcp" vivid_mcp.py
 ```
 
 Or, for a client that takes a JSON config (`.mcp.json`) — replace `<path-to>` with either the
-bundled `vivid.app/Contents/Resources/mcp` or your checkout's `mcp/`:
+bundled `Vivid.app/Contents/Resources/mcp` or your checkout's `mcp/`:
 
 ```json
 {

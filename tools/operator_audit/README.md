@@ -6,7 +6,7 @@ every registered operator against the four-dimension Definition of Done: **thumb
 
 ```sh
 # 1. launch the app (a live GPU is required — this is not a headless CI check)
-VIVID_NO_RECOVER=1 VIVID_PORT=9876 open app/build/vivid.app
+VIVID_NO_RECOVER=1 VIVID_PORT=9876 open app/build/Vivid.app
 
 # 2. run the audit (Vivid is auto-foregrounded per op — macOS pauses an occluded window's render loop)
 uv run tools/operator_audit/audit.py            # whole catalog -> reports/audit-<ts>.json + console table

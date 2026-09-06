@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PORT = int(os.environ.get("VIVID_DUPA_PORT", "9881"))
-APP = os.environ.get("VIVID_APP", str(ROOT / "build" / "vivid.app" / "Contents" / "MacOS" / "vivid"))
+APP = os.environ.get("VIVID_APP", str(ROOT / "build" / "Vivid.app" / "Contents" / "MacOS" / "vivid"))
 BASE = f"http://127.0.0.1:{PORT}"
 
 

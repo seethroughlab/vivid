@@ -39,7 +39,7 @@ track an instrument + FX chain) and a rewireable visuals node-graph — joined b
 ## Build & run (macOS)
 ```sh
 cmake -S app -B app/build && cmake --build app/build -j
-app/build/vivid.app/Contents/MacOS/vivid        # logs: control server on 127.0.0.1:9876
+app/build/Vivid.app/Contents/MacOS/Vivid        # logs: control server on 127.0.0.1:9876
 uv run --directory mcp vivid_mcp.py                      # the MCP bridge (app must be running)
 ```
 

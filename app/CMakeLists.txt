@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(vivid VERSION 0.2.0 LANGUAGES C CXX)
+project(vivid VERSION 0.2.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -353,6 +353,13 @@ if(APPLE)
     set_source_files_properties(platform/macos/Vivid.icns PROPERTIES
         MACOSX_PACKAGE_LOCATION Resources)
     set_target_properties(vivid PROPERTIES
+        # The bundle DIRECTORY is named after OUTPUT_NAME, not the CMake target. Without this it
+        # inherited the lowercase target name and shipped as `Vivid.app` while CFBundleName below
+        # said "Vivid" — so Finder showed one name and the menu bar another, and every documented
+        # /Applications path was wrong on a case-sensitive volume (it only resolved because the
+        # default APFS is case-insensitive). macOS convention is bundle-dir == display name:
+        # Safari.app, Xcode.app. The TARGET stays lowercase `vivid`; only the artifact is renamed.
+        OUTPUT_NAME "Vivid"
         MACOSX_BUNDLE_BUNDLE_NAME "Vivid"
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.vivid.app"
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"

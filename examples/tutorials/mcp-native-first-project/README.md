@@ -44,7 +44,7 @@ Launch Vivid before running the builder. The app must expose the control server 
 For a disposable tutorial run, launch Vivid with autosave recovery discarded:
 
 ```sh
-VIVID_DISCARD_RECOVERY=1 ./build/vivid.app/Contents/MacOS/vivid
+VIVID_DISCARD_RECOVERY=1 ./build/Vivid.app/Contents/MacOS/Vivid
 ```
 
 Use this only when you do not need to recover unsaved work from a previous Vivid session. If you

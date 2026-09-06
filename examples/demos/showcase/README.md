@@ -23,10 +23,10 @@ The registry covers ADR-0037's five showcase types (`registry.py`):
 ## Run it
 
 The app must already be running (this harness does **not** launch it). Attach to a dev build for
-iteration, or the signed `/Applications/vivid.app` to produce the checked-in hero media.
+iteration, or the signed `/Applications/Vivid.app` to produce the checked-in hero media.
 
 ```sh
-# dev build:  VIVID_DISCARD_RECOVERY=1 app/build/vivid.app/Contents/MacOS/vivid
+# dev build:  VIVID_DISCARD_RECOVERY=1 app/build/Vivid.app/Contents/MacOS/Vivid
 uv run examples/demos/showcase/runner.py --list                       # show the registry
 uv run examples/demos/showcase/runner.py --select shader-edit --app-build dev
 uv run examples/demos/showcase/runner.py --audio --app-build dev      # full run + audio checks

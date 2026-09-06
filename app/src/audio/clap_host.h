@@ -330,7 +330,7 @@ inline ClapHandle* clap_load_plugin(const std::string& path, double sample_rate,
     h->name = desc->name ? desc->name : path;
     h->host.clap_version = CLAP_VERSION;
     h->host.host_data = h;
-    h->host.name = "Vivid"; h->host.vendor = "Vivid"; h->host.url = "https://vivid.app"; h->host.version = "1.0";
+    h->host.name = "Vivid"; h->host.vendor = "Vivid"; h->host.url = "https://Vivid.app"; h->host.version = "1.0";
     h->host.get_extension = &clap_host_get_extension;
     h->host.request_restart = &clap_host_request_restart;
     h->host.request_process = &clap_host_request_process;
@@ -559,7 +559,7 @@ inline void clap_list_presets(ClapHandle* h, std::vector<ClapPresetInfo>& out, c
     ClapDiscovery d; d.out = &out;
     clap_preset_discovery_indexer_t indexer{};
     indexer.clap_version = CLAP_VERSION;
-    indexer.name = "Vivid"; indexer.vendor = "Vivid"; indexer.url = "https://vivid.app"; indexer.version = "1.0";
+    indexer.name = "Vivid"; indexer.vendor = "Vivid"; indexer.url = "https://Vivid.app"; indexer.version = "1.0";
     indexer.indexer_data = &d;
     indexer.declare_filetype  = &clap_idx_declare_filetype;
     indexer.declare_location  = &clap_idx_declare_location;
