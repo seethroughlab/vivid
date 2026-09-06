@@ -1779,6 +1779,32 @@ def import_audio_clip(track: int, scene: int, path: str, src_bpm: float = 0.0) -
 
 
 @mcp.tool
+def import_midi(track: int, scene: int, path: str, file_track: int = -1, channel: int = -1,
+                transpose: int = 0, length: float = 0.0, append: bool = False) -> dict:
+    """Import a Standard MIDI File (.mid) into an instrument track's scene clip. THE way to get a
+    drum-plugin groove in: EZdrummer / Superior Drummer / Addictive Drums are built around dragging
+    a groove out of their own browser, so drag it to a folder and import the .mid here.
+    `file_track` (-1 = all) picks one track out of a format-1 file; `channel` (-1 = all) filters by
+    MIDI channel — GM drums are channel 9. `transpose` shifts semitones (notes pushed out of 0..127
+    are dropped and counted in `skipped`). `length` overrides the clip loop length in beats; 0 rounds
+    the content up to a whole bar. `append` overdubs onto the existing clip instead of replacing it.
+    Returns {notes, skipped, length, file_tracks, file_format, file_bpm, track_names} — `file_bpm` is
+    informational, import does NOT change the session tempo."""
+    return _post("import_midi", {"track": track, "scene": scene, "path": path,
+                                 "file_track": file_track, "channel": channel,
+                                 "transpose": transpose, "length": length, "append": append})
+
+
+@mcp.tool
+def export_midi(track: int, scene: int, path: str) -> dict:
+    """Write a MIDI clip out as a .mid file (absolute path, must end in .mid), at the session tempo.
+    The other half of import_midi — send a part back to a plugin's groove browser or another DAW.
+    Per-note expression curves have no SMF equivalent and are not written; the reply says so when the
+    clip had any. Returns {path, notes, bpm}."""
+    return _post("export_midi", {"track": track, "scene": scene, "path": path})
+
+
+@mcp.tool
 def add_chord(track: int, scene: int, symbol: str, beat: float = 0.0, dur: float = 4.0,
               vel: float = 0.8, octave: int = 4, inversion: int = 0, voicing: str = "close") -> dict:
     """Append a chord to a clip by SYMBOL — e.g. "Cmaj7", "Am", "G7", "F#m7b5", "Dsus4", "C/G"

@@ -95,6 +95,8 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "pool_remove",           { "Remove Clip",         false } },
         { "pool_stash",            { "Stash Clip",          false } },
         { "import_audio_clip",     { "Import Audio Clip",   false } },
+        { "import_midi",           { "Import MIDI",         false } },   // writes clip notes -> undoable
+        // export_midi is NOT here: it only writes a file, it does not touch the document.
         // ---- audio session (G3): values (coalesce a rapid run into one entry) ----
         { "set_track_gain",        { "Set Gain",            true  } },
         { "set_master_gain",       { "Set Master Gain",     true  } },

@@ -2,9 +2,14 @@
 #include "cli/control_handlers_internal.h"
 
 #include "audio/vst3_host.h"
+#include "midi/midi_file.h"    // SMF import/export (import_midi / export_midi)
+#include "transport.h"           // export_midi writes the session tempo into the file
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 namespace vivid {
 
@@ -34,11 +39,12 @@ void register_audio_clip_pool_handlers(Handlers& handlers_) {
             if (idx < 0) return err(code::kBadArg, "clip is empty");
             json r = ok(); r["index"] = idx; r["kind"] = "audio"; return r;
         }
-        P::ClipNote buf[1024];
-        const int n = P::session_get_clip(c.session, track, scene, buf, 1024);
+        const int cap = P::session_clip_note_count(c.session, track, scene);   // sized to the clip, never truncated
+        std::vector<P::ClipNote> buf(static_cast<size_t>(cap > 0 ? cap : 1));
+        const int n = P::session_get_clip(c.session, track, scene, buf.data(), cap);
         if (n <= 0) return err(code::kBadArg, "clip is empty");
         const double len = P::session_clip_length(c.session, track, scene);
-        const int idx = P::session_pool_add(c.session, buf, n, len, name.c_str());
+        const int idx = P::session_pool_add(c.session, buf.data(), n, len, name.c_str());
         P::session_set_clip(c.session, track, scene, nullptr, 0, len);   // take it out of the grid
         json r = ok(); r["index"] = idx; r["kind"] = "midi"; return r;
     };
@@ -57,9 +63,10 @@ void register_audio_clip_pool_handlers(Handlers& handlers_) {
             if (!P::session_pool_place_audio(c.session, index, track, scene)) return err(code::kInternal, "place failed");
             json r = ok(); r["kind"] = "audio"; return r;
         }
-        P::ClipNote buf[1024];
-        const int n = P::session_pool_get(c.session, index, buf, 1024);
-        P::session_set_clip(c.session, track, scene, buf, n, P::session_pool_length(c.session, index));
+        const int cap = P::session_pool_note_count(c.session, index);
+        std::vector<P::ClipNote> buf(static_cast<size_t>(cap > 0 ? cap : 1));
+        const int n = P::session_pool_get(c.session, index, buf.data(), cap);
+        P::session_set_clip(c.session, track, scene, buf.data(), n, P::session_pool_length(c.session, index));
         json r = ok(); r["notes"] = n; r["kind"] = "midi"; return r;
     };
     handlers_["pool_remove"] = [](const ControlCtx& c, const json& b) {
@@ -89,6 +96,102 @@ void register_audio_clip_pool_handlers(Handlers& handlers_) {
         r["length"] = P::session_audio_loop_beats(c.session, track, scene); return r;
     };
 
+    // ---------------- MIDI file import / export ----------------
+    // The way third-party MIDI gets in. Drum plugins (EZdrummer, Superior Drummer, Addictive Drums)
+    // are built around dragging a groove out of the plugin's own browser, and their VST3 param
+    // surface exposes nothing but a few macros — so without this the entire groove library those
+    // instruments exist for is unreachable from Vivid. Also the path for any .mid on disk.
+    handlers_["import_midi"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), scene = b.value("scene", 0);
+        json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
+        if (P::session_track_is_audio(c.session, track))
+            return err(code::kBadArg, "import_midi needs an instrument track (this is an audio/sampler track)");
+        const std::string path = b.value("path", std::string());
+        if (path.empty()) return err(code::kBadArg, "need path");
+
+        P::MidiFileData mf; std::string perr;
+        if (!P::read_midi_file(path, mf, &perr)) return err(code::kIoError, perr);
+
+        // Optional filters — a format-1 file keeps parts on separate tracks, and a drum groove is
+        // usually on channel 9 (GM channel 10) alongside other parts.
+        const int  want_track   = b.value("file_track", -1);       // -1 = every track
+        const int  want_channel = b.value("channel", -1);          // -1 = every channel
+        const int  transpose    = b.value("transpose", 0);
+        const bool append       = b.value("append", false);
+
+        std::vector<P::ClipNote> notes;
+        double src_end = 0.0;
+        if (append) {   // read the existing clip first (import overdubs onto it)
+            const int cap = P::session_clip_note_count(c.session, track, scene);
+            notes.resize(static_cast<size_t>(cap > 0 ? cap : 1));
+            const int have = P::session_get_clip(c.session, track, scene, notes.data(), cap);
+            notes.resize(static_cast<size_t>(have > 0 ? have : 0));
+        }
+        int skipped = 0;
+        for (const P::MidiFileNote& n : mf.notes) {
+            if (want_track >= 0 && n.track != want_track) { ++skipped; continue; }
+            if (want_channel >= 0 && n.channel != want_channel) { ++skipped; continue; }
+            const int p = n.pitch + transpose;
+            if (p < 0 || p > 127) { ++skipped; continue; }   // transposed out of range: drop, and say so
+            P::ClipNote cn{};
+            cn.pitch = p; cn.start = n.start; cn.dur = n.dur; cn.vel = n.vel;
+            notes.push_back(cn);
+            if (n.start + n.dur > src_end) src_end = n.start + n.dur;
+        }
+        if (notes.empty())
+            return err(code::kBadArg, "no notes matched (file has " + std::to_string(mf.notes.size()) +
+                                      " note(s); check file_track/channel)");
+
+        // Clip length: an explicit `length`, else round the content up to a whole bar so an
+        // imported groove loops musically instead of at its last note-off.
+        double length = b.value("length", 0.0);
+        if (length <= 0.0) {
+            const double bar = 4.0;   // beats_per_bar is fixed at 4 across the engine today
+            length = std::max(bar, std::ceil((src_end - 1e-9) / bar) * bar);
+            if (append) length = std::max(length, P::session_clip_length(c.session, track, scene));
+        }
+        P::session_set_clip(c.session, track, scene, notes.data(), static_cast<int>(notes.size()), length);
+
+        json r = ok();
+        r["track"] = track; r["scene"] = scene;
+        r["notes"] = static_cast<int>(notes.size());
+        r["skipped"] = skipped;
+        r["length"] = length;
+        r["file_tracks"] = mf.ntracks;
+        r["file_format"] = mf.format;
+        if (mf.initial_bpm > 0.0) r["file_bpm"] = mf.initial_bpm;   // informational: import does NOT retempo
+        r["track_names"] = mf.track_names;
+        return r;
+    };
+
+    // The symmetric half: a clip back out to .mid, so a part authored or recorded here can go to a
+    // plugin's browser or another DAW. Per-note expression curves have no SMF equivalent and are
+    // not written — say so rather than implying a lossless round-trip.
+    handlers_["export_midi"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), scene = b.value("scene", 0);
+        json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
+        if (P::session_track_is_audio(c.session, track))
+            return err(code::kBadArg, "export_midi needs an instrument track (this is an audio/sampler track)");
+        const std::string path = b.value("path", std::string());
+        if (path.empty() || path.size() < 5 || path.compare(path.size() - 4, 4, ".mid") != 0)
+            return err(code::kBadArg, "need an absolute path ending in .mid");
+
+        const int cap = P::session_clip_note_count(c.session, track, scene);
+        if (cap <= 0) return err(code::kBadArg, "clip is empty");
+        std::vector<P::ClipNote> buf(static_cast<size_t>(cap));
+        const int n = P::session_get_clip(c.session, track, scene, buf.data(), cap);
+        const double bpm = c.transport ? c.transport->bpm.load(std::memory_order_relaxed) : 120.0;
+        std::string werr;
+        if (!P::write_midi_file(path, buf.data(), n, bpm, &werr)) return err(code::kIoError, werr);
+
+        json r = ok(); r["path"] = path; r["notes"] = n; r["bpm"] = bpm;
+        bool dropped_expr = false;
+        for (int i = 0; i < n; ++i) if (buf[i].has_expr()) { dropped_expr = true; break; }
+        if (dropped_expr) r["note"] = "per-note expression curves are not representable in SMF and were not written";
+        return r;
+    };
 }
 
 }  // namespace vivid
