@@ -42,7 +42,7 @@ repo. Launch Vivid and use **Help ▸ Connect Claude…**, which shows the exact
 path already filled in and a Copy button. It looks like:
 
 ```sh
-claude mcp add vivid -- uv run --script "/Applications/Vivid.app/Contents/Resources/mcp/vivid_mcp.py"
+claude mcp add vivid -- uv run --script "/Applications/vivid.app/Contents/Resources/mcp/vivid_mcp.py"
 ```
 
 (`--script`, not `--directory`: script mode resolves deps from the PEP-723 header at the top of
@@ -58,7 +58,7 @@ claude mcp add vivid -- uv run --directory "$PWD/mcp" vivid_mcp.py
 ```
 
 Or, for a client that takes a JSON config (`.mcp.json`) — replace `<path-to>` with either the
-bundled `Vivid.app/Contents/Resources/mcp` or your checkout's `mcp/`:
+bundled `vivid.app/Contents/Resources/mcp` or your checkout's `mcp/`:
 
 ```json
 {

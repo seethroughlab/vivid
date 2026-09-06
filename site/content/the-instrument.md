@@ -9,6 +9,12 @@ A familiar timeline of tracks, clips, scenes, instruments, effects and a mixer. 
 VST3/CLAP plugin, write parts, arrange scenes. It is a real sequencer, not a toy - and every note,
 every level, every transient it produces is available to drive the picture.
 
+Bring music in the way you already work: **import a `.mid`** - the groove you dragged out of a drum
+plugin's browser, or anything else on disk - or **play the part in from a MIDI keyboard**, sustain
+pedal, mod wheel and pitch bend included. Controllers are recorded as editable automation on the clip,
+not flattened away. When the arrangement is something you perform by hand, launching scenes as you go,
+**record the master to a lossless WAV** while you play.
+
 ## The visual node graph - the picture half
 
 A live graph of **visual operators**: real geometry, shaders, particles, compositing. You build it,
