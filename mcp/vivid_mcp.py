@@ -1014,6 +1014,26 @@ def set_audio_input_device(name: str = "", enabled: bool = True) -> dict:
 
 
 @mcp.tool
+def midi_input_status() -> dict:
+    """Hardware MIDI keyboard state. Returns {sources:[{id,name,connected}], connected,
+    selected_source, selected_channel, events_seen, receiving} plus a `hint` when something looks
+    wrong. CALL THIS FIRST when a user says their keyboard isn't working, before assuming the app is
+    at fault — `sources` empty means nothing is attached (devices are picked up live, no restart
+    needed), and `events_seen` 0 with sources connected means nothing has been played yet or the
+    channel filter is excluding it."""
+    return _post("midi_input_status")
+
+
+@mcp.tool
+def midi_input_select(source: int = 0, channel: int = -1) -> dict:
+    """Restrict MIDI input to one source and/or channel. `source` is the CoreMIDI unique id from
+    midi_input_status (0 = accept every source, the default); `channel` is 0..15 (-1 = omni).
+    Persists as a machine preference alongside the audio-device choice — it follows the computer,
+    not the project, so it is not undoable."""
+    return _post("midi_input_select", {"source": source, "channel": channel})
+
+
+@mcp.tool
 def analyze_frame(path: str = "") -> dict:
     """Structured perception of the active visual output (or a saved image via path). Returns
     {is_blank, blank_reason, brightness, contrast, activity, dominant_colors, color_spread, hash}.

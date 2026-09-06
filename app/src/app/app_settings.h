@@ -27,6 +27,13 @@ struct AppSettings {
     // follows the system default input.
     bool        audio_input_enabled = false;
     std::string audio_input_name;
+
+    // Hardware MIDI input. Machine-level, like the audio devices — which keyboard is plugged into
+    // this computer is not a property of the project. 0 = accept every source (the default, and the
+    // right answer for the overwhelmingly common one-keyboard case); otherwise the CoreMIDI unique
+    // id, which is stable across replug in a way a name or an index is not. -1 channel = omni.
+    int32_t     midi_input_source = 0;
+    int         midi_input_channel = -1;
 };
 
 // Absolute path to the settings file (user_data_dir()/settings.json); empty if no data dir.

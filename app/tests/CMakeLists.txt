@@ -27,6 +27,7 @@ vivid_add_test(test_reactive_bus)       # ADR-0053 Phase B: reactive-signal bus 
 target_sources(test_reactive_bus PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/reactive_bus.cpp)
 vivid_add_test(test_reactive_signals)   # ADR-0053 Phase B5: reactive signal grammar == bridge suffix grammar (migration lane contract)
+vivid_add_test(test_midi_parse)     # live MIDI byte stream: running status, sysex, real-time, split packets
 vivid_add_test(test_midi_file)      # SMF parse/serialize: running status, sysex, retrigger, round-trip
 vivid_add_test(test_undo_manager)   # ADR-0017/G1 undo history cursor (pure)
 target_sources(test_undo_manager PRIVATE

@@ -735,16 +735,26 @@ void run_frame_loop(App& app, Window& win) {
         // Hardware MIDI (M6.4): drain the input queue on the main thread and route to the
         // armed track's instrument (so all Session access stays on the UI thread).
         if (app.session) {
-            vivid::platform::MidiEvent mev[64];
+            vivid::platform::MidiMsg mev[64];
             const int nm = app.midi_in.poll(mev, 64);
             const bool step = win.editor && win.editor->is_open() && win.editor->step_mode();
             for (int i = 0; i < nm; ++i) {
-                if (mev[i].on) {
-                    vivid::session::session_note_on(app.session, mev[i].pitch, mev[i].vel);
-                    if (step) win.editor->step_note_on(mev[i].pitch, mev[i].vel);
-                } else {
-                    vivid::session::session_note_off(app.session, mev[i].pitch);
-                    if (step) win.editor->step_note_off();
+                switch (mev[i].kind) {
+                    case vivid::session::MidiKind::NoteOn:
+                        vivid::session::session_note_on(app.session, mev[i].data1, mev[i].value);
+                        if (step) win.editor->step_note_on(mev[i].data1, mev[i].value);
+                        break;
+                    case vivid::session::MidiKind::NoteOff:
+                        vivid::session::session_note_off(app.session, mev[i].data1);
+                        if (step) win.editor->step_note_off();
+                        break;
+                    default:
+                        // CC / pitch-bend / aftertouch / program change now DECODE (they used to be
+                        // skipped by byte count, which is what corrupted sysex), but there is no
+                        // route to a plugin yet — VST3 carries CC as an IMidiMapping-resolved param
+                        // change, which is its own piece of work. Dropped deliberately, not by
+                        // omission.
+                        break;
                 }
             }
         }

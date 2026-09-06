@@ -587,8 +587,25 @@ int main(int argc, char** argv) {
     control.set_wake([]{ glfwPostEmptyEvent(); });
     { const char* pe = std::getenv("VIVID_PORT"); control.start(pe ? std::atoi(pe) : 9876); }
 
-    if (app.midi_in.start())   // hardware MIDI input -> armed track (M6.4)
-        std::fprintf(stderr, "[vivid] MIDI input: %d source(s) connected\n", app.midi_in.source_count());
+    // Hardware MIDI input -> armed track. Sources are re-scanned on a CoreMIDI setup change, so a
+    // keyboard plugged in after this point is picked up; `midi_input_status` reports the live list.
+    // Log through VLOG so a failure is visible in the diagnostics panel, not just on stderr — a
+    // silent `false` here used to be the whole story when someone's keyboard "didn't work".
+    {   // Apply the persisted MIDI source/channel preference BEFORE start(), so the first rescan
+        // already honours it and we never briefly listen to a device the user deselected.
+        const vivid::AppSettings ms = vivid::load_app_settings(vivid::app_settings_path());
+        app.midi_in.select(ms.midi_input_source, ms.midi_input_channel);
+    }
+    if (app.midi_in.start()) {
+        const auto srcs = app.midi_in.sources();
+        VLOG_INFO(app, "MIDI input: %d of %d source(s) connected",
+                  app.midi_in.source_count(), static_cast<int>(srcs.size()));
+        for (const auto& s : srcs)
+            VLOG_INFO(app, "  MIDI source%s: %s (id %d)", s.connected ? "" : " (idle)",
+                      s.name.c_str(), static_cast<int>(s.id));
+    } else {
+        VLOG_WARN(app, "MIDI input unavailable — CoreMIDI client could not be created");
+    }
 
     // ADR-0017 undo/redo: the edit gateway (a local, like `control` above). The baseline (undo
     // entry 0) is seeded from inside the frame loop, at the end of the FIRST tick — after the graph
