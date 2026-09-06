@@ -138,7 +138,11 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           VER="${GITHUB_REF_NAME#v}"
-          DMG="build/dist/vivid.dmg"
+          # Must match the bundle name: sign_and_notarize.sh writes "$(basename <app> .app).dmg",
+          # so this is Vivid.dmg. It stayed `vivid.dmg` through the v0.2.1 rename and only worked
+          # because the runner's filesystem is case-INSENSITIVE — on a case-sensitive one both this
+          # stat and the publish below would hard-fail with "no such file".
+          DMG="build/dist/Vivid.dmg"
           URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/$(basename "$DMG")"
           uv run scripts/release/generate_appcast.py \
             --version "$VER" --url "$URL" --length "$(stat -f%z "$DMG")" \
@@ -160,7 +164,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            build/dist/vivid.dmg
+            build/dist/Vivid.dmg
             build/dist/appcast.xml
           generate_release_notes: true
 
