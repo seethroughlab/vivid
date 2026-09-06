@@ -42,19 +42,24 @@ namespace vivid::session {
 // on `push_mtx` (rarely contended); the audio consumer (`pop`) never locks. `t_beats`
 // stamps the transport position so the recorder (M6.3) can place captured notes.
 struct LiveMidi {
-    struct Ev { uint8_t on; uint8_t pitch; float vel; double t_beats; };
+    // P4 Phase D: carries CONTROLLERS as well as notes. `kind` is 0/1 for note off/on (the original
+    // meaning of `on`, preserved so the note path is unchanged) or 2 for a controller, in which case
+    // `pitch` holds the controller number in the Vst::ControllerNumbers space (0..127 CC,
+    // 128 channel pressure, 129 pitch bend) and `vel` its normalized 0..1 value.
+    enum : uint8_t { kNoteOff = 0, kNoteOn = 1, kCtrl = 2 };
+    struct Ev { uint8_t kind; uint16_t pitch; float vel; double t_beats; };
     static constexpr int kCap = 512;
     Ev                    ring[kCap];
     std::atomic<uint32_t> head{0};   // producer index
     std::atomic<uint32_t> tail{0};   // consumer index
     std::mutex            push_mtx;  // serializes producers; the audio consumer is lock-free
 
-    void push(uint8_t on, uint8_t pitch, float vel, double t_beats) {
+    void push(uint8_t kind, uint16_t pitch, float vel, double t_beats) {
         std::lock_guard<std::mutex> lk(push_mtx);
         const uint32_t h = head.load(std::memory_order_relaxed);
         const uint32_t n = (h + 1) % kCap;
         if (n == tail.load(std::memory_order_acquire)) return;  // full — drop (never blocks audio)
-        ring[h] = { on, pitch, vel, t_beats };
+        ring[h] = { kind, pitch, vel, t_beats };
         head.store(n, std::memory_order_release);
     }
     // Audio thread: pop one event; returns false when drained. Never locks.
@@ -477,6 +482,9 @@ static constexpr int32_t kLiveNoteIdBase = 0x40000000;
 // they map to clip-local positions (fmod by the clip length). `open` = note-on seen,
 // awaiting its note-off.
 struct RecNote { int pitch; double beat_on; double beat_off; float vel; bool open; };
+// P4 Phase E: a controller point captured while recording. Beats are ABSOLUTE transport beats, like
+// RecNote's — mapped to clip-local only at commit, after sustain has been applied.
+struct RecCc { uint16_t cc; uint8_t channel; double beat; float value; };
 
 // ADR-0022 P1b: the MASTER node — the session's single sink. It SUMS every track that rendered
 // this block, applies the master gain, and publishes the master meters. This is the seed of the
@@ -634,6 +642,7 @@ struct Session {
     double                rec_capture_from = 0.0;   // don't capture notes before this beat (count-in)
     std::mutex            rec_mtx;
     std::vector<RecNote>  rec_notes;
+    std::vector<RecCc>    rec_cc;      // P4 Phase E: captured controllers (guarded by rec_mtx too)
     std::atomic<bool>     metronome{false};   // audible click on each beat while enabled
     // --- Async CLAP loading. A slow plugin ctor (Surge scans its wavetable dir — seconds to
     // minutes) must NOT run on the main thread, or it wedges the frame loop + the control-server
@@ -706,7 +715,8 @@ void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx, 
                         const ParamMsg* mod = nullptr, uint32_t mod_n = 0);
 // `mod`/`mod_n` (ADR-0034): control-edge modulation resolved for this block — injected as param events
 // after the param_q drain (so a wired param's modulation wins). nullptr/0 for an unmodulated node.
-void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent>& notes, uint32_t frames, float* L, float* R,
+void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent>& notes,
+                            const std::vector<ExprEvent>& expr, uint32_t frames, float* L, float* R,
                             const ClapParamMsg* mod = nullptr, uint32_t mod_n = 0);
 void render_clap_effect(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R,
                         const ClapParamMsg* mod = nullptr, uint32_t mod_n = 0);

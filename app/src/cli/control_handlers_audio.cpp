@@ -1,5 +1,6 @@
 #include "cli/control_handlers_internal.h"
 #include "cli/control_handlers_audio_domains.h"
+#include "app/app.h"        // App::note_edit — a committed take is an undoable edit (P4 Phase E)
 #include "audio/vst3_host.h"
 #include "midi/midi_clip.h"
 #include "midi/note_json.h"
@@ -173,8 +174,14 @@ void register_audio_handlers(Handlers& handlers_) {
         if (!c.session) return err(code::kNoSession, "no session");
         const bool on = b.value("on", true);
         if (on && P::session_armed_track(c.session) < 0) return err(code::kBadArg, "no armed track");
-        P::session_set_recording(c.session, on, b.value("count_in", 0.0));
-        json r = ok(); r["recording"] = P::session_is_recording(c.session); return r;
+        // P4 Phase E: STOPPING may commit a take. `record` itself stays out of edit_methods.cpp —
+        // arming is performance state, not a document edit — so the undo entry is recorded here,
+        // only when a take actually landed.
+        const int committed = P::session_set_recording(c.session, on, b.value("count_in", 0.0));
+        if (committed > 0 && c.app) c.app->note_edit("Record Take");
+        json r = ok(); r["recording"] = P::session_is_recording(c.session);
+        r["committed"] = committed > 0;
+        return r;
     };
     handlers_["set_clip_loop"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");

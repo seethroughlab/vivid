@@ -208,7 +208,7 @@ void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx,
 // full-range source, or a key-range-filtered list) plus this block's scene-switch note-offs.
 // RT-safe (fixed scratch, no alloc/lock).
 void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent>& notes,
-                            uint32_t frames, float* L, float* R,
+                            const std::vector<ExprEvent>& expr, uint32_t frames, float* L, float* R,
                             const ClapParamMsg* mod, uint32_t mod_n) {
     h->events.clear();
     clap_flush_params(h);
@@ -217,6 +217,34 @@ void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent
         h->events.add_note(ne.on, ne.pitch, ne.vel, ne.note_id, ne.sample_offset);
     for (const NoteEvent& ne : notes)         // this source's notes (full range = t.nev; key-split = filtered)
         h->events.add_note(ne.on, ne.pitch, ne.vel, ne.note_id, ne.sample_offset);
+    // Per-note expression. This was MISSING: render_clap_instrument took notes and never read
+    // t.eev, so the bend/pressure/timbre curves painted in the clip editor — which work on the
+    // VST3 path — were silently dropped on EVERY CLAP instrument. Axis mapping mirrors emit_vst3,
+    // except CLAP's TUNING is already in semitones so the bend value passes through unconverted.
+    for (const ExprEvent& xe : expr) {
+        const clap_note_expression id =
+            xe.axis == vivid::session::AXIS_BEND     ? CLAP_NOTE_EXPRESSION_TUNING :
+            xe.axis == vivid::session::AXIS_PRESSURE ? CLAP_NOTE_EXPRESSION_PRESSURE
+                                                     : CLAP_NOTE_EXPRESSION_BRIGHTNESS;
+        h->events.add_note_expression(id, xe.note_id, xe.pitch, xe.value, xe.sample_offset);
+    }
+    // P4: clip-level controllers as raw MIDI. Legal only when the plugin's note input advertises
+    // CLAP_NOTE_DIALECT_MIDI; a CLAP-dialect-only plugin simply gets the note expression above.
+    if (h->note_in_dialects & CLAP_NOTE_DIALECT_MIDI) {
+        for (const CcEvent& ce : t.cev) {
+            const uint8_t ch = ce.channel & 0x0F;
+            if (ce.cc < 128) {                                   // control change
+                h->events.add_midi(uint8_t(0xB0 | ch), uint8_t(ce.cc),
+                                   uint8_t(std::clamp(ce.value, 0.f, 1.f) * 127.f + 0.5f), ce.sample_offset);
+            } else if (ce.cc == vivid::session::kCcChannelPressure) {
+                h->events.add_midi(uint8_t(0xD0 | ch),
+                                   uint8_t(std::clamp(ce.value, 0.f, 1.f) * 127.f + 0.5f), 0, ce.sample_offset);
+            } else if (ce.cc == vivid::session::kCcPitchBend) {   // 14-bit, LSB first
+                const int b = std::clamp(static_cast<int>(std::clamp(ce.value, 0.f, 1.f) * 16383.f + 0.5f), 0, 16383);
+                h->events.add_midi(uint8_t(0xE0 | ch), uint8_t(b & 0x7F), uint8_t((b >> 7) & 0x7F), ce.sample_offset);
+            }
+        }
+    }
     float* out[2] = { L, R };
     float* in[2]  = { h->silence.data(), h->silence.data() + h->max_block };
     const char* wd_name = plugin_crash_name(h->name, h->bundle_path, "CLAP plugin");

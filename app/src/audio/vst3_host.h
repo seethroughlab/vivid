@@ -127,12 +127,20 @@ void session_set_armed_track(Session*, int track_index);   // -1 (or out-of-rang
 int  session_armed_track(Session*);                        // armed track index, -1 if none
 void session_note_on(Session*, int pitch, float vel);      // routed to the armed instrument track
 void session_note_off(Session*, int pitch);
+// P4 Phase D: a live channel-controller message to the armed track. `cc` is in the
+// Vst::ControllerNumbers space (0..127 CC, 128 channel pressure, 129 pitch bend) and `value` is
+// normalized 0..1. Unlike a note this is a CHANNEL message — it applies to everything sounding on
+// the track — so it broadcasts rather than being addressed to a pitch.
+void session_ctrl(Session*, int cc, float value);
 // Editor keyboard audition: play/stop a note on a specific track, independent of the arm.
 void session_preview_note(Session*, int track, int pitch, float vel);
 void session_preview_off(Session*, int track, int pitch);
 // Recording: start (on=true) snaps the capture origin after an optional count-in; stop
 // (on=false) overdubs the captured notes into the armed track's active clip.
-void session_set_recording(Session*, bool on, double count_in_beats);
+// Returns 1 if STOPPING recording committed a take into the armed clip, else 0. The caller turns
+// that into an undo entry — audio/ may not reach up into app/ for the EditGateway, and a take that
+// cannot be undone means an accidental record over a good clip is unrecoverable.
+int  session_set_recording(Session*, bool on, double count_in_beats);
 int  session_is_recording(Session*);
 void session_set_metronome(Session*, int on);
 int  session_get_metronome(Session*);

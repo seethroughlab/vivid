@@ -749,12 +749,22 @@ void run_frame_loop(App& app, Window& win) {
                         vivid::session::session_note_off(app.session, mev[i].data1);
                         if (step) win.editor->step_note_off();
                         break;
+                    // P4 Phase D: channel controllers reach the armed track's instrument. Mapped
+                    // into the Vst::ControllerNumbers space the clip lanes and the VST3
+                    // IMidiMapping table both use, so live and automated controllers travel one path.
+                    case vivid::session::MidiKind::CC:
+                        vivid::session::session_ctrl(app.session, mev[i].data1, mev[i].value);
+                        break;
+                    case vivid::session::MidiKind::ChannelPressure:
+                        vivid::session::session_ctrl(app.session, vivid::session::kCcChannelPressure, mev[i].value);
+                        break;
+                    case vivid::session::MidiKind::PitchBend:
+                        vivid::session::session_ctrl(app.session, vivid::session::kCcPitchBend, mev[i].value);
+                        break;
                     default:
-                        // CC / pitch-bend / aftertouch / program change now DECODE (they used to be
-                        // skipped by byte count, which is what corrupted sysex), but there is no
-                        // route to a plugin yet — VST3 carries CC as an IMidiMapping-resolved param
-                        // change, which is its own piece of work. Dropped deliberately, not by
-                        // omission.
+                        // Poly aftertouch is genuinely PER-NOTE and has no home in the clip-level
+                        // lane model; program change is not a controller. Both stay dropped, and
+                        // deliberately so rather than by omission.
                         break;
                 }
             }

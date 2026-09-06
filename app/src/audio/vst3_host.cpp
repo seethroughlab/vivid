@@ -4,6 +4,7 @@
 #include "vst3_host_common.h"
 #include "vst3_host.h"
 #include "midi/midi_clip.h"
+#include "midi/note_record.h"   // P4 Phase E: apply_sustain / decimate_cc (pure, headless-tested)
 #include "audio/audio_clip.h"
 #include "audio/sample_engine/sample_decode.h"        // decode_audio_native (direct WAV→AudioClip-node load)
 #include "audio/clip_dsp.h"                           // A2: per-clip warp stretcher (ClipDsp + process_clip)
@@ -898,9 +899,10 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
                     t.npool[static_cast<size_t>(s.note_out_buf)].clear();
                 return;
             }
-            if (full_range) render_clap_instrument(t, nb.clap, nsrc, frames, oL, oR, cmod, cmod_n);
+            if (full_range) render_clap_instrument(t, nb.clap, nsrc, t.eev, frames, oL, oR, cmod, cmod_n);
             else { filter_notes_by_range(nsrc, nb.key_lo, nb.key_hi, t.src_nev);   // key-split
-                   render_clap_instrument(t, nb.clap, t.src_nev, frames, oL, oR, cmod, cmod_n); }
+                   filter_expr_by_range(t.eev, nb.key_lo, nb.key_hi, t.src_eev);   // ...and its expression
+                   render_clap_instrument(t, nb.clap, t.src_nev, t.src_eev, frames, oL, oR, cmod, cmod_n); }
             // ADR-0015 (M2): a CLAP that GENERATES notes publishes them on its note output.
             if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size()))
                 drain_clap_notes(nb.clap, t.npool[static_cast<size_t>(s.note_out_buf)]);
@@ -1435,17 +1437,31 @@ void session_note_on(Session* s, int pitch, float vel) {
     Track* t = armed_track_ptr(s);
     if (!t || t->is_audio || pitch < 0 || pitch > 127) return;   // only monitor through an instrument track
     const double beat = s->play_beats.load(std::memory_order_relaxed);
-    s->live_in.push(1, static_cast<uint8_t>(pitch), vel, beat);
+    s->live_in.push(LiveMidi::kNoteOn, static_cast<uint16_t>(pitch), vel, beat);
     if (s->recording.load(std::memory_order_relaxed) && beat >= s->rec_capture_from) {
         std::lock_guard<std::mutex> lk(s->rec_mtx);
         s->rec_notes.push_back(RecNote{ pitch, beat, beat, vel, true });
+    }
+}
+// P4 Phase D. Mirrors session_note_on's shape: resolve the armed track, push to the live queue, and
+// (Phase E will) capture while recording. Deliberately does NOT gate on `pitch` bounds — a controller
+// has no pitch — and does not touch the recording buffer yet.
+void session_ctrl(Session* s, int cc, float value) {
+    Track* t = armed_track_ptr(s);
+    if (!t || t->is_audio || cc < 0 || cc >= kCcCount) return;
+    const double beat = s->play_beats.load(std::memory_order_relaxed);
+    const float v = std::clamp(value, 0.f, 1.f);
+    s->live_in.push(LiveMidi::kCtrl, static_cast<uint16_t>(cc), v, beat);
+    if (s->recording.load(std::memory_order_relaxed) && beat >= s->rec_capture_from) {
+        std::lock_guard<std::mutex> lk(s->rec_mtx);
+        s->rec_cc.push_back(RecCc{ static_cast<uint16_t>(cc), 0, beat, v });
     }
 }
 void session_note_off(Session* s, int pitch) {
     Track* t = armed_track_ptr(s);
     if (!t || t->is_audio || pitch < 0 || pitch > 127) return;
     const double beat = s->play_beats.load(std::memory_order_relaxed);
-    s->live_in.push(0, static_cast<uint8_t>(pitch), 0.f, beat);
+    s->live_in.push(LiveMidi::kNoteOff, static_cast<uint16_t>(pitch), 0.f, beat);
     if (s->recording.load(std::memory_order_relaxed)) {
         std::lock_guard<std::mutex> lk(s->rec_mtx);
         // Close the most recent still-open note of this pitch.
@@ -1459,52 +1475,75 @@ void session_note_off(Session* s, int pitch) {
 void session_preview_note(Session* s, int track, int pitch, float vel) {
     if (!s || track < 0 || track >= static_cast<int>(s->tracks.size())) return;
     if (s->tracks[track]->is_audio || pitch < 0 || pitch > 127) return;
-    s->tracks[track]->preview_in.push(1, static_cast<uint8_t>(pitch), vel, 0.0);
+    s->tracks[track]->preview_in.push(LiveMidi::kNoteOn, static_cast<uint16_t>(pitch), vel, 0.0);
 }
 void session_preview_off(Session* s, int track, int pitch) {
     if (!s || track < 0 || track >= static_cast<int>(s->tracks.size())) return;
     if (s->tracks[track]->is_audio || pitch < 0 || pitch > 127) return;
-    s->tracks[track]->preview_in.push(0, static_cast<uint8_t>(pitch), 0.f, 0.0);
+    s->tracks[track]->preview_in.push(LiveMidi::kNoteOff, static_cast<uint16_t>(pitch), 0.f, 0.0);
 }
 
 // Recording (M6.3). Start snaps the capture origin (optionally after a count-in of
 // `count_in_beats`); stop closes any held notes, maps captures to clip-local beats
 // (fmod by the clip length), and overdubs them into the armed track's active clip.
-static void commit_recording(Session* s);
-void session_set_recording(Session* s, bool on, double count_in_beats) {
-    if (!s) return;
+static int commit_recording(Session* s);
+int session_set_recording(Session* s, bool on, double count_in_beats) {
+    if (!s) return 0;
     if (on) {
         std::lock_guard<std::mutex> lk(s->rec_mtx);
         s->rec_notes.clear();
+        s->rec_cc.clear();
         const double now = s->play_beats.load(std::memory_order_relaxed);
         s->rec_capture_from = now + (count_in_beats > 0 ? count_in_beats : 0.0);
         s->recording.store(true, std::memory_order_relaxed);
+        return 0;
     } else {
-        if (!s->recording.exchange(false, std::memory_order_relaxed)) return;
-        commit_recording(s);
+        if (!s->recording.exchange(false, std::memory_order_relaxed)) return 0;
+        return commit_recording(s);
     }
 }
 int  session_is_recording(Session* s) { return (s && s->recording.load(std::memory_order_relaxed)) ? 1 : 0; }
 void session_set_metronome(Session* s, int on) { if (s) s->metronome.store(on != 0, std::memory_order_relaxed); }
 int  session_get_metronome(Session* s) { return (s && s->metronome.load(std::memory_order_relaxed)) ? 1 : 0; }
 
-static void commit_recording(Session* s) {
+// Returns 1 if a take was committed into the armed clip, else 0. The return exists so the CALLER
+// can record an undo entry: EditGateway lives in app/ (layering rank 40) and this is audio/ (20), so
+// reaching up to it here is forbidden — and before this, a take was not undoable at all, meaning an
+// accidental record over a good clip was simply unrecoverable.
+static int commit_recording(Session* s) {
     std::vector<RecNote> rec;
+    std::vector<RecCc>   rcc;
     { std::lock_guard<std::mutex> lk(s->rec_mtx);
       const double now = s->play_beats.load(std::memory_order_relaxed);
       for (auto& r : s->rec_notes) if (r.open) { r.beat_off = now; r.open = false; }  // close held notes
-      rec.swap(s->rec_notes); }
-    if (rec.empty()) return;
+      rec.swap(s->rec_notes);
+      rcc.swap(s->rec_cc); }
+    // Bail only if BOTH are empty: a pass that moved only the pedal or the mod wheel is still a take.
+    if (rec.empty() && rcc.empty()) return 0;
     Track* t = armed_track_ptr(s);
-    if (!t || t->is_audio) return;
+    if (!t || t->is_audio) return 0;
     const int ti = session_armed_track(s);          // armed track *index* for session_set_clip
-    if (ti < 0) return;
+    if (ti < 0) return 0;
     const int sc = t->active.load(std::memory_order_relaxed);
-    if (sc < 0 || sc >= static_cast<int>(t->clips.size())) return;
-    // Start from the clip's current notes (overdub) and append the captures, mapped to
-    // clip-local beats. A zero/short clip defaults to a 4-beat loop.
+    if (sc < 0 || sc >= static_cast<int>(t->clips.size())) return 0;
     const MidiClip& clip = t->clips[sc];
     const double len = clip.length > 0.0 ? clip.length : 4.0;
+
+    // SUSTAIN FIRST, in absolute beats — before the fmod below folds everything into the loop.
+    // Doing it after would break any note the pedal holds across the loop point.
+    if (!rec.empty()) {
+        std::vector<CcBp> pedal;
+        for (const RecCc& c : rcc) if (c.cc == kCcSustain) pedal.push_back({ c.beat, c.value });
+        if (!pedal.empty()) {
+            std::vector<double> on(rec.size()), off(rec.size());
+            for (size_t i = 0; i < rec.size(); ++i) { on[i] = rec[i].beat_on; off[i] = rec[i].beat_off; }
+            apply_sustain(on.data(), off.data(), rec.size(), pedal);
+            for (size_t i = 0; i < rec.size(); ++i) rec[i].beat_off = off[i];
+        }
+    }
+
+    // Start from the clip's current notes (overdub) and append the captures, mapped to clip-local
+    // beats. A zero/short clip defaults to a 4-beat loop.
     std::vector<ClipNote> notes = clip.notes;
     for (const RecNote& r : rec) {
         double dur = r.beat_off - r.beat_on;
@@ -1518,6 +1557,43 @@ static void commit_recording(Session* s) {
         notes.push_back(n);
     }
     session_set_clip(s, ti, sc, notes.data(), static_cast<int>(notes.size()), len);
+
+    // Controllers -> clip lanes. CC64 is deliberately DROPPED once it has been baked into the note
+    // durations above: keeping both would have the host extend the note AND the plugin sustain it,
+    // so playback would run longer than what was played. (Baking is the Ableton default; a future
+    // `sustain_mode` option would make the alternative explicit.)
+    if (!rcc.empty()) {
+        std::vector<CcLane> lanes;
+        { const int have = session_clip_cc_count(s, ti, sc);
+          if (have > 0) { lanes.resize(static_cast<size_t>(have));
+                          const int got = session_get_clip_cc(s, ti, sc, lanes.data(), have);
+                          lanes.resize(static_cast<size_t>(got > 0 ? got : 0)); } }
+        std::vector<uint16_t> seen;
+        for (const RecCc& c : rcc) {
+            if (c.cc == kCcSustain) continue;
+            if (std::find(seen.begin(), seen.end(), c.cc) == seen.end()) seen.push_back(c.cc);
+        }
+        for (uint16_t cc : seen) {
+            std::vector<CcBp> pts;
+            for (const RecCc& c : rcc) {
+                if (c.cc != cc) continue;
+                double t_local = std::fmod(c.beat - s->rec_capture_from, len);
+                if (t_local < 0) t_local += len;
+                pts.push_back({ t_local, c.value });
+            }
+            pts = decimate_cc(std::move(pts), kCcDecimateEps, kCcDecimateMinDt);
+            if (pts.empty()) continue;
+            // Replace a lane the take covered; leave lanes it never touched alone.
+            auto it = std::find_if(lanes.begin(), lanes.end(), [cc](const CcLane& l) { return l.cc == cc; });
+            if (it != lanes.end()) { it->bp = std::move(pts); }
+            else if (lanes.size() < static_cast<size_t>(kMaxCcLanes)) {
+                CcLane l; l.cc = cc; l.channel = 0; l.bp = std::move(pts);
+                lanes.push_back(std::move(l));
+            }
+        }
+        session_set_clip_cc(s, ti, sc, lanes.data(), static_cast<int>(lanes.size()));
+    }
+    return 1;
 }
 int  session_active_clip(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->active.load(std::memory_order_relaxed) : -1;
@@ -2736,21 +2812,30 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             t.cev_clip.clear();
             if (playing) t.sched.emit_cc(beats, delta, frames, t.cev_clip);
             t.nev_live.clear();
+            t.cev_live.clear();   // P4: live controllers, refilled from the same queue below
             // Live MIDI monitoring (M6): the armed track drains the session live-input
             // queue into its own event stream so played/typed notes sound through its
             // instrument, whether or not the transport is running. note_id lives in the
             // reserved live range so offs match ons and never collide with clip notes.
             if (t.id == s->armed_track.load(std::memory_order_relaxed)) {
                 LiveMidi::Ev le;
-                while (s->live_in.pop(le))
-                    t.nev_live.push_back(NoteEvent{ 0u, le.on != 0, le.pitch, le.vel,
-                                                   kLiveNoteIdBase + le.pitch, 0.f });
+                while (s->live_in.pop(le)) {
+                    if (le.kind == LiveMidi::kCtrl) {
+                        // P4 Phase D: a live controller. Broadcast (a CC is a channel message), at
+                        // sample_offset 0 — the same block-start quantization live NOTES already use.
+                        t.cev_live.push_back(CcEvent{ 0u, le.pitch, 0, le.vel });
+                    } else {
+                        t.nev_live.push_back(NoteEvent{ 0u, le.kind == LiveMidi::kNoteOn,
+                                                       static_cast<int>(le.pitch), le.vel,
+                                                       kLiveNoteIdBase + static_cast<int>(le.pitch), 0.f });
+                    }
+                }
             }
             // Editor keyboard-audition: this track's own preview queue, sounded whatever
             // the arm state (a distinct note_id range so its offs never hit clip notes).
             { LiveMidi::Ev pe;
               while (t.preview_in.pop(pe))
-                  t.nev_live.push_back(NoteEvent{ 0u, pe.on != 0, pe.pitch, pe.vel,
+                  t.nev_live.push_back(NoteEvent{ 0u, pe.kind == LiveMidi::kNoteOn, static_cast<int>(pe.pitch), pe.vel,
                                                  kLiveNoteIdBase + 1000 + pe.pitch, 0.f }); }
             // Rebuild the legacy full stream = clip ++ live, exact same order as before the split
             // (within reserved capacity → no RT allocation).

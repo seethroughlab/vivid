@@ -24,7 +24,8 @@ bool transport_mouse(Window& win, App& app, int button, int action, double mx, d
     if (app.session && hit(transport_record_rect(), mx, my)) {
         const bool rec = S::session_is_recording(app.session);
         if (!rec && S::session_armed_track(app.session) < 0) return true;   // nothing armed — consume, no-op
-        S::session_set_recording(app.session, !rec, 0.0);
+        if (S::session_set_recording(app.session, !rec, 0.0) > 0)
+            app.note_edit("Record Take");   // P4 Phase E: a take is undoable
         return true;
     }
     if (app.session && hit(transport_metro_rect(), mx, my)) {
