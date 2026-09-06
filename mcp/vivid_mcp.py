@@ -1757,6 +1757,21 @@ def set_clip(track: int, scene: int, notes: list[dict], length: float = 4.0) -> 
 
 
 @mcp.tool
+def set_clip_cc(track: int, scene: int, cc: list[dict], expected_rev: int | None = None) -> dict:
+    """Replace a clip's CONTROLLER AUTOMATION lanes (mod wheel, sustain, pitch bend, ...). Separate
+    from set_clip on purpose: set_clip is note-only and full-replace, so a transpose or quantize
+    would otherwise wipe recorded automation. `cc` = [{n: <controller>, ch: 0, pts: [[beat, value], ...]}]
+    where `n` is 0..127 for a MIDI CC, 128 for channel pressure, 129 for pitch bend, `value` is
+    normalized 0..1 (bend 0.5 = centered), and `pts` are in CLIP-LOCAL BEATS. Pass cc=[] to clear.
+    At most 16 lanes per clip. Read them back with get_clip, which returns the same shape under "cc".
+    `expected_rev` gives the same conflict guard as set_clip; `rev` is shared between both writes."""
+    payload = {"track": track, "scene": scene, "cc": cc}
+    if expected_rev is not None:
+        payload["expected_rev"] = expected_rev
+    return _post("set_clip_cc", payload)
+
+
+@mcp.tool
 def get_clip(track: int, scene: int) -> dict:
     """Read a MIDI clip back: {notes:[{p,s,d,v}], length}. The read half that editing/transform
     tools use (set_clip is full-replace, so they read-modify-write)."""

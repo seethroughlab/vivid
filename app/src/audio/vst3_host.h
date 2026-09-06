@@ -127,12 +127,20 @@ void session_set_armed_track(Session*, int track_index);   // -1 (or out-of-rang
 int  session_armed_track(Session*);                        // armed track index, -1 if none
 void session_note_on(Session*, int pitch, float vel);      // routed to the armed instrument track
 void session_note_off(Session*, int pitch);
+// P4 Phase D: a live channel-controller message to the armed track. `cc` is in the
+// Vst::ControllerNumbers space (0..127 CC, 128 channel pressure, 129 pitch bend) and `value` is
+// normalized 0..1. Unlike a note this is a CHANNEL message — it applies to everything sounding on
+// the track — so it broadcasts rather than being addressed to a pitch.
+void session_ctrl(Session*, int cc, float value);
 // Editor keyboard audition: play/stop a note on a specific track, independent of the arm.
 void session_preview_note(Session*, int track, int pitch, float vel);
 void session_preview_off(Session*, int track, int pitch);
 // Recording: start (on=true) snaps the capture origin after an optional count-in; stop
 // (on=false) overdubs the captured notes into the armed track's active clip.
-void session_set_recording(Session*, bool on, double count_in_beats);
+// Returns 1 if STOPPING recording committed a take into the armed clip, else 0. The caller turns
+// that into an undo entry — audio/ may not reach up into app/ for the EditGateway, and a take that
+// cannot be undone means an accidental record over a good clip is unrecoverable.
+int  session_set_recording(Session*, bool on, double count_in_beats);
 int  session_is_recording(Session*);
 void session_set_metronome(Session*, int on);
 int  session_get_metronome(Session*);
@@ -247,6 +255,10 @@ void        session_remove_effect(Session*, int track, int effect);
 
 // Device parameters. device: 0 = instrument, 1+ = effect index+1.
 int         session_param_count(Session*, int track, int device);
+// P4: how many MIDI controllers this device binds to parameters (VST3 IMidiMapping). -1 = the
+// plugin does not implement IMidiMapping at all, so NO controller can reach it and clip CC lanes
+// aimed at it will do nothing — a fact worth reporting rather than leaving as silence.
+int         session_param_midi_cc_count(Session*, int track, int device);
 const char* session_param_name(Session*, int track, int device, int i);
 uint32_t    session_param_id(Session*, int track, int device, int i);
 float       session_param_value(Session*, int track, int device, int i);  // normalized 0..1
@@ -327,6 +339,18 @@ void   session_set_clip(Session*, int track, int scene, const ClipNote* notes, i
 // In-clip loop region (beats). loop_end <= loop_start disables it (loop the whole clip).
 void   session_set_clip_loop(Session*, int track, int scene, double loop_start, double loop_end);
 void   session_get_clip_loop(Session*, int track, int scene, double* loop_start, double* loop_end);
+// Clip-level controller automation (P4). Separate from the note accessors above because a note edit
+// must NOT clobber recorded automation: every existing set_clip caller passes notes only, so folding
+// lanes into it would wipe them on any quantize/transpose. Both bump the shared `rev`, so a
+// read-modify-write tool still sees one optimistic-concurrency token for the whole clip.
+int    session_clip_cc_count(Session*, int track, int scene);
+int    session_get_clip_cc(Session*, int track, int scene, CcLane* out, int max);   // returns count
+void   session_set_clip_cc(Session*, int track, int scene, const CcLane* lanes, int n);  // full replace
+// Pool clips carry their lanes too, so stashing a clip out of the grid and placing it back does not
+// silently drop the automation.
+int    session_pool_cc_count(Session*, int index);
+int    session_pool_get_cc(Session*, int index, CcLane* out, int max);
+void   session_pool_set_cc(Session*, int index, const CcLane* lanes, int n);
 
 // Native audio operators. The shared registry is set once at init; a track can have
 // a native instrument (source op) + a chain of native audio effects, alongside VST3.

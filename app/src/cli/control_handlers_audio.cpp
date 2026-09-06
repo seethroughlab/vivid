@@ -1,5 +1,6 @@
 #include "cli/control_handlers_internal.h"
 #include "cli/control_handlers_audio_domains.h"
+#include "app/app.h"        // App::note_edit — a committed take is an undoable edit (P4 Phase E)
 #include "audio/vst3_host.h"
 #include "midi/midi_clip.h"
 #include "midi/note_json.h"
@@ -173,8 +174,14 @@ void register_audio_handlers(Handlers& handlers_) {
         if (!c.session) return err(code::kNoSession, "no session");
         const bool on = b.value("on", true);
         if (on && P::session_armed_track(c.session) < 0) return err(code::kBadArg, "no armed track");
-        P::session_set_recording(c.session, on, b.value("count_in", 0.0));
-        json r = ok(); r["recording"] = P::session_is_recording(c.session); return r;
+        // P4 Phase E: STOPPING may commit a take. `record` itself stays out of edit_methods.cpp —
+        // arming is performance state, not a document edit — so the undo entry is recorded here,
+        // only when a take actually landed.
+        const int committed = P::session_set_recording(c.session, on, b.value("count_in", 0.0));
+        if (committed > 0 && c.app) c.app->note_edit("Record Take");
+        json r = ok(); r["recording"] = P::session_is_recording(c.session);
+        r["committed"] = committed > 0;
+        return r;
     };
     handlers_["set_clip_loop"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
@@ -246,6 +253,58 @@ void register_audio_handlers(Handlers& handlers_) {
         }
         json r = ok(); r["notes"] = notes; r["length"] = P::session_clip_length(c.session, track, scene);
         r["rev"] = P::session_clip_rev(c.session, track, scene);   // for optimistic-concurrency RMW writes
+        {   // P4: clip-level controller lanes, in the same shape persistence uses (absent = none)
+            const int nc = P::session_clip_cc_count(c.session, track, scene);
+            if (nc > 0) {
+                std::vector<P::CcLane> lanes(static_cast<size_t>(nc));
+                const int got = P::session_get_clip_cc(c.session, track, scene, lanes.data(), nc);
+                P::MidiClip tmp; tmp.cc.assign(lanes.begin(), lanes.begin() + got);
+                P::cc_to_json(tmp, r);
+            }
+        }
+        return r;
+    };
+
+    // Clip-level controller automation. A SEPARATE write from set_clip on purpose: set_clip is
+    // full-replace and every existing caller (the editor commit, add_notes, clear_clip, and all the
+    // theory/transform tools) passes notes only — folding lanes into it would wipe recorded
+    // automation on any quantize or transpose. `rev` is shared and bumped by both, so a
+    // read-modify-write client still sees one optimistic-concurrency token for the clip.
+    handlers_["set_clip_cc"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), scene = b.value("scene", 0);
+        json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
+        if (P::session_track_is_audio(c.session, track))
+            return err(code::kBadArg, "set_clip_cc needs an instrument track");
+        if (b.contains("expected_rev")) {   // same conflict contract as set_clip
+            const uint64_t cur = P::session_clip_rev(c.session, track, scene);
+            const uint64_t exp = b.value("expected_rev", cur);
+            if (exp != cur) {
+                json r = err(code::kConflict, "clip changed since it was read (rev " +
+                                              std::to_string(exp) + " != " + std::to_string(cur) + ")");
+                r["rev"] = cur; return r;
+            }
+        }
+        // Validate structurally, clamp values. `cc: []` clears every lane.
+        P::MidiClip tmp;
+        if (b.contains("cc")) {
+            if (!b["cc"].is_array()) return err(code::kBadArg, "cc must be an array of lanes");
+            if (b["cc"].size() > static_cast<size_t>(P::kMaxCcLanes))
+                return err(code::kBadArg, "at most " + std::to_string(P::kMaxCcLanes) + " cc lanes per clip");
+            for (const auto& jl : b["cc"]) {
+                if (!jl.is_object()) return err(code::kBadArg, "each cc lane must be an object");
+                const int n = jl.value("n", -1);
+                if (n < 0 || n >= P::kCcCount)
+                    return err(code::kBadArg, "cc number must be 0..127, 128 (channel pressure) or 129 (pitch bend)");
+                const int ch = jl.value("ch", 0);
+                if (ch < 0 || ch > 15) return err(code::kBadArg, "cc channel must be 0..15");
+            }
+            P::cc_from_json(b, tmp);   // sorts + clamps + skips malformed points
+        }
+        P::session_set_clip_cc(c.session, track, scene, tmp.cc.data(), static_cast<int>(tmp.cc.size()));
+        json r = ok();
+        r["lanes"] = static_cast<int>(tmp.cc.size());
+        r["rev"]   = P::session_clip_rev(c.session, track, scene);
         return r;
     };
     // ---------------- audio-clip warp / shaping (A2) ----------------

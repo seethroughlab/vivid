@@ -27,6 +27,9 @@ vivid_add_test(test_reactive_bus)       # ADR-0053 Phase B: reactive-signal bus 
 target_sources(test_reactive_bus PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/reactive_bus.cpp)
 vivid_add_test(test_reactive_signals)   # ADR-0053 Phase B5: reactive signal grammar == bridge suffix grammar (migration lane contract)
+vivid_add_test(test_cc_record)      # P4 Phase E: sustain extension + controller stream decimation
+vivid_add_test(test_cc_lane)        # P4: clip-level CC automation — sampling/cursor, emission, JSON
+target_link_libraries(test_cc_lane PRIVATE nlohmann_json::nlohmann_json)
 vivid_add_test(test_midi_parse)     # live MIDI byte stream: running status, sysex, real-time, split packets
 vivid_add_test(test_midi_file)      # SMF parse/serialize: running status, sysex, retrigger, round-trip
 vivid_add_test(test_undo_manager)   # ADR-0017/G1 undo history cursor (pure)
@@ -149,6 +152,8 @@ set_tests_properties(test_node_ring_bank PROPERTIES LABELS "HEADLESS_SMOKE;THREA
 vivid_add_test(test_held_note_set)   # ADR-0029 phase 2: atomic-slot held-note set, concurrent TSan target
 target_link_libraries(test_held_note_set PRIVATE Threads::Threads)
 set_tests_properties(test_held_note_set PROPERTIES LABELS "HEADLESS_SMOKE;THREAD")
+vivid_add_test(test_clap_events)       # P4 Phase C: CLAP MIDI + note-expression event bytes
+target_link_libraries(test_clap_events PRIVATE clap_headers)
 vivid_add_test(test_clap_param_queue)  # Ph2 P2-01: CLAP UI->audio param queue drop-on-full, concurrent TSan target
 target_link_libraries(test_clap_param_queue PRIVATE Threads::Threads)
 set_tests_properties(test_clap_param_queue PROPERTIES LABELS "HEADLESS_SMOKE;THREAD")

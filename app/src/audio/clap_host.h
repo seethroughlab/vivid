@@ -41,11 +41,17 @@
 namespace vivid::session {
 
 // --- RT event scratch: builds a CLAP input-event list per block (no alloc on the audio
-// thread). note + param_value are the only core events we emit; both start with the header
-// at offset 0, so get() returns the union's address regardless of the stored type. ---
+// thread). Every member of the union starts with clap_event_header_t at offset 0, so get()
+// returns the union's address regardless of the stored type — an invariant that is now
+// load-bearing across FOUR event types, not two. ---
 struct ClapEventScratch {
     static constexpr uint32_t N = 4096;
-    union Evt { clap_event_note_t note; clap_event_param_value_t pv; };
+    union Evt {
+        clap_event_note_t            note;
+        clap_event_param_value_t     pv;
+        clap_event_midi_t            midi;   // P4: raw channel message (CC / bend / pressure)
+        clap_event_note_expression_t nx;     // CLAP's peer of VST3 note expression
+    };
     Evt evts[N];
     uint32_t count = 0;
     clap_input_events_t  in{};
@@ -86,6 +92,33 @@ struct ClapEventScratch {
         e.note_id = note_id; e.port_index = 0; e.channel = 0; e.key = static_cast<int16_t>(key);
         e.velocity = vel;
     }
+    // P4: a raw 3-byte MIDI channel message. CLAP takes MIDI natively (unlike VST3, which has no
+    // CC event at all), and `time` is sample-accurate here — so a future sub-block-resolution
+    // emit_cc costs nothing on this path. Only legal when the plugin's note port advertises
+    // CLAP_NOTE_DIALECT_MIDI; the caller gates on that.
+    void add_midi(uint8_t status, uint8_t d1, uint8_t d2, uint32_t time) {
+        if (count >= N) return;
+        clap_event_midi_t& e = evts[count++].midi;
+        e.header.size = sizeof(clap_event_midi_t); e.header.time = time;
+        e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        e.header.type = CLAP_EVENT_MIDI; e.header.flags = 0;
+        e.port_index = 0;
+        e.data[0] = status; e.data[1] = d1; e.data[2] = d2;
+    }
+
+    // Per-note expression. CLAP's TUNING is in SEMITONES, which is already the unit ExprEvent
+    // carries for the bend axis — no conversion, unlike the VST3 path's semis/240 + 0.5.
+    void add_note_expression(clap_note_expression id, int32_t note_id, int key, double v, uint32_t time) {
+        if (count >= N) return;
+        clap_event_note_expression_t& e = evts[count++].nx;
+        e.header.size = sizeof(clap_event_note_expression_t); e.header.time = time;
+        e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        e.header.type = CLAP_EVENT_NOTE_EXPRESSION; e.header.flags = 0;
+        e.expression_id = id;
+        e.note_id = note_id; e.port_index = 0; e.channel = 0; e.key = static_cast<int16_t>(key);
+        e.value = v;
+    }
+
     void add_param(clap_id id, double v) {
         if (count >= N) return;
         clap_event_param_value_t& e = evts[count++].pv;
@@ -127,6 +160,9 @@ struct ClapHandle {
     const clap_plugin_state_t*       ext_state = nullptr;
     const clap_plugin_audio_ports_t* ext_audio_ports = nullptr;
     const clap_plugin_note_ports_t*  ext_note_ports = nullptr;
+    // P4: which note dialects the plugin's INPUT port accepts. CLAP_EVENT_MIDI is only legal when
+    // CLAP_NOTE_DIALECT_MIDI is advertised; a CLAP-dialect-only plugin gets note expression instead.
+    uint32_t                         note_in_dialects = 0;
     const clap_plugin_preset_load_t* ext_preset_load = nullptr;
     const clap_plugin_gui_t*         ext_gui = nullptr;   // clap.gui — the native plugin editor (main-thread)
     const clap_plugin_latency_t*     ext_latency = nullptr;  // ADR-0032 Phase B: reported processing latency
@@ -337,6 +373,11 @@ inline bool clap_init_plugin(ClapHandle* h) {
 
     if (h->ext_note_ports) {
         h->has_note_in  = h->ext_note_ports->count(h->plugin, /*is_input*/ true) > 0;
+        if (h->has_note_in) {   // P4: cache the input port's supported dialects
+            clap_note_port_info_t info{};
+            if (h->ext_note_ports->get(h->plugin, 0, /*is_input*/ true, &info))
+                h->note_in_dialects = info.supported_dialects;
+        }
         // ADR-0015 (M2): a note OUTPUT port means the plugin can generate notes (an arpeggiator,
         // a chord generator) — the host now drains them onto the node's note edge.
         h->has_note_out = h->ext_note_ports->count(h->plugin, /*is_input*/ false) > 0;
