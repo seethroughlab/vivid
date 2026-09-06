@@ -20,7 +20,7 @@ Vivid is driven over MCP, so the next step is pointing an agent at it. Launch Vi
 button to copy it. Paste it into a terminal:
 
 ```sh
-claude mcp add vivid -- uv run --script "/Applications/Vivid.app/Contents/Resources/mcp/vivid_mcp.py"
+claude mcp add vivid -- uv run --script "/Applications/vivid.app/Contents/Resources/mcp/vivid_mcp.py"
 ```
 
 The bridge ships inside the app, so there is nothing to clone. It needs [uv](https://docs.astral.sh/uv/),
