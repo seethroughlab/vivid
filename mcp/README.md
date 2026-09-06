@@ -35,19 +35,44 @@ curl -s -XPOST localhost:9876/add_node -d '{"op":"Plasma"}'
 curl -s -XPOST localhost:9876/connect_mapping -d '{"src":"master.transient","dst":"node:4.warp"}'
 ```
 
-## Claude Code / Desktop config (`.mcp.json`)
+## Connecting a client
+
+**If you installed Vivid from a release**, the bridge ships inside the app — you do not need this
+repo. Launch Vivid and use **Help ▸ Connect Claude…**, which shows the exact command with the right
+path already filled in and a Copy button. It looks like:
+
+```sh
+claude mcp add vivid -- uv run --script "/Applications/Vivid.app/Contents/Resources/mcp/vivid_mcp.py"
+```
+
+(`--script`, not `--directory`: script mode resolves deps from the PEP-723 header at the top of
+`vivid_mcp.py` into uv's cache. `--directory` would try to create a `.venv` *inside* the app bundle,
+which is unwritable under `/Applications` and would break the code signature.)
+
+An agent that is already connected can read the same string back with `get_mcp_setup()`.
+
+**From a repo checkout**, point at this directory instead (run from the repo root):
+
+```sh
+claude mcp add vivid -- uv run --directory "$PWD/mcp" vivid_mcp.py
+```
+
+Or, for a client that takes a JSON config (`.mcp.json`) — replace `<path-to>` with either the
+bundled `Vivid.app/Contents/Resources/mcp` or your checkout's `mcp/`:
 
 ```json
 {
   "mcpServers": {
     "vivid": {
       "command": "uv",
-      "args": ["run", "--directory", "/Users/jeff/Developer/vivid/mcp", "vivid_mcp.py"],
+      "args": ["run", "--directory", "<path-to>/mcp", "vivid_mcp.py"],
       "env": { "VIVID_URL": "http://127.0.0.1:9876" }
     }
   }
 }
 ```
+
+Set `VIVID_URL` only if you changed the app's port with `VIVID_PORT`.
 
 Then ask the agent to `get_authoring_guide()` and build a reactive scene.
 

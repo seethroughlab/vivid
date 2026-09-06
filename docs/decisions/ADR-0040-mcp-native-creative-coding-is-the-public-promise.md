@@ -297,8 +297,25 @@ the compiled-operator loop, the hardest gate, is demonstrated from a signed buil
 `check_tutorial_prereqs` `project_cpp_operator` checklist verifies the toolchain + bundle Resources on
 the signed build (Xcode CLT is a documented tier-3 prerequisite — the compiler is not bundled, matching
 vivid-classic). The acceptance *scripts* still run from a repo checkout against the signed app;
-distributing them to a no-repo user (bundling `examples/` + `mcp/`) remains a follow-up, as does the
+distributing them to a no-repo user (bundling `examples/`) remains a follow-up, as does the
 showcase regenerate→screenshot harness that ADR-0037 gates the website on.
+
+**Bundling `mcp/` is now done.** It was the load-bearing half of that follow-up: Fulfillment Gate 2
+("the tutorial can connect through MCP/control-server tools") was not actually reachable from a
+signed build, because the release carried the `.app` alone and the only client config in the tree
+hardcoded a maintainer path. The bridge (`vivid_mcp.py` + `theory.py` + its README) now ships in
+`Contents/Resources/mcp` via the `vivid_mcp_bridge` build target, **Help ▸ Connect Claude…** shows
+the ready-to-paste `claude mcp add` line with a Copy button, and `get_mcp_setup` returns the same
+string over the control server so an already-connected agent can hand it to a user.
+
+Two constraints the implementation had to respect, recorded because they are easy to reintroduce:
+the command uses `uv run --script`, **not** `--directory` — the latter creates a `.venv` inside the
+directory it runs in, i.e. inside a bundle that is unwritable under `/Applications` and whose
+signature such a write would invalidate — and `vivid_mcp.py` sets `sys.dont_write_bytecode = True`
+so importing its sibling `theory.py` does not drop a `__pycache__/` into the sealed bundle. Verified
+end to end against an ad-hoc-signed, `chmod a-w` bundle: MCP `initialize` + a `tools/call` reached
+the running app, the bundle was byte-for-byte unchanged, and `codesign --verify --deep --strict`
+still passed.
 
 ## Implementation Order
 

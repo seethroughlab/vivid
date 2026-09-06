@@ -1,3 +1,7 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["fastmcp>=3.4,<4", "httpx>=0.27,<1"]
+# ///
 """Vivid — MCP bridge.
 
 A FastMCP (stdio) server that proxies each tool call to the running app's loopback
@@ -14,6 +18,11 @@ import time
 import httpx
 from fastmcp import FastMCP
 
+# This file also ships INSIDE the app bundle (Contents/Resources/mcp). Importing the sibling
+# theory.py would drop a __pycache__/ next to it — a write into a signed, read-only bundle, which
+# invalidates the code signature where it succeeds and is a silent no-op where it doesn't. Nothing
+# here is import-heavy enough to care about bytecode caching, so just turn it off.
+sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # import sibling theory.py
 import theory  # noqa: E402  — pure-Python music-theory helpers (chords/scales/rhythm)
 
@@ -92,6 +101,16 @@ def get_version() -> dict:
     must match), session_schema (a saved session is gated against this), and build_type.
     Read this to check whether an operator package or saved session is compatible."""
     return _post("get_version")
+
+
+@mcp.tool
+def get_mcp_setup() -> dict:
+    """How another MCP client connects to this running app. Returns {bundled, bridge_dir, command,
+    url}: `command` is the ready-to-paste `claude mcp add …` line pointing at the bridge shipped in
+    the app bundle (Contents/Resources/mcp). Use it when a user asks how to connect Claude — or
+    another agent — to Vivid. `bundled` is false in a build without the bundled bridge (then `hint`
+    gives the repo-checkout fallback). The same string is behind the app's Help > Connect Claude."""
+    return _post("get_mcp_setup")
 
 
 @mcp.tool

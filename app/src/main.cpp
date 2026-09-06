@@ -29,6 +29,7 @@
 #include "app/input.h"
 #include "app/frame.h"
 #include "app/file_actions.h"      // File-menu actions (native menu bar)
+#include "app/mcp_bridge.h"        // ADR-0040: the bundled MCP bridge (Help > Connect Claude)
 #include "app/autosave.h"          // ADR-0018 autosave recovery on launch
 #include "app/crash_guard.h"       // ADR-0018 install_crash_handlers
 #include "app/crash_recovery.h"    // ADR-0018 CrashRecovery (record + warm snapshot)
@@ -423,6 +424,26 @@ int main(int argc, char** argv) {
         // ADR-0026: the Eval menu. "Set Gemini Key…" opens the in-app modal (input.cpp owns the
         // keyboard while it's up). "Evaluate Output" captures 20s of the live master and kicks off an
         // async Gemini eval; the frame loop toasts the verdict when the job lands. Fail-closed here too.
+        // ADR-0040: Help > Connect Claude. Show the exact `claude mcp add` line for the bridge that
+        // ships in Contents/Resources/mcp, with a Copy button — this is the whole onboarding path
+        // for someone who installed from the DMG and has no repo checkout.
+        ma.connect_claude = [&] {
+            const std::string cmd = vivid::app::mcp_setup_command();
+            if (cmd.empty()) {
+                vivid::platform::show_copyable_message(
+                    "MCP bridge not found",
+                    "This build does not contain Contents/Resources/mcp, so there is nothing to "
+                    "connect to. Run the bridge from a repo checkout instead:\n\n"
+                    "  uv run --directory <repo>/mcp vivid_mcp.py", "");
+                return;
+            }
+            vivid::platform::show_copyable_message(
+                "Connect Claude to Vivid",
+                "Vivid is driven over MCP. Leave this app running, then paste this into a terminal "
+                "to register it with Claude Code:\n\n  " + cmd +
+                "\n\nNeeds `uv` (https://docs.astral.sh/uv). The bridge talks to this app on "
+                "127.0.0.1:9876; set VIVID_URL if you changed the port.", cmd);
+        };
         ma.set_gemini_key  = [&] { win.show_gemini_key = true; win.gemini_key_buf.clear(); };
         ma.evaluate_output = [&] {
             if (!app.music_eval.has_key()) {
