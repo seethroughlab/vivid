@@ -2299,6 +2299,10 @@ double session_pool_length(Session* s, int i) {
     return s->pool[i].is_audio ? s->pool[i].audio.loop_beats : s->pool[i].clip.length;
 }
 const char* session_pool_name(Session* s, int i) { return pool_valid(s, i) ? s->pool[i].name.c_str() : ""; }
+int session_pool_note_count(Session* s, int i) {
+    if (!pool_valid(s, i)) return 0;
+    return static_cast<int>(s->pool[i].clip.notes.size());
+}
 int session_pool_get(Session* s, int i, ClipNote* out, int max) {
     if (!pool_valid(s, i) || !out || max <= 0) return 0;
     const auto& notes = s->pool[i].clip.notes;

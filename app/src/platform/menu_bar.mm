@@ -37,6 +37,7 @@ namespace vivid { namespace platform { static MenuActions g_actions; } }
 - (void)exportAv:(id)sender       { (void)sender; if (vivid::platform::g_actions.export_av)       vivid::platform::g_actions.export_av(); }
 - (void)toggleReduceMotion:(id)sender { (void)sender; if (vivid::platform::g_actions.toggle_reduce_motion) vivid::platform::g_actions.toggle_reduce_motion(); }
 - (void)relayoutGraph:(id)sender { (void)sender; if (vivid::platform::g_actions.relayout_graph) vivid::platform::g_actions.relayout_graph(); }
+- (void)connectClaude:(id)sender  { (void)sender; if (vivid::platform::g_actions.connect_claude)  vivid::platform::g_actions.connect_claude(); }
 - (void)selectAudioDevice:(NSMenuItem*)sender {
     NSString* n = [sender representedObject];   // nil/"" for the "System Default" item
     if (vivid::platform::g_actions.select_audio_device)
@@ -167,6 +168,38 @@ void install_menu_bar(const MenuActions& actions) {
         [viewItem setSubmenu:viewMenu];
         [mainMenu insertItem:viewItem atIndex:insertAt + 3];   // right after Eval
         [viewItem release]; [viewMenu release];   // retained by mainMenu
+
+        // ADR-0040: a downloaded build must be connectable without a repo checkout. Help > Connect
+        // Claude hands the user the `claude mcp add` line for the bridge bundled in Resources/mcp.
+        NSMenu* helpMenu = [[NSMenu alloc] initWithTitle:@"Help"];
+        [helpMenu setAutoenablesItems:NO];
+        NSMenuItem* cc = [[NSMenuItem alloc] initWithTitle:@"Connect Claude…"
+                          action:@selector(connectClaude:) keyEquivalent:@""];
+        [cc setTarget:g_target]; [helpMenu addItem:cc]; [cc release];
+        NSMenuItem* helpItem = [[NSMenuItem alloc] initWithTitle:@"Help" action:nil keyEquivalent:@""];
+        [helpItem setSubmenu:helpMenu];
+        [mainMenu insertItem:helpItem atIndex:insertAt + 4];   // right after View
+        [helpItem release]; [helpMenu release];   // retained by mainMenu
+    }
+}
+
+void show_copyable_message(const std::string& title, const std::string& body,
+                           const std::string& copy_text) {
+    @autoreleasepool {
+        NSAlert* a = [[NSAlert alloc] init];
+        [a setMessageText:[NSString stringWithUTF8String:title.c_str()]];
+        [a setInformativeText:[NSString stringWithUTF8String:body.c_str()]];
+        [a setAlertStyle:NSAlertStyleInformational];
+        const bool can_copy = !copy_text.empty();
+        if (can_copy) [a addButtonWithTitle:@"Copy Command"];
+        [a addButtonWithTitle:@"Done"];
+        const NSModalResponse r = [a runModal];
+        if (can_copy && r == NSAlertFirstButtonReturn) {
+            NSPasteboard* pb = [NSPasteboard generalPasteboard];
+            [pb clearContents];
+            [pb setString:[NSString stringWithUTF8String:copy_text.c_str()] forType:NSPasteboardTypeString];
+        }
+        [a release];
     }
 }
 

@@ -40,6 +40,10 @@ AppSettings load_app_settings(const std::string& path) {
         s.audio_input_enabled = j["audio_input_enabled"].get<bool>();
     if (j.contains("audio_input_name") && j["audio_input_name"].is_string())
         s.audio_input_name = j["audio_input_name"].get<std::string>();
+    if (j.contains("midi_input_source") && j["midi_input_source"].is_number_integer())
+        s.midi_input_source = j["midi_input_source"].get<int32_t>();
+    if (j.contains("midi_input_channel") && j["midi_input_channel"].is_number_integer())
+        s.midi_input_channel = j["midi_input_channel"].get<int>();
     return s;
 }
 
@@ -51,7 +55,9 @@ bool save_app_settings(const AppSettings& s, const std::string& path) {
                {"audio_period_frames", s.audio_period_frames},
                {"audio_fallback_to_default", s.audio_fallback_to_default},
                {"audio_input_enabled", s.audio_input_enabled},
-               {"audio_input_name", s.audio_input_name} };
+               {"audio_input_name", s.audio_input_name},
+               {"midi_input_source", s.midi_input_source},
+               {"midi_input_channel", s.midi_input_channel} };
     std::error_code ec;
     std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
     std::ofstream out(path, std::ios::trunc);

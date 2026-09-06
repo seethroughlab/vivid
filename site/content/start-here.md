@@ -13,7 +13,21 @@ The first tutorial needs exactly one free plugin: **Surge XT**, an open-source s
 Vivid will find it automatically. See [Free Plugins](/free-plugins/) for the download link and the
 install path Vivid expects. Nothing else is required to start.
 
-## 3. Build your first project
+## 3. Connect Claude
+
+Vivid is driven over MCP, so the next step is pointing an agent at it. Launch Vivid and choose
+**Help ▸ Connect Claude…** - it shows the exact command with the path already filled in, and a
+button to copy it. Paste it into a terminal:
+
+```sh
+claude mcp add vivid -- uv run --script "/Applications/Vivid.app/Contents/Resources/mcp/vivid_mcp.py"
+```
+
+The bridge ships inside the app, so there is nothing to clone. It needs [uv](https://docs.astral.sh/uv/),
+and it talks to Vivid on `127.0.0.1:9876` while the app is running. Ask your agent to call
+`get_authoring_guide()` and it will explain itself from there.
+
+## 4. Build your first project
 
 Launch Vivid, then run the [First MCP-native project](https://github.com/seethroughlab/vivid/tree/main/examples/tutorials/mcp-native-first-project)
 builder - a short `uv run build.py` script that drives the running app over MCP to author the project
@@ -25,7 +39,7 @@ for you. In about ten minutes you'll have:
 
 all saved as one portable project you can reload, inspect over MCP, and fork.
 
-## 4. Keep going
+## 5. Keep going
 
 - [All tutorials](/tutorials/) - the beginner path, plus creative-coding on shaders and C++ operators.
 - [Gallery](/gallery/) - nine finished projects, each a saved project you can regenerate.

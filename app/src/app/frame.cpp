@@ -16,6 +16,7 @@
 #include "app/editor_window.h"   // UI-5: floated operator-editor window
 #include "app/window_prefs.h"    // UI-5.4c: remembered float-window geometry
 #include "app/video_recorder.h"  // realtime AV export: per-frame tick after end_frame
+#include "app/master_recorder.h" // realtime master-mix .wav capture: per-frame tap drain
 #include "gpu/gpu_context.h"
 #include "gpu/gpu_util.h"
 #include "ui/renderer_2d.h"
@@ -735,16 +736,26 @@ void run_frame_loop(App& app, Window& win) {
         // Hardware MIDI (M6.4): drain the input queue on the main thread and route to the
         // armed track's instrument (so all Session access stays on the UI thread).
         if (app.session) {
-            vivid::platform::MidiEvent mev[64];
+            vivid::platform::MidiMsg mev[64];
             const int nm = app.midi_in.poll(mev, 64);
             const bool step = win.editor && win.editor->is_open() && win.editor->step_mode();
             for (int i = 0; i < nm; ++i) {
-                if (mev[i].on) {
-                    vivid::session::session_note_on(app.session, mev[i].pitch, mev[i].vel);
-                    if (step) win.editor->step_note_on(mev[i].pitch, mev[i].vel);
-                } else {
-                    vivid::session::session_note_off(app.session, mev[i].pitch);
-                    if (step) win.editor->step_note_off();
+                switch (mev[i].kind) {
+                    case vivid::session::MidiKind::NoteOn:
+                        vivid::session::session_note_on(app.session, mev[i].data1, mev[i].value);
+                        if (step) win.editor->step_note_on(mev[i].data1, mev[i].value);
+                        break;
+                    case vivid::session::MidiKind::NoteOff:
+                        vivid::session::session_note_off(app.session, mev[i].data1);
+                        if (step) win.editor->step_note_off();
+                        break;
+                    default:
+                        // CC / pitch-bend / aftertouch / program change now DECODE (they used to be
+                        // skipped by byte count, which is what corrupted sysex), but there is no
+                        // route to a plugin yet — VST3 carries CC as an IMidiMapping-resolved param
+                        // change, which is its own piece of work. Dropped deliberately, not by
+                        // omission.
+                        break;
                 }
             }
         }
@@ -925,6 +936,11 @@ void run_frame_loop(App& app, Window& win) {
             // want it: the reactive-visuals perception ring (throttled ~12fps, always-on so a single
             // analyze_output call sees a real time-series) and the realtime video recorder (only while
             // recording). Read back ONCE and feed both. The ring is frame-thread only — no locks.
+            // Realtime master-mix capture: drain the transport tap into the .wav. Independent of
+            // the video path below (it needs no framebuffer readback), and mutually exclusive with
+            // it — MasterRecorder::start refuses while a video export holds the single-reader tap.
+            if (app.master_rec) app.master_rec->tick(transport);
+
             const double react_now = std::chrono::duration<double>(
                 std::chrono::steady_clock::now().time_since_epoch()).count();
             const bool recording = app.recorder && app.recorder->is_recording();

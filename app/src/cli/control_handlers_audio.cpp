@@ -232,8 +232,12 @@ void register_audio_handlers(Handlers& handlers_) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0), scene = b.value("scene", 0);
         json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
-        P::ClipNote buf[1024];
-        const int n = P::session_get_clip(c.session, track, scene, buf, 1024);
+        // Sized to the clip, not a fixed cap: an imported drum groove or a long recorded take can
+        // exceed any constant, and truncating a read silently is how a read-modify-write tool
+        // deletes the tail of a clip on its next write.
+        const int cap = P::session_clip_note_count(c.session, track, scene);
+        std::vector<P::ClipNote> buf(static_cast<size_t>(cap > 0 ? cap : 1));
+        const int n = P::session_get_clip(c.session, track, scene, buf.data(), cap);
         json notes = json::array();
         for (int i = 0; i < n; ++i) {
             json jn = { {"p", buf[i].pitch}, {"s", buf[i].start}, {"d", buf[i].dur}, {"v", buf[i].vel} };

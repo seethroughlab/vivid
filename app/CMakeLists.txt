@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(vivid VERSION 0.1.1 LANGUAGES C CXX)
+project(vivid VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -220,11 +220,13 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/project_io.cpp
     src/app/file_actions.cpp
     src/app/examples.cpp
+    src/app/mcp_bridge.cpp
     src/app/node_presets.cpp
     src/app/node_presets_graph.cpp
     src/app/window_prefs.cpp
     src/app/app_settings.cpp
     src/app/video_recorder.cpp
+    src/app/master_recorder.cpp
     src/app/reactivity_ring.cpp
     src/app/operator_clone.cpp
     src/app/runtime_health.cpp
@@ -473,6 +475,35 @@ add_custom_target(vivid_operator_headers ALL
     COMMENT "Copying the operator_api + webgpu headers into the app (ADR-0020 shippable toolchain)"
     VERBATIM)
 add_dependencies(vivid_operator_headers vivid)   # the bundle dir has to exist first
+
+# ADR-0040 follow-up: ship the MCP BRIDGE inside the app, so a user who downloaded a release can
+# connect an agent without a repo checkout (the release DMG carried the .app alone, and the only
+# client config in the tree hardcoded a dev path). Help > Connect Claude reads this back at runtime
+# via app/mcp_bridge.cpp and hands the user the exact `claude mcp add` command.
+# Copied file-by-file rather than copy_directory: mcp/ also holds .venv/, __pycache__/ and tests
+# that have no business in a signed bundle. Own target for the same reason as the headers above —
+# a POST_BUILD on `vivid` only fires when the app relinks, leaving a stale bridge after a .py edit.
+# Just the two modules + the README: the bundled bridge runs as `uv run --script vivid_mcp.py`,
+# which resolves deps from the PEP-723 header into uv's own cache, so pyproject.toml/uv.lock would
+# be dead weight (and uv.lock is 300 KB). Nothing must ever be WRITTEN under Resources/mcp — that
+# is unwritable under /Applications and would invalidate the signature.
+if(APPLE)
+    set(_mcp_dest "$<TARGET_BUNDLE_CONTENT_DIR:vivid>/Resources/mcp")
+else()
+    set(_mcp_dest "$<TARGET_FILE_DIR:vivid>/mcp")
+endif()
+set(_mcp_files vivid_mcp.py theory.py README.md)
+set(_mcp_copy_cmds)
+foreach(_f IN LISTS _mcp_files)
+    list(APPEND _mcp_copy_cmds COMMAND ${CMAKE_COMMAND} -E copy_if_different
+         "${CMAKE_CURRENT_SOURCE_DIR}/../mcp/${_f}" "${_mcp_dest}/${_f}")
+endforeach()
+add_custom_target(vivid_mcp_bridge ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_mcp_dest}"
+    ${_mcp_copy_cmds}
+    COMMENT "Copying the MCP bridge into the app (ADR-0040: a release must be connectable)"
+    VERBATIM)
+add_dependencies(vivid_mcp_bridge vivid)   # the bundle dir has to exist first
 # test_operator_clone drives the same package compiler, so it needs the same wgpu dirs. They are
 # set HERE (not in tests/CMakeLists) because tests/ is added before webgpu is fetched.
 if(VIVID_BUILD_TESTS AND TARGET test_operator_clone)

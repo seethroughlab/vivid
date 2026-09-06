@@ -1,3 +1,7 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["fastmcp>=3.4,<4", "httpx>=0.27,<1"]
+# ///
 """Vivid — MCP bridge.
 
 A FastMCP (stdio) server that proxies each tool call to the running app's loopback
@@ -14,6 +18,11 @@ import time
 import httpx
 from fastmcp import FastMCP
 
+# This file also ships INSIDE the app bundle (Contents/Resources/mcp). Importing the sibling
+# theory.py would drop a __pycache__/ next to it — a write into a signed, read-only bundle, which
+# invalidates the code signature where it succeeds and is a silent no-op where it doesn't. Nothing
+# here is import-heavy enough to care about bytecode caching, so just turn it off.
+sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # import sibling theory.py
 import theory  # noqa: E402  — pure-Python music-theory helpers (chords/scales/rhythm)
 
@@ -92,6 +101,16 @@ def get_version() -> dict:
     must match), session_schema (a saved session is gated against this), and build_type.
     Read this to check whether an operator package or saved session is compatible."""
     return _post("get_version")
+
+
+@mcp.tool
+def get_mcp_setup() -> dict:
+    """How another MCP client connects to this running app. Returns {bundled, bridge_dir, command,
+    url}: `command` is the ready-to-paste `claude mcp add …` line pointing at the bridge shipped in
+    the app bundle (Contents/Resources/mcp). Use it when a user asks how to connect Claude — or
+    another agent — to Vivid. `bundled` is false in a build without the bundled bridge (then `hint`
+    gives the repo-checkout fallback). The same string is behind the app's Help > Connect Claude."""
+    return _post("get_mcp_setup")
 
 
 @mcp.tool
@@ -942,6 +961,32 @@ def audio_export_status() -> dict:
 
 
 @mcp.tool
+def start_master_record(path: str) -> dict:
+    """Begin recording the LIVE master mix to a lossless .wav (absolute path, ends in .wav) — the way
+    to capture a performance you play by hand, launching scenes as you go. Records until
+    stop_master_record. Unlike export_audio (which renders the current arming offline from beat 0 and
+    cannot replay scene launches) this captures exactly what you hear, and unlike export_video its
+    audio is not lossy AAC. Fails if a video export is already recording: both drain the same
+    single-reader master tap."""
+    return _post("start_master_record", {"path": path})
+
+
+@mcp.tool
+def stop_master_record() -> dict:
+    """Finish the master recording and close the .wav. Returns {path, frames, duration_sec,
+    sample_rate, peak, clipped, overruns}. CHECK `overruns` — anything above 0 means blocks were
+    dropped and the capture has gaps in it, so the take should be redone."""
+    return _post("stop_master_record")
+
+
+@mcp.tool
+def master_record_status() -> dict:
+    """Poll the realtime master recording: {recording, path, frames, duration_sec, sample_rate, peak,
+    clipped, overruns}. After a stop it reports the finished take."""
+    return _post("master_record_status")
+
+
+@mcp.tool
 def export_av(path: str, seconds: float = 0.0, bars: float = 0.0, fps: float = 60.0, block: int = 0) -> dict:
     """Kick off a DETERMINISTIC offline audiovisual export (H.264 video + AAC audio .mp4/.mov). ASYNC:
     returns {started} immediately, then the render runs a frame per app tick — poll `av_export_status`
@@ -992,6 +1037,26 @@ def set_audio_input_device(name: str = "", enabled: bool = True) -> dict:
     the device stays playback-only (active.input_open = false) but the call still succeeds. Live audio
     briefly drops out during the reopen. Returns {active:{...incl. input_open, input_name}}."""
     return _post("set_audio_input_device", {"name": name, "enabled": enabled})
+
+
+@mcp.tool
+def midi_input_status() -> dict:
+    """Hardware MIDI keyboard state. Returns {sources:[{id,name,connected}], connected,
+    selected_source, selected_channel, events_seen, receiving} plus a `hint` when something looks
+    wrong. CALL THIS FIRST when a user says their keyboard isn't working, before assuming the app is
+    at fault — `sources` empty means nothing is attached (devices are picked up live, no restart
+    needed), and `events_seen` 0 with sources connected means nothing has been played yet or the
+    channel filter is excluding it."""
+    return _post("midi_input_status")
+
+
+@mcp.tool
+def midi_input_select(source: int = 0, channel: int = -1) -> dict:
+    """Restrict MIDI input to one source and/or channel. `source` is the CoreMIDI unique id from
+    midi_input_status (0 = accept every source, the default); `channel` is 0..15 (-1 = omni).
+    Persists as a machine preference alongside the audio-device choice — it follows the computer,
+    not the project, so it is not undoable."""
+    return _post("midi_input_select", {"source": source, "channel": channel})
 
 
 @mcp.tool
@@ -1757,6 +1822,32 @@ def import_audio_clip(track: int, scene: int, path: str, src_bpm: float = 0.0) -
     Returns {track, scene, length} (length in beats). This is the way to get real recorded audio
     into the grid so the glitch pack / warp can process it."""
     return _post("import_audio_clip", {"track": track, "scene": scene, "path": path, "src_bpm": src_bpm})
+
+
+@mcp.tool
+def import_midi(track: int, scene: int, path: str, file_track: int = -1, channel: int = -1,
+                transpose: int = 0, length: float = 0.0, append: bool = False) -> dict:
+    """Import a Standard MIDI File (.mid) into an instrument track's scene clip. THE way to get a
+    drum-plugin groove in: EZdrummer / Superior Drummer / Addictive Drums are built around dragging
+    a groove out of their own browser, so drag it to a folder and import the .mid here.
+    `file_track` (-1 = all) picks one track out of a format-1 file; `channel` (-1 = all) filters by
+    MIDI channel — GM drums are channel 9. `transpose` shifts semitones (notes pushed out of 0..127
+    are dropped and counted in `skipped`). `length` overrides the clip loop length in beats; 0 rounds
+    the content up to a whole bar. `append` overdubs onto the existing clip instead of replacing it.
+    Returns {notes, skipped, length, file_tracks, file_format, file_bpm, track_names} — `file_bpm` is
+    informational, import does NOT change the session tempo."""
+    return _post("import_midi", {"track": track, "scene": scene, "path": path,
+                                 "file_track": file_track, "channel": channel,
+                                 "transpose": transpose, "length": length, "append": append})
+
+
+@mcp.tool
+def export_midi(track: int, scene: int, path: str) -> dict:
+    """Write a MIDI clip out as a .mid file (absolute path, must end in .mid), at the session tempo.
+    The other half of import_midi — send a part back to a plugin's groove browser or another DAW.
+    Per-note expression curves have no SMF equivalent and are not written; the reply says so when the
+    clip had any. Returns {path, notes, bpm}."""
+    return _post("export_midi", {"track": track, "scene": scene, "path": path})
 
 
 @mcp.tool

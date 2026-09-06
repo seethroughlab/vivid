@@ -12,11 +12,10 @@
 
 namespace vivid {
 
-namespace {
-
 // Accept only an absolute path with no ".." traversal and a .wav extension — mirrors
 // video_recorder.cpp's is_safe_recording_path, so a scripted MCP caller (or a stray menu path)
 // can't write outside an intended location or hand ma_encoder a container it won't produce.
+// Declared in the header: the realtime master recorder validates through the same rule.
 bool is_safe_wav_path(const std::string& p, std::string* err) {
     auto fail = [&](const char* m) { if (err) *err = m; return false; };
     if (p.empty())   return fail("path is empty");
@@ -28,8 +27,6 @@ bool is_safe_wav_path(const std::string& p, std::string* err) {
     if (ext != "wav") return fail("path must end in .wav");
     return true;
 }
-
-}  // namespace
 
 bool bounce_session_to_wav(vivid::session::Session* session, const Transport& tr,
                            const BounceRequest& req, BounceResult& out, std::string* err) {

@@ -96,6 +96,11 @@ jobs:
       - name: Sampler editing surface (MCP parity)
         run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_sampler_surface.py
 
+      # SMF import/export — the only path from a drum plugin's groove browser into Vivid. Also pins
+      # the fixed-buffer truncation regression: a >256-note import must survive save + reload.
+      - name: MIDI file import/export
+        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_midi_import.py
+
       # Import the Developer ID cert into a dedicated temporary keychain so codesign can reach the
       # private key non-interactively (a locked/service-context login keychain gives
       # errSecInternalComponent on a self-hosted runner). Cleaned up below regardless of outcome.
