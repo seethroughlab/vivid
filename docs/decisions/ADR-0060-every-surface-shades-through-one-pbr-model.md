@@ -135,7 +135,7 @@ surface on Vivid's own stage.
 
 Build with `cmake --build app/build -j 10` (bounded — an unbounded `-j` thrashes the self-hosted
 runner) and run the **full** ctest suite, not a subset. Drive the app by direct binary path
-(`app/build/vivid.app/Contents/MacOS/vivid` with `VIVID_NO_RECOVER=1`); `open -a` can launch a stale
+(`app/build/Vivid.app/Contents/MacOS/Vivid` with `VIVID_NO_RECOVER=1`); `open -a` can launch a stale
 copy. Frame-diffing a *playing* demo is not a sound instrument (ADR-0051's methodological note) — use
 static scenes for the mechanism checks.
 

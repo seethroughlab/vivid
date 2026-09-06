@@ -30,7 +30,7 @@ no app). Regenerate when the operator set changes:
 
 ```sh
 uv run --project site site/generate_reference.py            # dev build
-uv run --project site site/generate_reference.py --app /Applications/vivid.app/Contents/MacOS/vivid
+uv run --project site site/generate_reference.py --app /Applications/Vivid.app/Contents/MacOS/Vivid
 ```
 
 ## Build & serve locally

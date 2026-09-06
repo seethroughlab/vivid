@@ -67,44 +67,44 @@ jobs:
       # again, assert the document is identical. Skips cleanly if this runner can't launch the GUI app
       # (no window server / GPU); fails on a real round-trip diff or an app crash.
       - name: Persistence round-trip (save/load is lossless)
-        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_persist_roundtrip.py
+        run: VIVID_APP="$PWD/app/build/Vivid.app/Contents/MacOS/Vivid" uv run mcp/tests/test_persist_roundtrip.py
 
       # ADR-0033 P2: duplicate_nodes preserves params/edges (internal kept, external dropped) + mappings.
       - name: Duplicate nodes (copy/paste contract)
-        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_duplicate_nodes.py
+        run: VIVID_APP="$PWD/app/build/Vivid.app/Contents/MacOS/Vivid" uv run mcp/tests/test_duplicate_nodes.py
 
       # ADR-0033 P2b: audio duplicate_audio_nodes preserves params/edges (internal kept, external dropped).
       - name: Duplicate audio nodes (copy/paste contract)
-        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_duplicate_audio_nodes.py
+        run: VIVID_APP="$PWD/app/build/Vivid.app/Contents/MacOS/Vivid" uv run mcp/tests/test_duplicate_audio_nodes.py
 
       # Session clip-stop: launch a clip, stop_track -> idle, relaunch, then stop_all across two tracks.
       - name: Stop track (clip-stop contract)
-        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_stop_track.py
+        run: VIVID_APP="$PWD/app/build/Vivid.app/Contents/MacOS/Vivid" uv run mcp/tests/test_stop_track.py
 
       # ADR-0053 Phase B: control-edge integration — a ReactiveMaster added live to a 30-node graph
       # doesn't crash, and deleting a track removes its ReactiveTrack node + cascades its control edges.
       - name: Reactive control edges (large-graph add + track-drop)
-        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_reactive_edges.py
+        run: VIVID_APP="$PWD/app/build/Vivid.app/Contents/MacOS/Vivid" uv run mcp/tests/test_reactive_edges.py
 
       # API-cleanup Phase-7 follow-up b: optimistic-concurrency guard on clip edits — get_clip reports a
       # per-clip rev; set_clip with a stale expected_rev is rejected ('conflict') instead of clobbering.
       - name: Clip edit conflict (optimistic concurrency)
-        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_clip_conflict.py
+        run: VIVID_APP="$PWD/app/build/Vivid.app/Contents/MacOS/Vivid" uv run mcp/tests/test_clip_conflict.py
 
       # ADR-0049: the Sampler sample-editing surface an agent drives — trim / slice / detect / tune /
       # slices-to-MIDI, their guard rails, and that every one of them (incl. the load) is undoable.
       - name: Sampler editing surface (MCP parity)
-        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_sampler_surface.py
+        run: VIVID_APP="$PWD/app/build/Vivid.app/Contents/MacOS/Vivid" uv run mcp/tests/test_sampler_surface.py
 
       # SMF import/export — the only path from a drum plugin's groove browser into Vivid. Also pins
       # the fixed-buffer truncation regression: a >256-note import must survive save + reload.
       - name: MIDI file import/export
-        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_midi_import.py
+        run: VIVID_APP="$PWD/app/build/Vivid.app/Contents/MacOS/Vivid" uv run mcp/tests/test_midi_import.py
 
       # P4: clip-level controller automation — lanes must survive note edits, RMW transforms, save,
       # the clip pool, and undo. The separation from set_clip is the whole point.
       - name: Clip controller automation
-        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_clip_cc.py
+        run: VIVID_APP="$PWD/app/build/Vivid.app/Contents/MacOS/Vivid" uv run mcp/tests/test_clip_cc.py
 
       # Import the Developer ID cert into a dedicated temporary keychain so codesign can reach the
       # private key non-interactively (a locked/service-context login keychain gives
@@ -132,7 +132,7 @@ jobs:
           security find-identity -p codesigning -v "$KEYCHAIN" | head -3
 
       - name: Sign + notarize + DMG
-        run: scripts/release/sign_and_notarize.sh app/build/vivid.app/Contents/MacOS/../.. build/dist
+        run: scripts/release/sign_and_notarize.sh app/build/Vivid.app/Contents/MacOS/../.. build/dist
 
       - name: Generate Sparkle appcast
         if: startsWith(github.ref, 'refs/tags/v')

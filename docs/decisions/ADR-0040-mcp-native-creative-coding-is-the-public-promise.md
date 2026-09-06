@@ -290,7 +290,7 @@ running it exposed and fixed four real, pre-existing blockers, none of them prod
 - Plus the DMG staging path (`../..`) and a tag-gated GitHub Release step.
 
 Result: GitHub Actions produces a **signed + notarized** DMG (`spctl --assess` → "accepted, Notarized
-Developer ID"; ticket stapled). Installed to `/Applications/vivid.app`, it launches and the
+Developer ID"; ticket stapled). Installed to `/Applications/Vivid.app`, it launches and the
 **project-cpp-operator tutorial passes against it** — scaffold → real `clang++` build → `dlopen` of
 the operator dylib *under the hardened runtime* (the entitlement's payoff) → recover → recompile — so
 the compiled-operator loop, the hardest gate, is demonstrated from a signed build. A new
