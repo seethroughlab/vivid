@@ -1024,7 +1024,17 @@ void register_introspection_handlers(Handlers& handlers_) {
             arr.push_back({ {"index", i}, {"id", P::session_param_id(s, track, device, i)},
                             {"name", nm}, {"value", P::session_param_value(s, track, device, i)} });
         }
-        json r = ok(); r["count"] = pc; r["params"] = arr; return r;
+        json r = ok(); r["count"] = pc; r["params"] = arr;
+        // P4: whether clip CC lanes / a hardware controller can reach this device at all. VST3
+        // routes a controller through IMidiMapping to a parameter; a plugin that implements none
+        // (many drum plugins) simply cannot receive CC, and saying so beats silent nothing.
+        const int mcc = P::session_param_midi_cc_count(s, track, device);
+        r["midi_cc_mapped"] = mcc;
+        r["accepts_midi_cc"] = mcc > 0;
+        if (mcc < 0)
+            r["midi_cc_note"] = "this plugin exposes no MIDI-CC mapping (no IMidiMapping) — clip CC "
+                                "lanes cannot drive it; automate a named parameter instead";
+        return r;
     };
     handlers_["get_graph"] = [](const ControlCtx& c, const json&) {
         if (!c.graph) return err(code::kNoGraph, "no graph");

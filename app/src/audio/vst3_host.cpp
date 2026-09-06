@@ -120,6 +120,8 @@ static void reserve_track_graph(Track* t) {
     // regions), sized once at session init — no per-track allocation here.
     t->node_scope.allocate(kGraphMaxNodes, kScopeN);   // ADR-0029: atomic-slot per-node scope rings
     t->src_nev.reserve(256);   t->src_eev.reserve(256);   // key-range filter scratch (>= any block's note count)
+    // P4: controller events per block — bounded by the lane cap plus whatever live input adds.
+    t->cev.reserve(kMaxCcLanes + 64);  t->cev_clip.reserve(kMaxCcLanes + 8);  t->cev_live.reserve(64);
     t->ni_nev.reserve(kGraphMaxNotes);   // native-instrument scene-release prepend scratch (RT: no alloc)
     // ADR-0015: the note pool — one note list per possible note-emitting node, each reserved to
     // kGraphMaxNotes. Preallocated to the same worst case as the audio pool, so the audio thread
@@ -2729,6 +2731,10 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                     }
             }
             else if (playing)   t.sched.emit(beats, delta, frames, t.nev_clip, t.eev);  // paused: emit nothing (tails still ring)
+            // P4: this block's clip-level controller automation. Separate from emit() — it needs
+            // none of the note bookkeeping — and skipped while paused for the same reason notes are.
+            t.cev_clip.clear();
+            if (playing) t.sched.emit_cc(beats, delta, frames, t.cev_clip);
             t.nev_live.clear();
             // Live MIDI monitoring (M6): the armed track drains the session live-input
             // queue into its own event stream so played/typed notes sound through its
@@ -2751,6 +2757,12 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             t.nev.clear();
             t.nev.insert(t.nev.end(), t.nev_clip.begin(), t.nev_clip.end());
             t.nev.insert(t.nev.end(), t.nev_live.begin(), t.nev_live.end());
+            // P4: same shape for controllers. A CC is a CHANNEL message, so this stream is read
+            // directly by the render primitives rather than through graph_note_input's key-range
+            // filter — every instrument on the track receives it.
+            t.cev.clear();
+            t.cev.insert(t.cev.end(), t.cev_clip.begin(), t.cev_clip.end());
+            t.cev.insert(t.cev.end(), t.cev_live.begin(), t.cev_live.end());
             // Note-derived bridge sources: t.nev is now the authoritative track-wide note union for
             // this block (clip ++ live), assembled once regardless of how many instrument/key-split
             // nodes consume filtered subsets — so scan it here, not the per-node graph_note_input. Take
@@ -4715,6 +4727,12 @@ static Vst3Handle* device_handle(Session* s, int t, int dev) {
 int session_param_count(Session* s, int t, int dev) {
     Vst3Handle* h = device_handle(s, t, dev);
     return h ? static_cast<int>(h->params.size()) : 0;
+}
+// P4: -1 = the plugin implements no IMidiMapping, so no MIDI controller can reach it at all.
+int session_param_midi_cc_count(Session* s, int t, int dev) {
+    Vst3Handle* h = device_handle(s, t, dev);
+    if (!h) return -1;
+    return h->midi_map_ok ? h->midi_map_n : -1;
 }
 const char* session_param_name(Session* s, int t, int dev, int i) {
     Vst3Handle* h = device_handle(s, t, dev);

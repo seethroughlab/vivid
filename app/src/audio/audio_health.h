@@ -23,6 +23,7 @@ inline std::atomic<uint64_t> g_render_bailouts{0};  // block > max supported siz
                                                     // a bailout, and is deliberately NOT counted.
 inline std::atomic<uint64_t> g_over_budget{0};      // callback wall-time exceeded its realtime budget
 inline std::atomic<uint64_t> g_handoff_skips{0};    // try_lock handoff skipped on contention (RT thread only)
+inline std::atomic<uint64_t> g_param_queue_full{0}; // a param change dropped because one block's IParameterChanges was full (P4)
 
 // --- Gauges (store, relaxed) — most-recent sample, single RT writer so no CAS needed. -------------
 inline std::atomic<uint32_t> g_last_callback_us{0};
@@ -43,6 +44,13 @@ inline bool in_rt() { return t_in_rt; }
 // Credit a skipped try_lock handoff — a no-op unless called on the RT thread (inside RtScope).
 inline void note_handoff_skip() {
     if (t_in_rt) g_handoff_skips.fetch_add(1, std::memory_order_relaxed);
+}
+
+// Credit a dropped param change (this block's IParameterChanges hit kMaxParams). Nonzero means some
+// automation/CC/modulation did not reach the plugin — which otherwise presents as an intermittent
+// "the mod wheel stopped working" with nothing at all in the logs.
+inline void note_param_queue_full() {
+    if (t_in_rt) g_param_queue_full.fetch_add(1, std::memory_order_relaxed);
 }
 
 // Publish this callback's wall time and, if it blew the budget, credit an over-budget block. Single RT

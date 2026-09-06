@@ -27,6 +27,30 @@ static void drain_params(Vst3Handle* h, Vst3ParamChanges& pc) {
     while (h->param_q.pop(m)) pc.add(m.id, m.value);   // sets id AND value (addParameterData+addPoint left value unset)
 }
 
+// P4: deliver this block's controller events. VST3 has NO MIDI-CC event — a controller reaches the
+// plugin as a PARAMETER CHANGE on the id IMidiMapping bound it to, which is why this rides the same
+// queue as UI edits and modulation rather than the event list.
+//
+// Deliberately NOT routed through h->param_q: that is a UI->audio SPSC ring, and this stream already
+// originates on the audio thread, so pushing into a ring only to pop it in the same callback would
+// add a drop-on-full failure mode for nothing.
+//
+// Block-granular by construction: SinglePointQueue::getPoint reports sampleOffset 0 whatever we
+// stamp, so only the LAST value per controller in a block can reach the plugin anyway — pc.add()
+// dedupes by ParamID, which collapses a fast sweep to one slot and gives that behaviour for free.
+// A fast filter sweep therefore steps rather than glides at large buffer sizes; fixing that means
+// replacing SinglePointQueue with a multi-point queue, which is orthogonal to everything here
+// (CcEvent already carries a real sample_offset for when it lands).
+//
+// RT-safe: array indexing and a bounded pc.add; no allocation, no locks.
+static void apply_cc_params(Vst3Handle* h, const std::vector<CcEvent>& cev, Vst3ParamChanges& pc) {
+    if (!h->midi_map_ok || cev.empty()) return;
+    for (const CcEvent& e : cev) {
+        if (e.cc >= Vst3Handle::kCtrlCount || !h->midi_map_has[e.cc]) continue;   // unmapped: nothing to drive
+        pc.add(h->midi_map[e.cc], std::clamp(static_cast<ParamValue>(e.value), 0.0, 1.0));
+    }
+}
+
 // Note on/off + per-note expression. Note events are added first so a same-offset
 // expression for a just-started note never precedes its note-on (VST3 wants the list
 // sorted; continuing-note expression is at offset 0 with its note-on in a prior block).
@@ -102,7 +126,8 @@ void render_vst3_instrument(Track& t, Vst3Handle* h, Vst3EventList& events,
     float* ch[2] = { L, R };
     AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;
     Vst3ParamChanges pc; pc.clear();
-    drain_params(h, pc);
+    drain_params(h, pc);                    // UI param edits
+    apply_cc_params(h, t.cev, pc);          // P4 clip automation / live controllers
     for (uint32_t k = 0; k < mod_n; ++k) pc.add(mod[k].id, mod[k].value);   // ADR-0034: modulation wins
     ProcessContext pctx = vst3_build_process_context(&ctx, t.steady);
     ProcessData data{};

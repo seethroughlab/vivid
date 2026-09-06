@@ -247,6 +247,10 @@ void        session_remove_effect(Session*, int track, int effect);
 
 // Device parameters. device: 0 = instrument, 1+ = effect index+1.
 int         session_param_count(Session*, int track, int device);
+// P4: how many MIDI controllers this device binds to parameters (VST3 IMidiMapping). -1 = the
+// plugin does not implement IMidiMapping at all, so NO controller can reach it and clip CC lanes
+// aimed at it will do nothing — a fact worth reporting rather than leaving as silence.
+int         session_param_midi_cc_count(Session*, int track, int device);
 const char* session_param_name(Session*, int track, int device, int i);
 uint32_t    session_param_id(Session*, int track, int device, int i);
 float       session_param_value(Session*, int track, int device, int i);  // normalized 0..1

@@ -310,6 +310,11 @@ struct Track {
     std::vector<NoteEvent> nev_live;       // ADR-0022 P3.1b: live MIDI + editor preview (feeds the MidiIn node)
     std::vector<NoteEvent> scene_rel;      // scene-switch note-offs for the CLAP path (VST3 gets them via vev)
     std::vector<ExprEvent> eev;            // per-note expression scratch (M3), pre-reserved
+    // P4: clip-level controller events for this block. A CC is a CHANNEL message, so unlike notes
+    // it is NOT key-range filtered per source node — every instrument on the track sees it.
+    std::vector<CcEvent>   cev;            // this block's controllers = cev_clip ++ cev_live
+    std::vector<CcEvent>   cev_clip;       // from the active clip's automation lanes
+    std::vector<CcEvent>   cev_live;       // reserved for live hardware input (Phase D)
     Vst3EventList          vev;            // VST3 event list for this block (scene-switch releases +
                                            // notes); on the Track so both the inline path AND the
                                            // audio-graph Vst3Inst node dispatch share the same list.

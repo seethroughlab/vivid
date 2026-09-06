@@ -32,6 +32,10 @@ DEF_CLASS_IID (IParamValueQueue)
 DEF_CLASS_IID (IAttributeList)
 DEF_CLASS_IID (IMessage)
 DEF_CLASS_IID (IUnitInfo)
+// P4: VST3 has no MIDI-CC event — a controller reaches a plugin only by resolving CC# -> ParamID
+// through IMidiMapping and pushing that into IParameterChanges. Without this line the
+// queryInterface(IMidiMapping::iid, ...) below fails to LINK, not to resolve.
+DEF_CLASS_IID (IMidiMapping)
 
 } // namespace Vst
 
