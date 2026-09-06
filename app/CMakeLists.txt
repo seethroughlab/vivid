@@ -226,6 +226,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/window_prefs.cpp
     src/app/app_settings.cpp
     src/app/video_recorder.cpp
+    src/app/master_recorder.cpp
     src/app/reactivity_ring.cpp
     src/app/operator_clone.cpp
     src/app/runtime_health.cpp

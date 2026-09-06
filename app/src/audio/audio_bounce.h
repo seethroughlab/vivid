@@ -31,6 +31,11 @@ struct BounceResult {
     bool        clipped      = false;  // peak > 1.0 (would clip at 0 dBFS on export/playback)
 };
 
+// Path validation shared by every .wav writer (the offline bounce and the realtime master
+// recorder): absolute, no ".." traversal, .wav extension. One definition so a scripted MCP caller
+// cannot write outside an intended location through whichever path happens to check less.
+bool is_safe_wav_path(const std::string& p, std::string* err);
+
 // Pure, device-free render → WAV. The CALLER guarantees exclusive ownership of `session` for the
 // duration of the call (nothing else may call session_process concurrently). Reads sample rate /
 // bpm / beats_per_bar from `tr` but does NOT mutate the transport (renders from a LOCAL beat 0).

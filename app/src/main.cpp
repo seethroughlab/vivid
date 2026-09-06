@@ -29,6 +29,7 @@
 #include "app/input.h"
 #include "app/frame.h"
 #include "app/file_actions.h"      // File-menu actions (native menu bar)
+#include "app/master_recorder.h"   // realtime master-mix .wav capture (ADR-0032 follow-up)
 #include "app/mcp_bridge.h"        // ADR-0040: the bundled MCP bridge (Help > Connect Claude)
 #include "app/autosave.h"          // ADR-0018 autosave recovery on launch
 #include "app/crash_guard.h"       // ADR-0018 install_crash_handlers
@@ -309,6 +310,11 @@ int main(int argc, char** argv) {
 
     vivid::VideoRecorder video_recorder;   // realtime AV export; driven per-frame in run_frame_loop
     app.recorder = &video_recorder;
+    // Realtime master-mix -> .wav: how a hand-performed take gets a LOSSLESS master (the offline
+    // bounce renders the current arming from beat 0 and cannot replay scene launches; the video
+    // export's audio is AAC in an .mp4). Second consumer of the transport's recording tap.
+    vivid::MasterRecorder master_recorder;
+    app.master_rec = &master_recorder;
 
     // ADR-0032 Phase A: the audio output device model owns the miniaudio context + device (miniaudio.h
     // confined to audio_device_manager.cpp). It opens the persisted device (or the system default, with a

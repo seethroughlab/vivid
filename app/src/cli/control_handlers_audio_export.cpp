@@ -2,6 +2,7 @@
 
 #include "app/app.h"
 #include "audio/audio_bounce.h"
+#include "app/master_recorder.h"   // realtime master-mix capture (start/stop/status below)
 #include "transport.h"
 
 // ADR-0032 (decision #5): offline master-mix bounce to WAV. Distinct from the realtime AV
@@ -52,6 +53,56 @@ void register_audio_export_handlers(Handlers& handlers_) {
         r["peak"]         = st.peak;
         r["clipped"]      = st.clipped;
         return r;
+    };
+
+    // ---------------- realtime master capture ----------------
+    // The offline bounce above renders the CURRENT arming from beat 0 — it cannot replay a timeline
+    // of scene launches, so it cannot capture an arrangement performed by hand. The only realtime
+    // capture that existed was the AV video export, whose audio is lossy AAC inside an .mp4. These
+    // three record the live master mix to a lossless .wav for as long as you play.
+    auto master_status_json = [](const MasterRecordStatus& st) {
+        json r = ok();
+        r["recording"]    = st.recording;
+        r["path"]         = st.path;
+        r["frames"]       = st.frames;
+        r["duration_sec"] = st.duration_sec;
+        r["sample_rate"]  = st.sample_rate;
+        r["peak"]         = st.peak;
+        r["clipped"]      = st.clipped;
+        r["overruns"]     = st.overruns;   // 0 = gapless; >0 means blocks were dropped
+        return r;
+    };
+
+    handlers_["start_master_record"] = [master_status_json](const ControlCtx& c, const json& b) -> json {
+        if (!c.app)       return err(code::kInternal, "no app");
+        if (!c.transport) return err(code::kNoTransport, "no transport");
+        if (!c.app->master_rec) return err(code::kInternal, "master recorder unavailable");
+        const std::string path = b.value("path", std::string());
+        if (path.empty()) return err(code::kBadArg, "path is required");
+        std::string e;
+        if (!c.app->master_rec->start(path, *c.transport, &e)) return err(code::kBadArg, e);
+        return master_status_json(c.app->master_rec->status());
+    };
+
+    handlers_["stop_master_record"] = [master_status_json](const ControlCtx& c, const json&) -> json {
+        if (!c.app)       return err(code::kInternal, "no app");
+        if (!c.transport) return err(code::kNoTransport, "no transport");
+        if (!c.app->master_rec) return err(code::kInternal, "master recorder unavailable");
+        if (!c.app->master_rec->is_recording()) return err(code::kBadArg, "not recording");
+        const MasterRecordStatus st = c.app->master_rec->stop(*c.transport);
+        if (st.clipped)
+            VLOG_WARN(*c.app, "master recording clipped: peak %.3f (>0 dBFS): %s",
+                      static_cast<double>(st.peak), st.path.c_str());
+        if (st.overruns > 0)
+            VLOG_WARN(*c.app, "master recording dropped %llu block(s) — the capture has gaps",
+                      static_cast<unsigned long long>(st.overruns));
+        return master_status_json(st);
+    };
+
+    handlers_["master_record_status"] = [master_status_json](const ControlCtx& c, const json&) -> json {
+        if (!c.app) return err(code::kInternal, "no app");
+        if (!c.app->master_rec) return err(code::kInternal, "master recorder unavailable");
+        return master_status_json(c.app->master_rec->status());
     };
 }
 

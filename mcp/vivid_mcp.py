@@ -961,6 +961,32 @@ def audio_export_status() -> dict:
 
 
 @mcp.tool
+def start_master_record(path: str) -> dict:
+    """Begin recording the LIVE master mix to a lossless .wav (absolute path, ends in .wav) — the way
+    to capture a performance you play by hand, launching scenes as you go. Records until
+    stop_master_record. Unlike export_audio (which renders the current arming offline from beat 0 and
+    cannot replay scene launches) this captures exactly what you hear, and unlike export_video its
+    audio is not lossy AAC. Fails if a video export is already recording: both drain the same
+    single-reader master tap."""
+    return _post("start_master_record", {"path": path})
+
+
+@mcp.tool
+def stop_master_record() -> dict:
+    """Finish the master recording and close the .wav. Returns {path, frames, duration_sec,
+    sample_rate, peak, clipped, overruns}. CHECK `overruns` — anything above 0 means blocks were
+    dropped and the capture has gaps in it, so the take should be redone."""
+    return _post("stop_master_record")
+
+
+@mcp.tool
+def master_record_status() -> dict:
+    """Poll the realtime master recording: {recording, path, frames, duration_sec, sample_rate, peak,
+    clipped, overruns}. After a stop it reports the finished take."""
+    return _post("master_record_status")
+
+
+@mcp.tool
 def export_av(path: str, seconds: float = 0.0, bars: float = 0.0, fps: float = 60.0, block: int = 0) -> dict:
     """Kick off a DETERMINISTIC offline audiovisual export (H.264 video + AAC audio .mp4/.mov). ASYNC:
     returns {started} immediately, then the render runs a frame per app tick — poll `av_export_status`

@@ -27,6 +27,7 @@ class ControlServer;
 class EditGateway;
 class CrashRecovery;
 class VideoRecorder;
+class MasterRecorder;
 namespace ui { class NodeGraph; class AudioNodeGraph; }
 namespace audio { class AudioDeviceManager; }   // ADR-0032 Phase A (miniaudio-free fwd decl)
 }
@@ -54,6 +55,7 @@ struct App {
     std::function<void()> before_audio_rebuild;
     CrashRecovery*      crash_recovery = nullptr; // ADR-0018 warm-snapshot writer (a main.cpp local)
     VideoRecorder*      recorder    = nullptr;   // realtime AV video export (a main.cpp local)
+    MasterRecorder*     master_rec  = nullptr;   // realtime master-mix -> .wav capture (a main.cpp local)
     // ADR-0032: the ma_device (owned by audio_devices below), kept OPAQUE so miniaudio.h stays out of
     // this widely-included header. The audio-export path casts it back to ma_device* to pause/resume the
     // device around an offline WAV bounce. Null when audio is unavailable (headless / device open failed).
