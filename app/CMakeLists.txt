@@ -38,6 +38,22 @@ if(VIVID_UNDO_AUDIT)
     add_compile_definitions(VIVID_UNDO_AUDIT)
 endif()
 
+# CLAP is header-only, portable C and shared by the app AND the headless tests (test_clap_events
+# pins the MIDI/note-expression event bytes), so — like nlohmann/json below — it is fetched BEFORE
+# the tests-only `return()`. Declaring it after the app guard is what broke the Linux `tests` job:
+# that configure never reached it, so clap_headers did not exist and the test failed to compile.
+# SOURCE_SUBDIR points at a nonexistent dir so MakeAvailable populates the headers without running
+# CLAP's own CMakeLists.
+include(FetchContent)
+FetchContent_Declare(clap
+    GIT_REPOSITORY https://github.com/free-audio/clap.git
+    GIT_TAG        1.2.8
+    GIT_SHALLOW    TRUE
+    SOURCE_SUBDIR  _skip_clap_cmake)
+FetchContent_MakeAvailable(clap)
+add_library(clap_headers INTERFACE)
+target_include_directories(clap_headers INTERFACE ${clap_SOURCE_DIR}/include)
+
 # nlohmann/json is header-only and shared by the app AND the headless tests
 # (control-server JSON shape, persistence), so fetch it before the app guard.
 include(FetchContent)
@@ -150,18 +166,6 @@ add_library(vst3_iids STATIC
     ${vst3sdk_SOURCE_DIR}/base/source/baseiids.cpp
     src/audio/vst3_vstiids.cpp)
 target_link_libraries(vst3_iids PUBLIC vst3_headers)
-
-# --- CLAP SDK (header-only C API; hosts CLAP plugins e.g. Surge XT / Surge XT Effects) ---
-# SOURCE_SUBDIR points at a nonexistent dir so MakeAvailable populates the headers
-# without running CLAP's own CMakeLists.
-FetchContent_Declare(clap
-    GIT_REPOSITORY https://github.com/free-audio/clap.git
-    GIT_TAG        1.2.8
-    GIT_SHALLOW    TRUE
-    SOURCE_SUBDIR  _skip_clap_cmake)
-FetchContent_MakeAvailable(clap)
-add_library(clap_headers INTERFACE)
-target_include_directories(clap_headers INTERFACE ${clap_SOURCE_DIR}/include)
 
 # --- FreeType (real font rendering — hinted glyph atlas + glyph outlines for text geometry).
 # Vendored via FetchContent as vivid-4 did; minimal build (TrueType only, no optional codecs). ---
