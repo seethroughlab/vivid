@@ -9,7 +9,7 @@ path, and missing-plugin recovery) before a tutorial is allowed to require it.
 - **Formats:** CLAP, VST3, AU
 - **Role:** the required beginner instrument
 - **Install path Vivid expects (macOS):** `/Library/Audio/Plug-Ins/CLAP/Surge XT.clap`
-- **Get it:** [surge-synthesizer.github.io](https://surge-synthesizer.github.io/) — or `brew install --cask surge-xt`
+- **Get it:** [surge-synthesizer.github.io](https://surge-synthesizer.github.io/) - or `brew install --cask surge-xt`
 
 Surge XT is free, open source, cross-platform, audible out of the box, and ships a large preset
 library. The first tutorial loads the CLAP bundle directly, so your project never depends on a paid
@@ -17,14 +17,14 @@ DAW or plugin.
 
 ## Optional next installs
 
-These are for later tutorials and the showcase demos — not needed to start.
+These are for later tutorials and the showcase demos - not needed to start.
 
 ### Surge XT Effects
 
 - **Formats:** CLAP, VST3, AU
 - **Role:** tutorial-friendly delay / reverb / filter effects
 - **Install path (macOS):** `/Library/Audio/Plug-Ins/CLAP/Surge XT Effects.clap`
-- Usually installs alongside Surge XT — it keeps the early stack inside one free plugin family.
+- Usually installs alongside Surge XT - it keeps the early stack inside one free plugin family.
 
 ### BPB Cassette Drums
 
@@ -37,4 +37,4 @@ These are for later tutorials and the showcase demos — not needed to start.
 
 - **Formats:** VST3, AU
 - **Role:** optional wavetable synth for later sound-design tutorials
-- **Get it:** [vital.audio](https://vital.audio/) — the free Basic tier includes the full synth engine.
+- **Get it:** [vital.audio](https://vital.audio/) - the free Basic tier includes the full synth engine.

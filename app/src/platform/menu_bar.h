@@ -24,8 +24,15 @@ struct MenuActions {
     std::function<void()> export_audio;     // File > Export Audio (offline master-mix bounce to .wav, ADR-0032)
     std::function<void()> export_av;        // File > Export Video (Deterministic) (offline AV render, ADR-0032 Phase C)
     std::function<void()> toggle_reduce_motion;  // View > Reduce Motion (UX Ph4 F1 accessibility toggle)
+    std::function<void()> relayout_graph;        // View > Re-layout Graph (⌘L) — tidy visual + audio node graphs
     std::function<void(const std::string&)> select_audio_device;  // View > Audio Output > <name> (ADR-0032 Phase A; "" = system default)
+    std::function<void()> connect_claude;   // Help > Connect Claude… (ADR-0040: point a user at the bundled MCP bridge)
 };
+
+// Show a modal message with a one-click "Copy" for `copy_text` (Help > Connect Claude hands the
+// user a `claude mcp add …` command). macOS: an NSAlert; other platforms: a no-op.
+void show_copyable_message(const std::string& title, const std::string& body,
+                           const std::string& copy_text);
 
 // A menu entry for the File > Open Example submenu: a display label + the project path to open.
 // `group` is "" for a top-level item, else the name of a submenu to nest it under (e.g. "operators"

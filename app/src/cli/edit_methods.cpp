@@ -56,6 +56,19 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "audio_graph_add_midi_in",{ "Add Audio Node",     false } },
         { "audio_graph_add_plugin", { "Add Audio Node",     false } },
         { "audio_graph_remove_node",{ "Remove Audio Node",  false } },
+        // ---- Sampler sample editing (ADR-0049). `audio_graph_load_sampler` was missing here, so an
+        // MCP sample load was NOT undoable even though the same edit from the UI is. ----------------
+        { "audio_graph_load_sampler", { "Load Sample",      false } },
+        { "sampler_set_trim",         { "Trim Sample",      false } },
+        { "sampler_slice_equal",      { "Sampler Slices",   false } },
+        { "sampler_set_slices",       { "Sampler Slices",   false } },
+        { "sampler_detect_slices",    { "Detect Slices",    false } },
+        { "sampler_set_slice_tune",   { "Slice Tune",       true  } },   // a run of nudges = one entry
+        { "sampler_slices_to_midi",   { "Slices to MIDI",   false } },
+        { "audio_graph_add_annotation",      { "Add Note",    false } },   // ADR-0033 P5 (audio graph notes)
+        { "audio_graph_set_annotation_text", { "Edit Note",   false } },
+        { "audio_graph_move_annotation",     { "Move Note",   true  } },
+        { "audio_graph_remove_annotation",   { "Delete Note", false } },
         { "duplicate_audio_nodes",  { "Duplicate Audio Nodes", false } },   // ADR-0033 P2b
         { "audio_graph_connect",    { "Connect Audio",      false } },
         { "graph_connect",          { "Connect",            false } },   // ADR-0022 P4: by gnid (intra/cross)
@@ -82,6 +95,8 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "pool_remove",           { "Remove Clip",         false } },
         { "pool_stash",            { "Stash Clip",          false } },
         { "import_audio_clip",     { "Import Audio Clip",   false } },
+        { "import_midi",           { "Import MIDI",         false } },   // writes clip notes -> undoable
+        // export_midi is NOT here: it only writes a file, it does not touch the document.
         // ---- audio session (G3): values (coalesce a rapid run into one entry) ----
         { "set_track_gain",        { "Set Gain",            true  } },
         { "set_master_gain",       { "Set Master Gain",     true  } },
@@ -91,6 +106,7 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "set_audio_op_param",    { "Set Param",           true  } },
         { "audio_graph_set_node_param",     { "Set Param",       true } },
         { "audio_graph_set_node_key_range", { "Set Key Range",   true } },
+        { "set_clip_cc",           { "Edit Automation",     true } },   // coalesces like set_clip: a lane drag is one entry
         { "set_clip",              { "Edit Clip",           true  } },
         { "set_clip_loop",         { "Set Loop",            true  } },
         { "audio_set_warp",        { "Warp Clip",           true  } },

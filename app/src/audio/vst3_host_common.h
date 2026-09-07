@@ -7,6 +7,8 @@
 
 #include "vivid_audio_context.h"
 #include "audio/plugin_watchdog.h"   // ADR-0045 Tier 2a: PluginFaultState
+#include "audio/audio_health.h"      // note_param_queue_full (dropped param changes are counted, not silent)
+#include "midi/midi_clip.h"          // kMaxCcLanes / kCcCount (P4 clip controller lanes)
 #include "base64.h"
 #include "pluginterfaces/base/funknown.h"
 #include "pluginterfaces/base/ipluginbase.h"
@@ -17,6 +19,7 @@
 #include "pluginterfaces/vst/ivstevents.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
+#include "pluginterfaces/vst/ivstmidicontrollers.h"   // ControllerNumbers (kAfterTouch/kPitchBend) — P4
 #include "pluginterfaces/vst/ivsthostapplication.h"
 #include "pluginterfaces/vst/ivstmessage.h"
 #include "pluginterfaces/vst/ivstpluginterfacesupport.h"
@@ -184,15 +187,31 @@ struct SinglePointQueue : IParamValueQueue {
 
 struct Vst3ParamChanges : IParameterChanges {
     // ADR-0034: was 8; raised so per-block control-edge modulation (up to kMaxControlInputs params)
-    // can stack on top of the drained UI param edits without overflowing the queue.
-    static constexpr int kMaxParams = 64;
+    // can stack on top of the drained UI param edits without overflowing the queue. P4 raised it
+    // again to fit clip CC lanes on top of both.
+    static constexpr int kMaxParams = 96;
+    static_assert(kMaxParams >= vivid::session::kMaxCcLanes + 32,
+                  "one block's param changes must fit CC lanes + modulation + drained UI edits");
     SinglePointQueue queues_[kMaxParams];
     int count_ = 0;
 
     void clear() { count_ = 0; }
 
+    // Last write wins, and a repeated ParamID OVERWRITES rather than appending. VST3 requires at
+    // most one queue per parameter in an IParameterChanges; before this, a UI param edit plus a
+    // modulation edge on the same param pushed two queues reporting the same getParameterId(), and
+    // it only appeared to work because most plugins iterate and take the last. CC injection makes
+    // the collision routine (a mod-wheel-mapped param that is also automated), so fix it properly.
+    // A linear scan over <=96 entries on the audio thread is nothing.
     void add(ParamID id, ParamValue value) {
-        if (count_ >= kMaxParams) return;
+        for (int i = 0; i < count_; ++i)
+            if (queues_[i].id == id) { queues_[i].value = value; return; }
+        if (count_ >= kMaxParams) {
+            // Silently dropping a param change is exactly the "my mod wheel stops working
+            // sometimes" bug, so count it where the health surface can see it.
+            vivid::audio::health::note_param_queue_full();
+            return;
+        }
         queues_[count_].id    = id;
         queues_[count_].value = value;
         ++count_;
@@ -538,6 +557,18 @@ struct Vst3Handle {
     Vst3ComponentHandler component_handler;           // stub for setComponentHandler
     ParamQueue         param_q;                        // UI->audio parameter changes
 
+    // P4: MIDI-controller -> ParamID map. VST3 has NO MIDI CC event; a controller reaches a plugin
+    // only by asking IMidiMapping which parameter it is bound to and pushing that into
+    // IParameterChanges. getMidiControllerAssignment is documented "[UI-thread & Connected]", so
+    // this is filled ONCE on the main thread at load and thereafter only READ by the audio thread —
+    // the same discipline as `params`/`abase` below, which are likewise plain (non-atomic) because
+    // the audio thread cannot reach a handle before the load path publishes it.
+    static constexpr int kCtrlCount = vivid::session::kCcCount;   // 130 == Vst::kCountCtrlNumber
+    ParamID            midi_map[kCtrlCount]     = {};
+    uint8_t            midi_map_has[kCtrlCount] = {};
+    bool               midi_map_ok = false;   // the plugin implements IMidiMapping at all
+    int                midi_map_n  = 0;       // how many controllers resolved (introspection)
+
     // Param info cache for macro mapping
     struct ParamEntry {
         ParamID     id;
@@ -676,6 +707,32 @@ inline std::string vst3_tchar_to_utf8(const TChar* src) {
 // ---------------------------------------------------------------------------
 // Cache parameter info from IEditController into Vst3Handle::params
 // ---------------------------------------------------------------------------
+
+// P4: cache the plugin's MIDI-controller -> ParamID map. VST3 carries no CC event; a controller
+// reaches the plugin as a PARAMETER CHANGE on whatever id IMidiMapping binds it to. Queried once
+// here on the main thread (the interface is documented "[UI-thread & Connected]", so it must run
+// after setComponentHandler + IConnectionPoint + setComponentState — several plugins only report
+// assignments once connected). Bus 0 / channel 0 only, matching emit_vst3's hard-coded channel 0;
+// per-channel (MPE) mapping is out of scope.
+inline void vst3_cache_midi_map(Vst3Handle* h) {
+    h->midi_map_ok = false;
+    h->midi_map_n  = 0;
+    std::memset(h->midi_map_has, 0, sizeof h->midi_map_has);
+    if (!h->controller) return;
+    IMidiMapping* mm = nullptr;
+    if (h->controller->queryInterface(IMidiMapping::iid, reinterpret_cast<void**>(&mm)) != kResultOk || !mm)
+        return;   // plenty of plugins don't implement it — that is a fact to report, not an error
+    h->midi_map_ok = true;
+    for (int cc = 0; cc < Vst3Handle::kCtrlCount; ++cc) {
+        ParamID id = 0;
+        if (mm->getMidiControllerAssignment(0, 0, static_cast<CtrlNumber>(cc), id) == kResultTrue) {
+            h->midi_map[cc]     = id;
+            h->midi_map_has[cc] = 1;
+            ++h->midi_map_n;
+        }
+    }
+    mm->release();
+}
 
 inline void vst3_cache_params(Vst3Handle* h) {
     if (!h->controller) return;
@@ -1222,6 +1279,7 @@ inline Vst3Handle* vst3_load_plugin(const char* bundle_path,
     }
 
     vst3_cache_params(h);
+    vst3_cache_midi_map(h);   // P4: CC -> ParamID, once, on the main thread
     vst3_load_state(h, saved_state);
 
 #ifdef __APPLE__

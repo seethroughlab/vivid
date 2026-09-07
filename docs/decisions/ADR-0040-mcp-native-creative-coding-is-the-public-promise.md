@@ -1,6 +1,6 @@
 # ADR-0040: MCP-Native Creative Coding Is the Public Promise
 
-Status: accepted
+Status: accepted, **partially amended by [ADR-0055](ADR-0055-the-website-is-a-manifesto-for-a-new-instrument.md)** (2026-08-12) — the *public-facing headline lead* is reframed to the instrument/manifesto ("a new instrument for live visuals"); MCP + LLM-authored operators become the site's reveal rather than the H1. The product gate, lean-core rules, and fulfillment gates below stand unchanged.
 
 Date: 2026-07-26
 
@@ -290,15 +290,32 @@ running it exposed and fixed four real, pre-existing blockers, none of them prod
 - Plus the DMG staging path (`../..`) and a tag-gated GitHub Release step.
 
 Result: GitHub Actions produces a **signed + notarized** DMG (`spctl --assess` → "accepted, Notarized
-Developer ID"; ticket stapled). Installed to `/Applications/vivid.app`, it launches and the
+Developer ID"; ticket stapled). Installed to `/Applications/Vivid.app`, it launches and the
 **project-cpp-operator tutorial passes against it** — scaffold → real `clang++` build → `dlopen` of
 the operator dylib *under the hardened runtime* (the entitlement's payoff) → recover → recompile — so
 the compiled-operator loop, the hardest gate, is demonstrated from a signed build. A new
 `check_tutorial_prereqs` `project_cpp_operator` checklist verifies the toolchain + bundle Resources on
 the signed build (Xcode CLT is a documented tier-3 prerequisite — the compiler is not bundled, matching
 vivid-classic). The acceptance *scripts* still run from a repo checkout against the signed app;
-distributing them to a no-repo user (bundling `examples/` + `mcp/`) remains a follow-up, as does the
+distributing them to a no-repo user (bundling `examples/`) remains a follow-up, as does the
 showcase regenerate→screenshot harness that ADR-0037 gates the website on.
+
+**Bundling `mcp/` is now done.** It was the load-bearing half of that follow-up: Fulfillment Gate 2
+("the tutorial can connect through MCP/control-server tools") was not actually reachable from a
+signed build, because the release carried the `.app` alone and the only client config in the tree
+hardcoded a maintainer path. The bridge (`vivid_mcp.py` + `theory.py` + its README) now ships in
+`Contents/Resources/mcp` via the `vivid_mcp_bridge` build target, **Help ▸ Connect Claude…** shows
+the ready-to-paste `claude mcp add` line with a Copy button, and `get_mcp_setup` returns the same
+string over the control server so an already-connected agent can hand it to a user.
+
+Two constraints the implementation had to respect, recorded because they are easy to reintroduce:
+the command uses `uv run --script`, **not** `--directory` — the latter creates a `.venv` inside the
+directory it runs in, i.e. inside a bundle that is unwritable under `/Applications` and whose
+signature such a write would invalidate — and `vivid_mcp.py` sets `sys.dont_write_bytecode = True`
+so importing its sibling `theory.py` does not drop a `__pycache__/` into the sealed bundle. Verified
+end to end against an ad-hoc-signed, `chmod a-w` bundle: MCP `initialize` + a `tools/call` reached
+the running app, the bundle was byte-for-byte unchanged, and `codesign --verify --deep --strict`
+still passed.
 
 ## Implementation Order
 

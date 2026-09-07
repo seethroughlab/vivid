@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" role="img" aria-label="Vivid">
+  <defs>
+    <linearGradient id="vividSignal" x1="9" y1="12" x2="39" y2="12" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4ecdc4"/>
+      <stop offset=".5" stop-color="#5ea0ff"/>
+      <stop offset="1" stop-color="#ff5aa8"/>
+    </linearGradient>
+  </defs>
+  <!-- two source signals (sound + picture) converging to one output node -->
+  <path d="M9 12 L24 37 L39 12" stroke="url(#vividSignal)" stroke-width="6"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="9" cy="12" r="5" fill="#4ecdc4"/>
+  <circle cx="39" cy="12" r="5" fill="#ff5aa8"/>
+  <circle cx="24" cy="37" r="4.5" fill="#e6ebf2"/>
+</svg>

@@ -26,6 +26,12 @@ int main() {
     warn2.control_running = false;
     CHECK(severity(warn2) == Severity::Warning);
 
+    // An operator reporting a runtime error (a failed-init op rendering black, or a soft notice) ->
+    // Warning, NOT Error (ADR-0019): the app keeps running and the channel carries soft notices too.
+    HealthSnapshot warn3 = ok;
+    warn3.errored_ops = 1;
+    CHECK(severity(warn3) == Severity::Warning);
+
     // Device lost -> Error (hard breakage).
     HealthSnapshot err1 = ok;
     err1.gpu_ok = false;
@@ -57,6 +63,8 @@ int main() {
     CHECK(j["app_version"] == "9.9.9");
     CHECK(j["graph"]["op_nodes"] == 3);
     CHECK(j["graph"]["missing_ops"] == 0);
+    CHECK(j["graph"]["errored_ops"] == 0);
+    CHECK(to_json(warn3)["graph"]["errored_ops"] == 1);
     CHECK(j["graph"]["output_fed"] == true);   // default (fed)
     CHECK(to_json(unfed)["graph"]["output_fed"] == false);
     CHECK(j["gpu"]["ok"] == true);

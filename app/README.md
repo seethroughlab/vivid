@@ -17,7 +17,7 @@ pieces from `vivid-classic`.
 
 ```sh
 cmake -S app -B app/build && cmake --build app/build -j
-app/build/vivid.app/Contents/MacOS/vivid        # control server logs on 127.0.0.1:9876
+app/build/Vivid.app/Contents/MacOS/Vivid        # control server logs on 127.0.0.1:9876
 ```
 
 The agent bridge (the app must be running):

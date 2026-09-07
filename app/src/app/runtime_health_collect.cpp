@@ -38,6 +38,7 @@ HealthSnapshot collect_health(const App& app) {
     // authority (it excludes the Output/Video host contracts, which carry no operator yet are not
     // "missing" — counting them here made severity() spuriously Error in every session).
     if (app.vgraph) s.missing_ops = app.vgraph->missing_op_count();
+    if (app.vgraph) s.errored_ops = app.vgraph->errored_op_count();
     // Structural blank-vs-empty signal (P2-03): does a producer feed the active Output?
     if (app.vgraph) s.output_fed = app.vgraph->output_has_feed();
 
@@ -55,6 +56,9 @@ HealthSnapshot collect_health(const App& app) {
     s.audio_render_bailouts = bail - last_bail; last_bail = bail;
     s.audio_over_budget     = ob   - last_ob;   last_ob   = ob;
     s.audio_handoff_skips   = sk   - last_skip; last_skip = sk;
+    static uint64_t last_pdrop = 0;
+    const uint64_t pd = ah::g_param_queue_full.load(std::memory_order_relaxed);
+    s.audio_param_drops     = pd   - last_pdrop; last_pdrop = pd;
     s.audio_last_callback_us = ah::g_last_callback_us.load(std::memory_order_relaxed);
     s.audio_max_callback_us  = ah::g_max_callback_us.load(std::memory_order_relaxed);
     s.audio_bailout_error_threshold = vivid::audio::audio_budgets().bailout_error_count;

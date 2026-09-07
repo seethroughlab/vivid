@@ -39,6 +39,18 @@ struct Style {
     float gold[3]    = { 0.95f, 0.78f, 0.30f };      // queued / warn
     float green[3]   = { 0.30f, 0.80f, 0.50f };      // meter / level
     float red[3]     = { 0.90f, 0.24f, 0.28f };      // error / broken (dot, node border, record disc)
+    // --- clip-editor CONTENT (ADR-0048): the piano roll's own objects ---
+    // The chrome above is the zone's language; these are the things you EDIT. They were hardcoded RGB
+    // literals in clip_editor.cpp, which let three of them collide: selection borrowed `gold` (which
+    // also means the loop region AND the step cursor) and `sel` blue (which means focus frame). Each
+    // token below now means exactly ONE thing.
+    float note[3]      = { 0.30f, 0.78f, 0.80f };    // a note body (cyan — content, distinct from amber chrome)
+    float note_sel[3]  = { 0.55f, 0.85f, 1.00f };    // a SELECTED note: the same hue, lifted — not blue, not gold
+    float note_ghost[3]= { 0.30f, 0.34f, 0.42f };    // another track's reference notes
+    float roll_loop[3] = { 0.95f, 0.78f, 0.30f };    // the in-clip loop region (gold means loop, only)
+    float roll_step[3] = { 0.60f, 0.85f, 0.55f };    // the step-input write cursor (was gold; now its own)
+    float roll_scale[3]= { 0.35f, 0.85f, 0.45f };    // in-scale pitch-row highlight
+    float roll_head[3] = { 0.95f, 0.35f, 0.35f };    // the transport playhead (matches the waveform's)
     // --- spacing scale (logical px) ---
     float s1 = 2.f, s2 = 4.f, s3 = 6.f, s4 = 8.f, s5 = 12.f, s6 = 16.f, s7 = 24.f;
     // --- type ramp (scale factor on the 15px base font) ---

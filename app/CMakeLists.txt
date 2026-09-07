@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(vivid VERSION 0.1.1 LANGUAGES C CXX)
+project(vivid VERSION 0.2.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -37,6 +37,22 @@ endif()
 if(VIVID_UNDO_AUDIT)
     add_compile_definitions(VIVID_UNDO_AUDIT)
 endif()
+
+# CLAP is header-only, portable C and shared by the app AND the headless tests (test_clap_events
+# pins the MIDI/note-expression event bytes), so — like nlohmann/json below — it is fetched BEFORE
+# the tests-only `return()`. Declaring it after the app guard is what broke the Linux `tests` job:
+# that configure never reached it, so clap_headers did not exist and the test failed to compile.
+# SOURCE_SUBDIR points at a nonexistent dir so MakeAvailable populates the headers without running
+# CLAP's own CMakeLists.
+include(FetchContent)
+FetchContent_Declare(clap
+    GIT_REPOSITORY https://github.com/free-audio/clap.git
+    GIT_TAG        1.2.8
+    GIT_SHALLOW    TRUE
+    SOURCE_SUBDIR  _skip_clap_cmake)
+FetchContent_MakeAvailable(clap)
+add_library(clap_headers INTERFACE)
+target_include_directories(clap_headers INTERFACE ${clap_SOURCE_DIR}/include)
 
 # nlohmann/json is header-only and shared by the app AND the headless tests
 # (control-server JSON shape, persistence), so fetch it before the app guard.
@@ -151,18 +167,6 @@ add_library(vst3_iids STATIC
     src/audio/vst3_vstiids.cpp)
 target_link_libraries(vst3_iids PUBLIC vst3_headers)
 
-# --- CLAP SDK (header-only C API; hosts CLAP plugins e.g. Surge XT / Surge XT Effects) ---
-# SOURCE_SUBDIR points at a nonexistent dir so MakeAvailable populates the headers
-# without running CLAP's own CMakeLists.
-FetchContent_Declare(clap
-    GIT_REPOSITORY https://github.com/free-audio/clap.git
-    GIT_TAG        1.2.8
-    GIT_SHALLOW    TRUE
-    SOURCE_SUBDIR  _skip_clap_cmake)
-FetchContent_MakeAvailable(clap)
-add_library(clap_headers INTERFACE)
-target_include_directories(clap_headers INTERFACE ${clap_SOURCE_DIR}/include)
-
 # --- FreeType (real font rendering — hinted glyph atlas + glyph outlines for text geometry).
 # Vendored via FetchContent as vivid-4 did; minimal build (TrueType only, no optional codecs). ---
 set(FT_DISABLE_ZLIB     ON CACHE BOOL "" FORCE)
@@ -220,11 +224,13 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/project_io.cpp
     src/app/file_actions.cpp
     src/app/examples.cpp
+    src/app/mcp_bridge.cpp
     src/app/node_presets.cpp
     src/app/node_presets_graph.cpp
     src/app/window_prefs.cpp
     src/app/app_settings.cpp
     src/app/video_recorder.cpp
+    src/app/master_recorder.cpp
     src/app/reactivity_ring.cpp
     src/app/operator_clone.cpp
     src/app/runtime_health.cpp
@@ -299,6 +305,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/cli/control_handlers_audio_clip_pool.cpp
     src/cli/control_handlers_audio_devices.cpp
     src/cli/control_handlers_audio_graph.cpp
+    src/cli/control_handlers_sampler.cpp
     src/cli/control_handlers_audio_catalog.cpp
     src/cli/control_handlers_introspection.cpp
     src/cli/control_handlers_mappings.cpp
@@ -346,6 +353,13 @@ if(APPLE)
     set_source_files_properties(platform/macos/Vivid.icns PROPERTIES
         MACOSX_PACKAGE_LOCATION Resources)
     set_target_properties(vivid PROPERTIES
+        # The bundle DIRECTORY is named after OUTPUT_NAME, not the CMake target. Without this it
+        # inherited the lowercase target name and shipped as `Vivid.app` while CFBundleName below
+        # said "Vivid" — so Finder showed one name and the menu bar another, and every documented
+        # /Applications path was wrong on a case-sensitive volume (it only resolved because the
+        # default APFS is case-insensitive). macOS convention is bundle-dir == display name:
+        # Safari.app, Xcode.app. The TARGET stays lowercase `vivid`; only the artifact is renamed.
+        OUTPUT_NAME "Vivid"
         MACOSX_BUNDLE_BUNDLE_NAME "Vivid"
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.vivid.app"
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
@@ -472,6 +486,35 @@ add_custom_target(vivid_operator_headers ALL
     COMMENT "Copying the operator_api + webgpu headers into the app (ADR-0020 shippable toolchain)"
     VERBATIM)
 add_dependencies(vivid_operator_headers vivid)   # the bundle dir has to exist first
+
+# ADR-0040 follow-up: ship the MCP BRIDGE inside the app, so a user who downloaded a release can
+# connect an agent without a repo checkout (the release DMG carried the .app alone, and the only
+# client config in the tree hardcoded a dev path). Help > Connect Claude reads this back at runtime
+# via app/mcp_bridge.cpp and hands the user the exact `claude mcp add` command.
+# Copied file-by-file rather than copy_directory: mcp/ also holds .venv/, __pycache__/ and tests
+# that have no business in a signed bundle. Own target for the same reason as the headers above —
+# a POST_BUILD on `vivid` only fires when the app relinks, leaving a stale bridge after a .py edit.
+# Just the two modules + the README: the bundled bridge runs as `uv run --script vivid_mcp.py`,
+# which resolves deps from the PEP-723 header into uv's own cache, so pyproject.toml/uv.lock would
+# be dead weight (and uv.lock is 300 KB). Nothing must ever be WRITTEN under Resources/mcp — that
+# is unwritable under /Applications and would invalidate the signature.
+if(APPLE)
+    set(_mcp_dest "$<TARGET_BUNDLE_CONTENT_DIR:vivid>/Resources/mcp")
+else()
+    set(_mcp_dest "$<TARGET_FILE_DIR:vivid>/mcp")
+endif()
+set(_mcp_files vivid_mcp.py theory.py README.md)
+set(_mcp_copy_cmds)
+foreach(_f IN LISTS _mcp_files)
+    list(APPEND _mcp_copy_cmds COMMAND ${CMAKE_COMMAND} -E copy_if_different
+         "${CMAKE_CURRENT_SOURCE_DIR}/../mcp/${_f}" "${_mcp_dest}/${_f}")
+endforeach()
+add_custom_target(vivid_mcp_bridge ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_mcp_dest}"
+    ${_mcp_copy_cmds}
+    COMMENT "Copying the MCP bridge into the app (ADR-0040: a release must be connectable)"
+    VERBATIM)
+add_dependencies(vivid_mcp_bridge vivid)   # the bundle dir has to exist first
 # test_operator_clone drives the same package compiler, so it needs the same wgpu dirs. They are
 # set HERE (not in tests/CMakeLists) because tests/ is added before webgpu is fetched.
 if(VIVID_BUILD_TESTS AND TARGET test_operator_clone)

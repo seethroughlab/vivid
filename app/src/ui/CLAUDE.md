@@ -69,6 +69,14 @@
   of the catalog (registry-only vs bundles-only), so neither could add everything. A CLAP
   *note-effect* is listed but **disabled** until ADR-0015's note edges exist: spawned as an audio
   effect it would get zero notes and write silence over the chain.
+- **`tooltip.h`** — dwell-gated hover tooltips. The app is immediate-mode (every control re-derives
+  `hov` each frame and throws it away), so `TipState` holds the one thing that isn't recomputable:
+  how long the cursor has been on the SAME item. It lives on the `Window` beside `toasts`, is ticked
+  once per frame by whoever owns the tipped surface (`tick_top_bar_tooltip` for the transport bar,
+  in `session_view`), and draws in the frame loop's overlay pass — last, so the pill is on top. The
+  body is `hover_status()` from `editor_controls.h`, not a second chrome vocabulary. `TipState.anchor`
+  is a PLACEMENT rect, not the hit rect: a row of controls passes a common band so the pill doesn't
+  bob as the cursor crosses it.
 - **`clip_editor.{h,cpp}`** — the dockable MIDI piano-roll / audio waveform editor.
 
 Renderer/UI is **kept ours** (not lifted from vivid-classic) — see ADR-0011.
