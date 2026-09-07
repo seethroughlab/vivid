@@ -55,7 +55,7 @@ struct VectorTextOp : vivid::OperatorBase, vivid::GpuProcessable {
 
     vivid::FtFont font_; bool font_tried_ = false;
     std::string loaded_path_ = "\x01", text_, baked_text_ = "\x01";
-    bool tried_ = false;
+    bool tried_ = false; std::string err_;   // ADR-0019: surfaced per-frame via report_if_no_pipeline
     WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
     WGPURenderPipeline stencil_pipe_ = nullptr, cover_pipe_ = nullptr;
     WGPUBuffer ubo_ = nullptr; WGPUBindGroup bg_ = nullptr;
@@ -140,7 +140,7 @@ struct VectorTextOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     bool lazy_init(const VividGpuContext* c) {
         std::string err; sh_ = vivid::gpu::create_shader_checked(c->device, kVectorTextWGSL, "VectorText", err);
-        if (!sh_ || !err.empty()) return false;
+        if (!sh_ || !err.empty()) { err_ = vivid::gpu::concise_gpu_error(err); return false; }
         ubo_ = vivid::gpu::create_uniform_buffer(c->device, 48, "VectorText U");
         WGPUBindGroupLayoutEntry e{}; e.binding = 0; e.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
         e.buffer.type = WGPUBufferBindingType_Uniform; e.buffer.minBindingSize = 48;
@@ -157,7 +157,10 @@ struct VectorTextOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     void process_gpu(const VividGpuContext* c) override {
         if (!tried_) { tried_ = true; lazy_init(c); }
-        if (!stencil_pipe_ || !cover_pipe_) return;
+        if (!stencil_pipe_ || !cover_pipe_) {   // ADR-0019: surface the init failure, don't render silent
+            vivid_report_gpu_error(c, err_.empty() ? "GPU pipeline failed to initialize" : err_.c_str());
+            return;
+        }
         if (file.str_value != loaded_path_) {   // reload the string from the .txt file
             loaded_path_ = file.str_value; text_.clear();
             if (!file.str_value.empty()) { std::ifstream f(file.str_value); if (f) text_.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>()); }

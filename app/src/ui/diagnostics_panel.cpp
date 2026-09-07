@@ -146,9 +146,9 @@ void draw_diagnostics_panel(Renderer2D& ui, const HealthSnapshot& h, const App& 
 
 // UX Ph4 F3: the keyboard-shortcut cheat-sheet (toggle: ?). A static list so the single-key
 // shortcuts are discoverable in-app rather than only in the docs.
-void draw_shortcuts_overlay(Renderer2D& ui, int win_w, int win_h) {
+void draw_shortcuts_overlay(Renderer2D& ui, int win_w, int win_h, bool clip_editor, bool audio_mode) {
     const Style& sty = style();
-    struct Row { const char* key; const char* desc; };
+    struct Row { const char* key; const char* desc; };   // key == nullptr => a section heading
     static const Row rows[] = {
         {"Space",                    "Play / Stop"},
         {"R",                        "Record (arm)"},
@@ -170,7 +170,38 @@ void draw_shortcuts_overlay(Renderer2D& ui, int win_w, int win_h) {
         {"?",                        "This shortcut list"},
         {"Esc",                      "Close an overlay / chooser"},
     };
-    const int n = static_cast<int>(sizeof(rows) / sizeof(rows[0]));
+    // ADR-0048 step 4: the clip editor's power keys belong here, not in an always-visible footer crawl.
+    // Appended only while the editor is open, so the global list stays short the rest of the time.
+    static const Row midi_rows[] = {
+        {nullptr,                    "MIDI CLIP EDITOR"},
+        {"B / S",                    "Draw tool / Select tool"},
+        {"G",                        "Cycle the grid (1/4 \xE2\x80\xA6 1/64, triplets)"},
+        {"K / \xE2\x87\xA7K",        "Scale root / scale type"},
+        {"E",                        "Cycle the lane: velocity \xE2\x86\x92 bend \xE2\x86\x92 pressure \xE2\x86\x92 timbre"},
+        {"\xE2\x8C\xA5 (drag)",      "Bypass grid snap (fine positioning)"},
+        {"\xE2\x8C\x98U",            "Quantize the selection"},
+        {"I / R",                    "Invert / Retrograde"},
+        {"H / T",                    "Humanize / Strum"},
+        {"Y",                        "Quantize pitches to the scale"},
+        {"'",                        "Glide (bend each note in from the last)"},
+        {"< / >",                    "Velocity softer / louder"},
+        {"\xE2\x8C\x98" "C / V / D", "Copy / Paste / Duplicate the selection"},
+    };
+    static const Row audio_rows[] = {
+        {nullptr,                    "AUDIO CLIP EDITOR"},
+        {"scroll",                   "Pan \xC2\xB7 \xE2\x8C\x98 zoom \xC2\xB7 \xE2\x8C\xA5 amplitude"},
+        {"drag brace",               "Trim the loop window"},
+        {"drag marker",              "Move a warp marker"},
+        {"\xE2\x87\xA7" "click",     "Add / delete a warp marker"},
+    };
+    const int base_n = static_cast<int>(sizeof(rows) / sizeof(rows[0]));
+    const Row* extra = nullptr; int extra_n = 0;
+    if (clip_editor) {
+        extra   = audio_mode ? audio_rows : midi_rows;
+        extra_n = audio_mode ? static_cast<int>(sizeof(audio_rows) / sizeof(audio_rows[0]))
+                             : static_cast<int>(sizeof(midi_rows) / sizeof(midi_rows[0]));
+    }
+    const int n = base_n + extra_n;
     const float w = 460.f, rowh = 22.f, hdr = 40.f;
     const float h = hdr + n * rowh + 16.f;
     const float px = (win_w - w) * 0.5f, py = 84.f;
@@ -179,9 +210,16 @@ void draw_shortcuts_overlay(Renderer2D& ui, int win_w, int win_h) {
     ui.draw_text(px + 16.f, py + 12.f, "KEYBOARD SHORTCUTS", 0.9f, 0.92f, 0.95f, 1.0f, 0.94f);
     ui.draw_text(px + w - 96.f, py + 14.f, "Esc to close", 0.5f, 0.52f, 0.56f, 1.0f, 0.76f);
     for (int i = 0; i < n; ++i) {
+        const Row& row = (i < base_n) ? rows[i] : extra[i - base_n];
         const float ry = py + hdr + i * rowh;
-        ui.draw_text(px + 18.f, ry + 4.f, rows[i].key, sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.82f);
-        ui.draw_text(px + 168.f, ry + 4.f, rows[i].desc, sty.body[0], sty.body[1], sty.body[2], 1.0f, 0.82f);
+        if (!row.key) {   // a section heading: an amber kicker with a rule above it
+            ui.draw_rect(px + 18.f, ry + 2.f, w - 36.f, 1.f,
+                         sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
+            ui.draw_text(px + 18.f, ry + 7.f, row.desc, sty.audio[0], sty.audio[1], sty.audio[2], 1.0f, sty.fs_kicker);
+            continue;
+        }
+        ui.draw_text(px + 18.f, ry + 4.f, row.key, sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.82f);
+        ui.draw_text(px + 168.f, ry + 4.f, row.desc, sty.body[0], sty.body[1], sty.body[2], 1.0f, 0.82f);
     }
 }
 

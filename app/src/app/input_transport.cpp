@@ -23,8 +23,25 @@ bool transport_mouse(Window& win, App& app, int button, int action, double mx, d
     if (app.transport && hit(transport_play_rect(), mx, my)) { app.transport->toggle_playing(); return true; }
     if (app.session && hit(transport_record_rect(), mx, my)) {
         const bool rec = S::session_is_recording(app.session);
-        if (!rec && S::session_armed_track(app.session) < 0) return true;   // nothing armed — consume, no-op
-        S::session_set_recording(app.session, !rec, 0.0);
+        if (!rec) {
+            // Same preconditions the `record` MCP handler enforces, so the button and the agent
+            // behave identically. Both of these were silent dead ends: you performed a take and
+            // only then found out it went nowhere.
+            const int armed = S::session_armed_track(app.session);
+            if (armed < 0) return true;                                     // nothing armed — consume, no-op
+            if (S::session_active_clip(app.session, armed) < 0) {           // no clip playing to record INTO
+                vivid::ui::push_toast(win.toasts, vivid::LogLevel::Warning,
+                                      "Launch a clip on the armed track first — a take records into it",
+                                      glfwGetTime());
+                return true;
+            }
+            // Hitting record starts the transport, as in every DAW. Capture stamps notes with the
+            // transport beat, which does not advance while stopped — so recording paused used to
+            // stack an entire performance at beat 0.
+            if (app.transport && !app.transport->is_playing()) app.transport->set_playing(true);
+        }
+        if (S::session_set_recording(app.session, !rec, 0.0) > 0)
+            app.note_edit("Record Take");   // P4 Phase E: a take is undoable
         return true;
     }
     if (app.session && hit(transport_metro_rect(), mx, my)) {

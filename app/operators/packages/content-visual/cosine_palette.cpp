@@ -50,7 +50,7 @@ struct CosinePaletteOp : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> c_r{"c_r", 1.0f, 0.f, 4.f}, c_g{"c_g", 1.0f, 0.f, 4.f}, c_b{"c_b", 1.0f, 0.f, 4.f};
     vivid::Param<float> d_r{"d_r", 0.0f, 0.f, 1.f}, d_g{"d_g", 0.33f, 0.f, 1.f}, d_b{"d_b", 0.67f, 0.f, 1.f};
 
-    bool tried_ = false;
+    bool tried_ = false; std::string err_;   // ADR-0019: surfaced via report_if_no_pipeline below
     WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
     WGPURenderPipeline pipe_ = nullptr; WGPUBuffer ubo_ = nullptr; WGPUSampler samp_ = nullptr; WGPUBindGroup bg_ = nullptr;
     ~CosinePaletteOp() override {
@@ -71,7 +71,7 @@ struct CosinePaletteOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     bool lazy_init(const VividGpuContext* c) {
         std::string err; sh_ = vivid::gpu::create_shader_checked(c->device, kWGSL, "CosinePalette", err);
-        if (!sh_ || !err.empty()) return false;
+        if (!sh_ || !err.empty()) { err_ = vivid::gpu::concise_gpu_error(err); return false; }
         ubo_ = vivid::gpu::create_uniform_buffer(c->device, 80, "CosinePalette U");
         WGPUBindGroupLayoutEntry e[3]{};
         e[0].binding = 0; e[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
@@ -91,7 +91,7 @@ struct CosinePaletteOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     void process_gpu(const VividGpuContext* c) override {
         if (!tried_) { tried_ = true; lazy_init(c); }
-        if (!pipe_) return;
+        if (vivid::gpu::report_if_no_pipeline(c, pipe_, err_)) return;
         auto pv = [&](int i, float def) { return c->param_values ? c->param_values[i] : def; };
         // uniform: a.xyz0, b.xyz0, c.xyz0, d.xyz0, (phase, mix, 0, 0) — 20 floats / 80 bytes.
         const float u[20] = {

@@ -60,7 +60,7 @@ struct TextOp : vivid::OperatorBase, vivid::GpuProcessable {
 
     std::string loaded_path_ = "\x01", text_, baked_text_ = "\x01";
     vivid::FtFont font_; bool font_tried_ = false;
-    bool tried_ = false;
+    bool tried_ = false; std::string err_;   // ADR-0019: surfaced per-frame via report_if_no_pipeline
     WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
     WGPURenderPipeline pipe_ = nullptr; WGPUBuffer ubo_ = nullptr; WGPUSampler samp_ = nullptr;
     WGPUTexture txt_ = nullptr; WGPUTextureView txtv_ = nullptr; WGPUBindGroup bg_ = nullptr;
@@ -143,7 +143,7 @@ struct TextOp : vivid::OperatorBase, vivid::GpuProcessable {
     bool lazy_init(const VividGpuContext* c) {
         std::string err;
         sh_ = vivid::gpu::create_shader_checked(c->device, kTextWGSL, "Text", err);
-        if (!sh_ || !err.empty()) return false;
+        if (!sh_ || !err.empty()) { err_ = vivid::gpu::concise_gpu_error(err); return false; }
         ubo_ = vivid::gpu::create_uniform_buffer(c->device, 48, "Text U");
         WGPUBindGroupLayoutEntry e[4]{};
         e[0].binding = 0; e[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
@@ -165,7 +165,7 @@ struct TextOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     void process_gpu(const VividGpuContext* c) override {
         if (!tried_) { tried_ = true; lazy_init(c); }
-        if (!pipe_) return;
+        if (vivid::gpu::report_if_no_pipeline(c, pipe_, err_)) return;
         if (file.str_value != loaded_path_) {   // reload the string (the .txt file's contents) on change
             loaded_path_ = file.str_value;
             text_.clear();
