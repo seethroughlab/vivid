@@ -41,7 +41,7 @@ namespace S = vivid::session;
 inline bool ag_pane_hit(const vivid::Window& win, vivid::App& app, double mx, double my) {
     if (!app.session) return false;
     const int scenes = S::session_scene_count(app.session);
-    const Rect pane = audio_graph_pane(win.split_x, win.win_h, win.dock_h, scenes);
+    const Rect pane = audio_graph_pane(win.split_x, win.sidebar_w, win.win_h, win.dock_h, scenes);
     // The below-session pane (node canvas + header) is ALWAYS live — it's a persistent pane now, not a
     // dock drill-in. The bottom dock's param strip only counts as ours when the dock is actually showing
     // audio params (focus AudioGraph); when the clip editor or a visual node owns the dock, it isn't.
@@ -204,6 +204,18 @@ static void audio_chooser_spawn(Window& win, App& app, const vivid::ui::Chooser:
         case SK::AudioNoteOp:       nid = S::session_audio_graph_add_note_op(app.session, tr, sp.type.c_str()); break;
         case SK::AudioModOp:        nid = S::session_audio_graph_add_mod_op(app.session, tr, sp.type.c_str()); break;
         case SK::AudioMidiIn:       nid = S::session_audio_graph_add_midi_in(app.session, tr); break;
+        case SK::Note: {   // ADR-0033 P5: a sticky note at the chooser cursor (world coords) — start editing it
+            double wx = 0.0, wy = 0.0;
+            if (app.audio_graph)
+                app.audio_graph->view().to_world(win.audio_chooser.spawn_x(), win.audio_chooser.spawn_y(), wx, wy);
+            const int aid = S::session_audio_graph_annotation_add(app.session, tr,
+                                static_cast<float>(wx) - 90.f, static_cast<float>(wy) - 48.f);
+            if (aid >= 0) {
+                win.text_edit_kind = 3; win.text_edit_target = aid; win.text_edit_buf.clear();   // type into it now
+                if (app.edit_gateway) app.edit_gateway->note_edit("Add Note", "");
+            }
+            return;   // a note is not a node — skip the node-selection tail below
+        }
         case SK::AudioPluginEffect:
         case SK::AudioPluginSource: {
             const bool src = (sp.kind == SK::AudioPluginSource);
@@ -690,12 +702,14 @@ void AudioNodeGraph::prime(App& app, const Window& win) {
     const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
     set_source(app.session, tr);
     const int scenes = S::session_scene_count(app.session);
-    const Rect canv = audio_pane_canvas_rect(audio_graph_pane(win.split_x, win.win_h, win.dock_h, scenes));
+    const Rect canv = audio_pane_canvas_rect(audio_graph_pane(win.split_x, win.sidebar_w, win.win_h, win.dock_h, scenes));
     set_bounds(canv.x, canv.y, canv.x + canv.w, canv.y + canv.h);
     const Rect dp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
     set_param_bounds(dp.x, dp.y, dp.x + dp.w, dp.y + dp.h);
     set_selection(win.sel_audio_node);
     sel_multi_ = &win.audio_sel;   // ADR-0033 P1: point the const draw path at the window-owned set
+    edit_anno_ = (win.text_edit_kind == 3) ? win.text_edit_target : -1;   // ADR-0033 P5: live sticky-note edit
+    edit_buf_  = &win.text_edit_buf;
 }
 
 bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my, int mods) {
@@ -705,13 +719,8 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my, int mo
     const bool m_super = (mods & GLFW_MOD_SUPER) != 0;
     const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
     prime(app, win);
-    const Rect ag_pane = audio_graph_pane(win.split_x, win.win_h, win.dock_h, S::session_scene_count(app.session));
-    // "Re-layout" button (audio-pane header) → snap the graph back to the tidy auto-arrangement.
-    if (hit(audio_pane_relayout_rect(ag_pane), mx, my)) {
-        relayout();
-        if (app.edit_gateway) app.edit_gateway->note_edit("Auto-Layout", "ag-relayout");   // ADR-0017
-        return true;
-    }
+    const Rect ag_pane = audio_graph_pane(win.split_x, win.sidebar_w, win.win_h, win.dock_h, S::session_scene_count(app.session));
+    // (Audio-pane "Re-layout" is now a native View menu item — ⌘L relays out the current audio graph.)
     // "Editor" button (audio-pane header) → open the selected node's native plugin editor (VST3 or CLAP).
     if (win.sel_audio_node >= 0
         && hit(audio_pane_editor_rect(ag_pane), mx, my)) {
@@ -869,6 +878,33 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my, int mo
         win.sel_audio_node = b.node_id;
         return true;
     }
+    // ADR-0033 P5: sticky notes are top-most (drawn last), so hit them before nodes. Delete × removes;
+    // double-click on the body edits its text; a single click starts a drag. Positions are WORLD coords.
+    {
+        const int na = S::session_audio_graph_annotation_count(app.session, tr);
+        for (int i = na - 1; i >= 0; --i) {
+            int aid = 0; float ax = 0.f, ay = 0.f, aw = 0.f, ah = 0.f;
+            if (!S::session_audio_graph_annotation_at(app.session, tr, i, &aid, &ax, &ay, &aw, &ah)) continue;
+            if (hit({ ax + aw - 15.f, ay + 2.f, 14.f, 14.f }, wmx, wmy)) {   // delete ×
+                S::session_audio_graph_annotation_remove(app.session, tr, aid);
+                if (app.edit_gateway) app.edit_gateway->note_edit("Delete Note", "");
+                return true;
+            }
+            if (wmx >= ax && wmx < ax + aw && wmy >= ay && wmy < ay + ah) {   // body: double-click edits, else drag
+                const double now = glfwGetTime();
+                if (last_anno_ == aid && now - last_anno_t_ < 0.35) {         // double-click → edit text
+                    win.text_edit_kind = 3; win.text_edit_target = aid;
+                    const char* t = S::session_audio_graph_annotation_text(app.session, tr, aid);
+                    win.text_edit_buf = t ? t : "";
+                    last_anno_t_ = -1;
+                } else {                                                     // single click → start a drag
+                    last_anno_ = aid; last_anno_t_ = now;
+                    anno_drag_ = aid; anno_dx_ = static_cast<float>(wmx) - ax; anno_dy_ = static_cast<float>(wmy) - ay;
+                }
+                return true;
+            }
+        }
+    }
     for (const auto& b : boxes) {   // remove-x (effects) or select — both by node id
         if (b.kind == 1 && hit(remove_rect(b), wmx, wmy)) {
             S::session_audio_graph_remove_node(app.session, tr, b.node_id);
@@ -945,7 +981,7 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my, int mo
 // Release: end any in-flight drag, then (if a rewire was in progress) connect the edge over the port
 // under the cursor. Returns true when a rewire was completed (the caller closes the undo group).
 bool AudioNodeGraph::on_up(App& app, Window& win, double mx, double my) {
-    param_drag = -1; param_horiz = false; node_drag = -1; key_drag = -1; panning = false;
+    param_drag = -1; param_horiz = false; node_drag = -1; key_drag = -1; panning = false; anno_drag_ = -1;
     grp_start_.clear();
     if (marquee_) {   // ADR-0033 P1: resolve the marquee against every laid-out card
         marquee_ = false;

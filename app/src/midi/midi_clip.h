@@ -58,8 +58,64 @@ struct NoteEvent { uint32_t sample_offset; bool on; int pitch; float vel; int32_
 // `pitch` is carried so the pressure axis can emit a per-note poly-pressure event.
 struct ExprEvent { uint32_t sample_offset; int32_t note_id; int pitch; uint8_t axis; float value; };
 
+// --- Clip-level controller automation (P4) ---
+//
+// Distinct from the per-note ExprCurve above, and deliberately a different type. A per-note curve
+// is MPE-shaped: its `t` is normalized 0..1 WITHIN one note, and it plays back as VST3 note
+// expression, which only means anything on a plugin that supports it. But a single-channel
+// keyboard's mod wheel, sustain pedal and pitch bend are CHANNEL messages — they apply to every
+// sounding note at once. Slicing those into per-note curves is a lie that falls apart the moment
+// you play a chord. So they live here instead: clip-relative, in beats, one lane per controller.
+//
+// Keyed in the VST3 Vst::ControllerNumbers space so playback is a single array lookup against the
+// plugin's IMidiMapping table: 0..127 = MIDI CC, 128 = channel pressure (kAfterTouch),
+// 129 = pitch bend (kPitchBend).
+struct CcBp { double t; float v; };   // t = CLIP-LOCAL BEATS (not CurveBp's normalized 0..1); v = 0..1
+
+constexpr int kCcChannelPressure = 128;   // == Steinberg::Vst::kAfterTouch
+constexpr int kCcPitchBend       = 129;   // == Steinberg::Vst::kPitchBend
+constexpr int kCcSustain         = 64;    // == Steinberg::Vst::kCtrlSustainOnOff
+constexpr int kCcCount           = 130;   // == Steinberg::Vst::kCountCtrlNumber
+constexpr int kMaxCcLanes        = 16;    // per clip; bounds RT cursor state AND param-queue pressure
+
+struct CcLane {
+    uint16_t         cc = 0;         // 0..129, the ControllerNumbers space above
+    uint8_t          channel = 0;    // reserved; 0 today (emit_vst3 hard-codes channel 0)
+    std::vector<CcBp> bp;            // sorted by t, ascending
+    bool empty() const { return bp.empty(); }
+
+    // Sample at clip-local beat `t`, piecewise-linear, held before the first / after the last point.
+    // `cur` is CALLER-OWNED monotone cursor state (the scheduler's, never the lane's — the lane is
+    // shared with the UI copy). Advancing a cursor makes this O(points crossed) ≈ 1 per block rather
+    // than O(n) from the start, which matters because a recorded lane is unbounded in length.
+    // Allocation-free: safe on the audio thread.
+    float sample(double t, uint32_t& cur) const {
+        if (bp.empty()) return 0.f;
+        if (t <= bp.front().t) { cur = 0; return bp.front().v; }
+        if (t >= bp.back().t)  { cur = static_cast<uint32_t>(bp.size() - 1); return bp.back().v; }
+        if (cur >= bp.size()) cur = 0;
+        while (cur + 1 < bp.size() && bp[cur + 1].t <= t) ++cur;   // advance
+        while (cur > 0 && bp[cur].t > t) --cur;                    // or seek back (loop wrap / scrub)
+        const CcBp& a = bp[cur];
+        const CcBp& b = bp[cur + 1 < bp.size() ? cur + 1 : cur];
+        const double span = b.t - a.t;
+        if (span <= 1e-12) return b.v;
+        const double f = (t - a.t) / span;
+        return static_cast<float>(a.v + f * (b.v - a.v));
+    }
+};
+
+// A clip-level controller point, emitted by ClipScheduler::emit_cc. Block-granular by construction —
+// the VST3 param path reports sampleOffset 0 regardless (vst3_host_common.h SinglePointQueue), so a
+// finer resolution would be discarded. The offset is carried anyway: CLAP takes it natively, and it
+// costs nothing to keep the seam honest.
+struct CcEvent { uint32_t sample_offset; uint16_t cc; uint8_t channel; float value; };
+
 struct MidiClip {
     std::vector<ClipNote> notes;
+    // Clip-level controller automation; empty = none (zero cost). Additive on disk: a reader that
+    // predates it simply doesn't see the "cc" key.
+    std::vector<CcLane> cc;
     double length = 4.0;      // clip length in beats
     // Optimistic-concurrency revision: bumped on every note-content write (session_set_clip). A
     // read-modify-write authoring tool reads this with get_clip and hands it back as `expected_rev`
@@ -99,13 +155,67 @@ struct ClipScheduler {
 
     void reset(const MidiClip* c, double launch_beat = 0.0) {
         clip = c; launch_beat_ = launch_beat; note_id_seq = 0; active.clear();
+        // Fixed arrays, so this stays allocation-free — reset() runs on the audio thread at a
+        // quantized scene switch.
+        for (int i = 0; i < kMaxCcLanes; ++i) { cc_cursor_[i] = 0; cc_last_[i] = -1.f; }
+        cc_prev_ = -1.0;
     }
 
     // Call whenever clip->notes is re-assigned (edit-apply): the `src` pointers in
     // `active` point into the old (now-freed) notes vector. Null them so the expression
     // pass skips them; note-offs still fire from the copied pitch/id/end. Held notes get
     // no further expression for their remaining life — a fresh note-on re-resolves src.
-    void invalidate_active_src() { for (Active& a : active) a.src = nullptr; }
+    void invalidate_active_src() {
+        for (Active& a : active) a.src = nullptr;
+        cc_prev_ = -1.0;   // the CC lane vector was re-assigned too — force a re-seek + restate
+    }
+
+    // The clip-local playhead for a block, shared by emit() and emit_cc() so the two cannot drift
+    // apart. Returns false when the clip/block is degenerate. `p0` is the playhead at block start,
+    // `L` the loop period, `lo` the loop-region start.
+    bool playhead(double block_start_beats, double delta, double& p0, double& L, double& lo) const {
+        if (!clip || clip->length <= 0.0 || delta <= 0.0) return false;
+        lo = clip->loop_lo();
+        const double hi = clip->loop_hi();
+        L = hi - lo;
+        if (L <= 0.0) return false;
+        double rel = block_start_beats - launch_beat_;
+        if (rel < 0.0) rel = 0.0;              // caller (emit) re-anchors; emit_cc must not mutate state
+        p0 = lo + std::fmod(rel, L);
+        if (p0 < lo) p0 += L;
+        return true;
+    }
+
+    // Sample every CC lane ONCE per block at the block-start playhead, emitting at sample_offset 0,
+    // deduped against the last value sent. One point per lane per block is the right granularity:
+    // the VST3 param path collapses everything to the top of the block anyway, and at 512 frames /
+    // 48 kHz this is ~94 Hz — comfortably above what a MIDI cable delivers.
+    //
+    // Kept SEPARATE from emit() rather than widening it: CC sampling needs none of emit()'s note
+    // bookkeeping, and emit() has one production call site plus several in tests.
+    void emit_cc(double block_start_beats, double delta, uint32_t /*frames*/,
+                 std::vector<CcEvent>& out) {
+        double p0 = 0.0, L = 0.0, lo = 0.0;
+        if (!playhead(block_start_beats, delta, p0, L, lo)) return;
+        if (clip->cc.empty()) return;
+        const size_t n = std::min(clip->cc.size(), static_cast<size_t>(kMaxCcLanes));
+
+        // A loop wrap (or a scrub backwards) means the controller state must be RESTATED — otherwise
+        // a lane that ends high and starts low never sends the low value again and the plugin stays
+        // stuck wherever the previous pass left it.
+        const bool wrapped = (cc_prev_ < 0.0) || (p0 < cc_prev_ - 1e-9);
+        if (wrapped) for (int i = 0; i < kMaxCcLanes; ++i) { cc_cursor_[i] = 0; cc_last_[i] = -1.f; }
+        cc_prev_ = p0;
+
+        for (size_t i = 0; i < n; ++i) {
+            const CcLane& lane = clip->cc[i];
+            if (lane.empty()) continue;
+            const float v = lane.sample(p0, cc_cursor_[i]);
+            if (!wrapped && v == cc_last_[i]) continue;    // unchanged: don't re-send
+            cc_last_[i] = v;
+            out.push_back({ 0u, lane.cc, lane.channel, v });
+        }
+    }
 
     // Emit note on/off + per-note expression events for a block of `frames` samples that
     // advances the transport by `delta` beats, starting at absolute `block_start_beats`.
@@ -186,6 +296,13 @@ struct ClipScheduler {
         for (const auto& a : active) out.push_back({ 0u, false, a.pitch, 0.f, a.id, 0.f });
         active.clear();
     }
+
+private:
+    // Per-lane playback state. AUDIO-THREAD state, so it lives on the scheduler and never on
+    // CcLane — the lane itself is shared with the UI's copy of the clip.
+    uint32_t cc_cursor_[kMaxCcLanes] = {};
+    float    cc_last_[kMaxCcLanes]   = {};   // last value emitted; -1 = nothing yet (values are 0..1)
+    double   cc_prev_ = -1.0;                // previous block's playhead; a step backwards = loop wrap
 };
 
 }  // namespace vivid::session

@@ -7,7 +7,7 @@ artifact -> verify (validate_project + get_health + run_quality_check) -> warm-c
 summary. Exits non-zero iff any showcase FAILs.
 
 The app is NOT launched here — it must already be running and serving the control server. Attach to
-a dev build for iteration or the signed /Applications/vivid.app to produce checked-in hero media:
+a dev build for iteration or the signed /Applications/Vivid.app to produce checked-in hero media:
 
     uv run examples/demos/showcase/runner.py                    # all showcases
     uv run examples/demos/showcase/runner.py --select shader-edit --app-build dev
