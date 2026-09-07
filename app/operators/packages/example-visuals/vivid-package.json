@@ -2,6 +2,15 @@
   "name": "example-visuals",
   "version": "0.1.0",
   "operators": [
-    { "name": "Gradient", "source": "gradient.cpp", "gpu": true }
+    {
+      "name": "Gradient",
+      "source": "gradient.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Tunnel",
+      "source": "tunnel.cpp",
+      "gpu": true
+    }
   ]
 }
