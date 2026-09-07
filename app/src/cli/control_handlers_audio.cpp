@@ -173,7 +173,27 @@ void register_audio_handlers(Handlers& handlers_) {
     handlers_["record"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const bool on = b.value("on", true);
-        if (on && P::session_armed_track(c.session) < 0) return err(code::kBadArg, "no armed track");
+        bool started_transport = false;
+        if (on) {
+            // Preconditions, checked BEFORE the user plays anything. Both of these used to be silent
+            // dead ends you only discovered after performing a take:
+            const int armed = P::session_armed_track(c.session);
+            if (armed < 0)
+                return err(code::kBadArg, "no armed track — call arm_track(track) first");
+            //  (a) NO CLIP PLAYING: a take is recorded INTO the armed track's playing clip, so with
+            //      nothing launched the whole performance was captured and then discarded on stop.
+            if (P::session_active_clip(c.session, armed) < 0)
+                return err(code::kBadArg, "no clip is playing on the armed track — launch_clip(track, scene) "
+                                          "first; a take is recorded into the playing clip");
+            //  (b) TRANSPORT STOPPED: capture stamps each note with the transport beat, which does not
+            //      advance while stopped — so an arpeggio came back as a chord at beat 0, and `record`
+            //      cheerfully reported success. Start the transport instead, which is what every DAW
+            //      does when you hit record, and say so in the reply.
+            if (c.transport && !c.transport->is_playing()) {
+                c.transport->set_playing(true);
+                started_transport = true;
+            }
+        }
         // P4 Phase E: STOPPING may commit a take. `record` itself stays out of edit_methods.cpp —
         // arming is performance state, not a document edit — so the undo entry is recorded here,
         // only when a take actually landed.
@@ -181,6 +201,7 @@ void register_audio_handlers(Handlers& handlers_) {
         if (committed > 0 && c.app) c.app->note_edit("Record Take");
         json r = ok(); r["recording"] = P::session_is_recording(c.session);
         r["committed"] = committed > 0;
+        if (started_transport) r["started_transport"] = true;
         return r;
     };
     handlers_["set_clip_loop"] = [](const ControlCtx& c, const json& b) {
