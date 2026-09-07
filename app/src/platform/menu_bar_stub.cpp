@@ -8,5 +8,6 @@ void set_recent_projects(const std::vector<std::string>&) {}
 void set_edit_labels(const std::string&, const std::string&, bool, bool) {}
 void set_export_video_recording(bool) {}
 void set_document_edited(bool) {}
+void show_copyable_message(const std::string&, const std::string&, const std::string&) {}
 }  // namespace vivid::platform
 #endif

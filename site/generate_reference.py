@@ -7,7 +7,7 @@ unified operator catalog over the control server, and writes a checked-in `site/
 `site/build.py` renders into the Reference pages. Run this whenever the operator set changes:
 
     uv run --project site site/generate_reference.py            # uses the dev build by default
-    uv run --project site site/generate_reference.py --app /Applications/vivid.app/Contents/MacOS/vivid
+    uv run --project site site/generate_reference.py --app /Applications/Vivid.app/Contents/MacOS/Vivid
 
 The reference is generated, never hand-written — the site build consumes the snapshot with no app.
 """
@@ -27,7 +27,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
-DEFAULT_APP = REPO / "app" / "build" / "vivid.app" / "Contents" / "MacOS" / "vivid"
+DEFAULT_APP = REPO / "app" / "build" / "Vivid.app" / "Contents" / "MacOS" / "vivid"
 OUT = HERE / "reference.json"
 
 # Formats that belong to Vivid's own core operators: dylib visual ops (no format key), bundled shader

@@ -10,9 +10,11 @@
 
 #include <httplib.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 using nlohmann::json;
 
@@ -20,6 +22,54 @@ namespace vivid {
 namespace {
 using control::err;
 namespace code = control::code;
+
+// Levenshtein edit distance — small strings (method names), so the simple two-row DP is plenty.
+int edit_distance(const std::string& a, const std::string& b) {
+    const size_t n = a.size(), m = b.size();
+    std::vector<int> prev(m + 1), cur(m + 1);
+    for (size_t j = 0; j <= m; ++j) prev[j] = static_cast<int>(j);
+    for (size_t i = 1; i <= n; ++i) {
+        cur[0] = static_cast<int>(i);
+        for (size_t j = 1; j <= m; ++j) {
+            const int cost = (a[i - 1] == b[j - 1]) ? 0 : 1;
+            cur[j] = std::min({ prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost });
+        }
+        std::swap(prev, cur);
+    }
+    return prev[m];
+}
+
+// "Did you mean" suggestions for a mistyped control method: prefer keys that CONTAIN the query as a
+// substring (e.g. `connect` -> connect_nodes / connect_mapping / disconnect_mapping), then rank the
+// rest by edit distance, dropping anything too far to be a plausible typo. Up to `k` names.
+std::vector<std::string> nearest_methods(const Handlers& handlers,
+                                         const std::string& q, size_t k = 3) {
+    std::vector<std::pair<int, std::string>> scored;
+    const int max_dist = static_cast<int>(std::max<size_t>(3, q.size() / 2));
+    for (const auto& kv : handlers) {
+        const std::string& name = kv.first;
+        int score;
+        if (name.rfind(q, 0) == 0) score = 0;                    // name STARTS with q (best — `connect`)
+        else if (name.find(q) != std::string::npos ||            // q is a substring of name (or vice versa)
+                 q.find(name) != std::string::npos) score = 1;
+        else {
+            const int d = edit_distance(q, name);
+            if (d > max_dist) continue;                          // too far to be a plausible typo
+            score = 2 + d;
+        }
+        scored.emplace_back(score, name);
+    }
+    // ties broken by SHORTER name (closest to the query) then alpha, so `connect` surfaces
+    // connect_nodes / connect_mapping ahead of connect_control_to_param.
+    std::sort(scored.begin(), scored.end(), [](const auto& a, const auto& b) {
+        if (a.first != b.first) return a.first < b.first;
+        if (a.second.size() != b.second.size()) return a.second.size() < b.second.size();
+        return a.second < b.second;
+    });
+    std::vector<std::string> out;
+    for (const auto& s : scored) { if (out.size() >= k) break; out.push_back(s.second); }
+    return out;
+}
 }  // namespace
 
 ControlServer::ControlServer() { register_handlers(); }
@@ -74,7 +124,16 @@ void ControlServer::process_pending(const ControlCtx& ctx) {
     for (auto& p : local) {
         json reply;
         auto it = handlers_.find(p.method);
-        if (it == handlers_.end()) reply = err(code::kUnknownMethod, "unknown method: " + p.method);
+        if (it == handlers_.end()) {
+            std::string msg = "unknown method: " + p.method;
+            const auto sugg = nearest_methods(handlers_, p.method);
+            if (!sugg.empty()) {
+                msg += " — did you mean: ";
+                for (size_t i = 0; i < sugg.size(); ++i) { if (i) msg += ", "; msg += sugg[i]; }
+                msg += "?";
+            }
+            reply = err(code::kUnknownMethod, msg);
+        }
         else {
             try { reply = it->second(ctx, p.body); }
             catch (const std::exception& e) { reply = err(code::kInternal, e.what()); }

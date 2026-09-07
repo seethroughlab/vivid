@@ -5,6 +5,7 @@
 #include "app/project_io.h"   // folder-aware save/load + project-local operators
 #include "app/project_paths.h"   // is_folder_project / session_json_path
 #include "app/app.h"
+#include "app/mcp_bridge.h"    // ADR-0040: the bundled MCP bridge location + setup command
 #include "audio/plugin_catalog.h"       // check_tutorial_prereqs: installed plugin readiness
 #include "ui/node_graph.h"
 #include "ui/audio_node_graph.h"   // App::audio_graph view (ADR-0023 6b: file save/load round-trips it)
@@ -434,6 +435,21 @@ void register_project_handlers(Handlers& handlers_) {
     // inside one-off builder scripts. A reachable handler means the app/control-server check passed;
     // tutorial-specific checks report readiness, missing pieces, and next actions without mutating
     // the project.
+    // ADR-0040: where the bundled MCP bridge lives + the command that registers it. An agent that
+    // is already connected uses this to tell a user how to connect a SECOND client (or to confirm
+    // a downloaded build actually shipped the bridge); Help > Connect Claude shows the same string.
+    handlers_["get_mcp_setup"] = [](const ControlCtx&, const json&) {
+        const std::string dir = vivid::app::mcp_bridge_dir();
+        json r = ok();
+        r["bundled"] = !dir.empty();
+        r["bridge_dir"] = dir;
+        r["command"] = vivid::app::mcp_setup_command();
+        r["url"] = "http://127.0.0.1:9876";   // the bridge's default; VIVID_URL overrides
+        if (dir.empty())
+            r["hint"] = "no Contents/Resources/mcp in this build — run the bridge from a repo "
+                        "checkout: uv run --directory <repo>/mcp vivid_mcp.py";
+        return r;
+    };
     handlers_["check_tutorial_prereqs"] = [](const ControlCtx& c, const json& b) {
         const std::string tutorial = b.value("tutorial", b.value("name", std::string("mcp_native_first_project")));
         if (tutorial_is_first_project(tutorial)) return surge_xt_tutorial_prereqs(c.app);

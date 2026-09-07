@@ -2,6 +2,7 @@
 
 #include <webgpu/webgpu.h>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <atomic>
 #include "gpu/gpu_util.h"   // kMsaaSamples, to_sv
@@ -151,6 +152,19 @@ public:
     uint32_t width() const { return width_; }
     uint32_t height() const { return height_; }
 
+    // One-shot screenshot of the WHOLE composited window (UI chrome + node graph + canvas), not just the
+    // visual output. Armed by the control server; taken in end_frame after the MSAA resolve (frame.texture
+    // is CopySrc-capable, see init) and written via the injected png_writer_. Reads the app's own
+    // framebuffer, so it needs NO screen-recording permission. `capture_requested_` clears once written.
+    void set_png_writer(std::function<bool(const std::string&, const uint8_t*, uint32_t, uint32_t)> w) {
+        png_writer_ = std::move(w);
+    }
+    void request_interface_capture(const std::string& path) {
+        capture_path_ = path; capture_ok_ = false; capture_requested_ = true;
+    }
+    bool interface_capture_pending() const { return capture_requested_; }
+    bool interface_capture_ok() const { return capture_ok_; }
+
 private:
     WGPUInstance instance_ = nullptr;
     WGPUAdapter adapter_ = nullptr;
@@ -164,6 +178,11 @@ private:
     bool device_lost_ = false;
     uint32_t width_ = 0;
     uint32_t height_ = 0;
+    // interface screenshot state (see request_interface_capture / end_frame)
+    bool capture_requested_ = false;
+    bool capture_ok_ = false;
+    std::string capture_path_;
+    std::function<bool(const std::string&, const uint8_t*, uint32_t, uint32_t)> png_writer_;
 
     // 4x MSAA color target the whole frame renders into; resolved to the surface
     // in end_frame. Recreated on resize. (void ensure_msaa below.)

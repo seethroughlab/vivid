@@ -95,6 +95,59 @@ void register_audio_io_handlers(Handlers& handlers_) {
         r["active"] = device_status_json(st);
         return r;
     };
+
+    // ---------------- hardware MIDI input ----------------
+    // Before this, the ONLY report of MIDI input state was a single fprintf at launch: an agent
+    // could not tell whether a keyboard was attached, whether it was the right one, or whether it
+    // was sending anything — so "my keyboard doesn't work" was undiagnosable over MCP.
+    handlers_["midi_input_status"] = [](const ControlCtx& c, const json&) -> json {
+        if (!c.app) return err(code::kInternal, "no app");
+        const auto& mi = c.app->midi_in;
+        json srcs = json::array();
+        for (const auto& s : mi.sources())
+            srcs.push_back({ {"id", static_cast<int>(s.id)}, {"name", s.name}, {"connected", s.connected} });
+        json r = ok();
+        r["sources"]   = srcs;
+        r["connected"] = mi.source_count();
+        r["selected_source"]  = static_cast<int>(mi.selected_source());   // 0 = any
+        r["selected_channel"] = mi.selected_channel();                    // -1 = omni
+        r["events_seen"] = mi.events_seen();
+        r["receiving"]   = mi.events_seen() > 0;
+        if (srcs.empty())
+            r["hint"] = "no MIDI sources — plug the keyboard in (it is picked up live; no restart "
+                        "needed) and check it is not claimed exclusively by another app";
+        else if (mi.events_seen() == 0)
+            r["hint"] = "sources are connected but nothing has arrived yet — play a note; if still "
+                        "zero, check the keyboard's MIDI channel against selected_channel";
+        return r;
+    };
+
+    handlers_["midi_input_select"] = [](const ControlCtx& c, const json& b) -> json {
+        if (!c.app) return err(code::kInternal, "no app");
+        const int32_t source  = static_cast<int32_t>(b.value("source", 0));   // 0 = every source
+        const int     channel = b.value("channel", -1);                       // -1 = omni
+        if (channel < -1 || channel > 15) return err(code::kBadArg, "channel must be -1 (omni) or 0..15");
+        if (source != 0) {   // reject an id that is not actually present, rather than going deaf
+            bool found = false;
+            for (const auto& s : c.app->midi_in.sources()) if (s.id == source) { found = true; break; }
+            if (!found) return err(code::kNotFound, "no MIDI source with id " + std::to_string(source) +
+                                                    " (see midi_input_status)");
+        }
+        c.app->midi_in.select(source, channel);
+
+        // Machine-level, like the audio device prefs — not part of the project, so not undoable.
+        const std::string path = app_settings_path();
+        AppSettings s = load_app_settings(path);
+        s.midi_input_source  = source;
+        s.midi_input_channel = channel;
+        save_app_settings(s, path);
+
+        json r = ok();
+        r["selected_source"]  = static_cast<int>(source);
+        r["selected_channel"] = channel;
+        r["connected"]        = c.app->midi_in.source_count();
+        return r;
+    };
 }
 
 }  // namespace vivid

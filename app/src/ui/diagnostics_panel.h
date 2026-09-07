@@ -49,7 +49,9 @@ void draw_diagnostics_panel(Renderer2D& ui, const HealthSnapshot& h, const App& 
 void draw_log_view(Renderer2D& ui, const Logger& log, int win_w, int win_h);
 
 // UX Ph4 F3: a keyboard-shortcut cheat-sheet overlay so the single-key shortcuts are discoverable
-// (toggle: ?). Pure static list — no app state.
-void draw_shortcuts_overlay(Renderer2D& ui, int win_w, int win_h);
+// (toggle: ?). ADR-0048 step 4 sends the clip editor's power keys HERE rather than to an always-visible
+// footer crawl — so when the editor is open (`clip_editor`), its section is appended to the global list.
+void draw_shortcuts_overlay(Renderer2D& ui, int win_w, int win_h, bool clip_editor = false,
+                            bool audio_mode = false);
 
 }  // namespace vivid::ui
