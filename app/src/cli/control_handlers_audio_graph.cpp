@@ -85,6 +85,44 @@ void register_audio_graph_handlers(Handlers& handlers_) {
             return err(code::kBadArg, "node not removable (unknown, or an instrument/output)");
         return ok();
     };
+    // ADR-0033 P5: per-track graph sticky notes (parity with the visual graph's *_annotation handlers).
+    // Notes are free-floating annotations, not nodes — they make no sound and are never compiled.
+    handlers_["audio_graph_add_annotation"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const int id = P::session_audio_graph_annotation_add(c.session, track, b.value("x", 40.f), b.value("y", 40.f));
+        if (id < 0) return err(code::kBadArg, "could not add annotation");
+        if (b.contains("text"))
+            P::session_audio_graph_annotation_set_text(c.session, track, id, b.value("text", std::string()).c_str());
+        json r = ok(); r["id"] = id; return r;
+    };
+    handlers_["audio_graph_set_annotation_text"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        if (!P::session_audio_graph_annotation_set_text(c.session, track, b.value("id", -1),
+                                                        b.value("text", std::string()).c_str()))
+            return err(code::kBadArg, "no such annotation id");
+        return ok();
+    };
+    handlers_["audio_graph_move_annotation"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        if (!P::session_audio_graph_annotation_move(c.session, track, b.value("id", -1),
+                                                    b.value("x", 0.f), b.value("y", 0.f)))
+            return err(code::kBadArg, "no such annotation id");
+        return ok();
+    };
+    handlers_["audio_graph_remove_annotation"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        if (!P::session_audio_graph_annotation_remove(c.session, track, b.value("id", -1)))
+            return err(code::kBadArg, "no such annotation id");
+        return ok();
+    };
     // ADR-0033 P2b: duplicate a set of audio nodes within a track. Copies params/pins/key-range/plugin
     // patch/sampler + the edges strictly between them; each copy gets fresh ids at a small offset,
     // external + engine-managed edges dropped. VST3 clones sync; CLAP patch lands via the async loader.
@@ -497,6 +535,15 @@ void register_audio_graph_handlers(Handlers& handlers_) {
             edges.push_back(je);
         }
         r["edges"] = edges;
+        // ADR-0033 P5: the track's graph sticky notes — id + text + world rect (parity with get_graph).
+        json annos = json::array();
+        for (int i = 0; i < P::session_audio_graph_annotation_count(c.session, track); ++i) {
+            int aid = 0; float ax = 0.f, ay = 0.f, aw = 0.f, ah = 0.f;
+            if (!P::session_audio_graph_annotation_at(c.session, track, i, &aid, &ax, &ay, &aw, &ah)) continue;
+            const char* t = P::session_audio_graph_annotation_text(c.session, track, aid);
+            annos.push_back({ {"id", aid}, {"text", t ? t : ""}, {"x", ax}, {"y", ay}, {"w", aw}, {"h", ah} });
+        }
+        r["annotations"] = annos;
         // ADR-0022 P2a.2/P2a.3: the session-level CROSS-TRACK control edges (all of them — they are a
         // session concept, not per-track). Each is {src_track, src_node, dst_track, dst_node, param}
         // + shape, mirroring the in-track control-edge report.

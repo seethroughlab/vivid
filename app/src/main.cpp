@@ -13,6 +13,7 @@
 #include <cstring>
 
 #include "gpu/gpu_context.h"
+#include "cli/image_analysis_tools.h"   // write_png — injected as the interface-screenshot encoder
 #include "gpu/gpu_util.h"
 #include "transport.h"
 #include "audio/vst3_host.h"
@@ -28,6 +29,8 @@
 #include "app/input.h"
 #include "app/frame.h"
 #include "app/file_actions.h"      // File-menu actions (native menu bar)
+#include "app/master_recorder.h"   // realtime master-mix .wav capture (ADR-0032 follow-up)
+#include "app/mcp_bridge.h"        // ADR-0040: the bundled MCP bridge (Help > Connect Claude)
 #include "app/autosave.h"          // ADR-0018 autosave recovery on launch
 #include "app/crash_guard.h"       // ADR-0018 install_crash_handlers
 #include "app/crash_recovery.h"    // ADR-0018 CrashRecovery (record + warm snapshot)
@@ -215,6 +218,11 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "GpuContext init failed: %s\n", gpu.last_error().c_str());
         return 1;
     }
+    // capture_interface writes its PNG via the cli encoder; wire it once so the gpu layer keeps no
+    // image-format dependency.
+    gpu.set_png_writer([](const std::string& p, const uint8_t* rgba, uint32_t w, uint32_t h) {
+        return vivid::write_png(p, rgba, w, h);
+    });
     app.gpu = &gpu;
 
     vivid::ui::Renderer2D ui;
@@ -302,6 +310,11 @@ int main(int argc, char** argv) {
 
     vivid::VideoRecorder video_recorder;   // realtime AV export; driven per-frame in run_frame_loop
     app.recorder = &video_recorder;
+    // Realtime master-mix -> .wav: how a hand-performed take gets a LOSSLESS master (the offline
+    // bounce renders the current arming from beat 0 and cannot replay scene launches; the video
+    // export's audio is AAC in an .mp4). Second consumer of the transport's recording tap.
+    vivid::MasterRecorder master_recorder;
+    app.master_rec = &master_recorder;
 
     // ADR-0032 Phase A: the audio output device model owns the miniaudio context + device (miniaudio.h
     // confined to audio_device_manager.cpp). It opens the persisted device (or the system default, with a
@@ -406,9 +419,37 @@ int main(int argc, char** argv) {
         // ADR-0017/G4: Edit > Undo/Redo. app.edit_gateway is created below (read at click time).
         ma.undo            = [&] { if (app.edit_gateway) app.edit_gateway->undo(); };
         ma.redo            = [&] { if (app.edit_gateway) app.edit_gateway->redo(); };
+        // View > Re-layout Graph (⌘L): tidy the visual node graph AND the current track's audio graph
+        // (was a per-pane in-graph button). The audio view is re-primed to the selected track first,
+        // mirroring the button's old input-path (prime → relayout). One undo entry covers both.
+        ma.relayout_graph  = [&] {
+            if (app.graph) app.graph->layout_nodes();
+            if (app.session) { audio_graph.prime(app, win); audio_graph.relayout(); }
+            if (app.edit_gateway) app.edit_gateway->note_edit("Auto-Layout", "");
+        };
         // ADR-0026: the Eval menu. "Set Gemini Key…" opens the in-app modal (input.cpp owns the
         // keyboard while it's up). "Evaluate Output" captures 20s of the live master and kicks off an
         // async Gemini eval; the frame loop toasts the verdict when the job lands. Fail-closed here too.
+        // ADR-0040: Help > Connect Claude. Show the exact `claude mcp add` line for the bridge that
+        // ships in Contents/Resources/mcp, with a Copy button — this is the whole onboarding path
+        // for someone who installed from the DMG and has no repo checkout.
+        ma.connect_claude = [&] {
+            const std::string cmd = vivid::app::mcp_setup_command();
+            if (cmd.empty()) {
+                vivid::platform::show_copyable_message(
+                    "MCP bridge not found",
+                    "This build does not contain Contents/Resources/mcp, so there is nothing to "
+                    "connect to. Run the bridge from a repo checkout instead:\n\n"
+                    "  uv run --directory <repo>/mcp vivid_mcp.py", "");
+                return;
+            }
+            vivid::platform::show_copyable_message(
+                "Connect Claude to Vivid",
+                "Vivid is driven over MCP. Leave this app running, then paste this into a terminal "
+                "to register it with Claude Code:\n\n  " + cmd +
+                "\n\nNeeds `uv` (https://docs.astral.sh/uv). The bridge talks to this app on "
+                "127.0.0.1:9876; set VIVID_URL if you changed the port.", cmd);
+        };
         ma.set_gemini_key  = [&] { win.show_gemini_key = true; win.gemini_key_buf.clear(); };
         ma.evaluate_output = [&] {
             if (!app.music_eval.has_key()) {
@@ -552,8 +593,25 @@ int main(int argc, char** argv) {
     control.set_wake([]{ glfwPostEmptyEvent(); });
     { const char* pe = std::getenv("VIVID_PORT"); control.start(pe ? std::atoi(pe) : 9876); }
 
-    if (app.midi_in.start())   // hardware MIDI input -> armed track (M6.4)
-        std::fprintf(stderr, "[vivid] MIDI input: %d source(s) connected\n", app.midi_in.source_count());
+    // Hardware MIDI input -> armed track. Sources are re-scanned on a CoreMIDI setup change, so a
+    // keyboard plugged in after this point is picked up; `midi_input_status` reports the live list.
+    // Log through VLOG so a failure is visible in the diagnostics panel, not just on stderr — a
+    // silent `false` here used to be the whole story when someone's keyboard "didn't work".
+    {   // Apply the persisted MIDI source/channel preference BEFORE start(), so the first rescan
+        // already honours it and we never briefly listen to a device the user deselected.
+        const vivid::AppSettings ms = vivid::load_app_settings(vivid::app_settings_path());
+        app.midi_in.select(ms.midi_input_source, ms.midi_input_channel);
+    }
+    if (app.midi_in.start()) {
+        const auto srcs = app.midi_in.sources();
+        VLOG_INFO(app, "MIDI input: %d of %d source(s) connected",
+                  app.midi_in.source_count(), static_cast<int>(srcs.size()));
+        for (const auto& s : srcs)
+            VLOG_INFO(app, "  MIDI source%s: %s (id %d)", s.connected ? "" : " (idle)",
+                      s.name.c_str(), static_cast<int>(s.id));
+    } else {
+        VLOG_WARN(app, "MIDI input unavailable — CoreMIDI client could not be created");
+    }
 
     // ADR-0017 undo/redo: the edit gateway (a local, like `control` above). The baseline (undo
     // entry 0) is seeded from inside the frame loop, at the end of the FIRST tick — after the graph

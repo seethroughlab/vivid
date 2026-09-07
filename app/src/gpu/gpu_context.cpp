@@ -489,6 +489,53 @@ bool GpuContext::begin_frame(FrameState& frame) {
     return true;
 }
 
+// Read a copyable texture back to tightly-packed opaque RGBA8 (mirrors VisualGraph::read_output_pixels,
+// but for the resolved surface texture). Blocking — a bounded poll so a lost device can't hang. Used by
+// the one-shot interface screenshot below.
+static bool read_texture_to_rgba(WGPUDevice dev, WGPUQueue q, WGPUTexture src, uint32_t W, uint32_t H,
+                                 WGPUTextureFormat fmt, std::vector<uint8_t>& out_rgba) {
+    if (!src || !dev || !q || W == 0 || H == 0) return false;
+    const uint32_t padded = (W * 4u + 255u) & ~255u;          // bytesPerRow must be a multiple of 256
+    const uint64_t bufSize = static_cast<uint64_t>(padded) * H;
+    WGPUBufferDescriptor bd{}; bd.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead; bd.size = bufSize;
+    WGPUBuffer buf = wgpuDeviceCreateBuffer(dev, &bd);
+    if (!buf) return false;
+    WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(dev, nullptr);
+    WGPUTexelCopyTextureInfo srcInfo{}; srcInfo.texture = src; srcInfo.mipLevel = 0; srcInfo.aspect = WGPUTextureAspect_All;
+    WGPUTexelCopyBufferInfo dstInfo{}; dstInfo.buffer = buf; dstInfo.layout.offset = 0;
+    dstInfo.layout.bytesPerRow = padded; dstInfo.layout.rowsPerImage = H;
+    WGPUExtent3D ext{ W, H, 1 };
+    wgpuCommandEncoderCopyTextureToBuffer(enc, &srcInfo, &dstInfo, &ext);
+    WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(enc, nullptr);
+    wgpuQueueSubmit(q, 1, &cmd);
+    wgpuCommandBufferRelease(cmd); wgpuCommandEncoderRelease(enc);
+    struct MapState { bool done = false; bool ok = false; } ms;
+    WGPUBufferMapCallbackInfo ci{}; ci.mode = WGPUCallbackMode_AllowProcessEvents;
+    ci.callback = [](WGPUMapAsyncStatus status, WGPUStringView, void* u1, void*) {
+        auto* m = static_cast<MapState*>(u1); m->done = true; m->ok = (status == WGPUMapAsyncStatus_Success);
+    };
+    ci.userdata1 = &ms;
+    wgpuBufferMapAsync(buf, WGPUMapMode_Read, 0, static_cast<size_t>(bufSize), ci);
+    for (int i = 0; i < 100000 && !ms.done; ++i) wgpuDevicePoll(dev, true, nullptr);
+    if (!ms.done || !ms.ok) { wgpuBufferRelease(buf); return false; }
+    const uint8_t* mapped = static_cast<const uint8_t*>(wgpuBufferGetConstMappedRange(buf, 0, static_cast<size_t>(bufSize)));
+    if (!mapped) { wgpuBufferUnmap(buf); wgpuBufferRelease(buf); return false; }
+    const bool bgra = (fmt == WGPUTextureFormat_BGRA8Unorm || fmt == WGPUTextureFormat_BGRA8UnormSrgb);
+    out_rgba.resize(static_cast<size_t>(W) * H * 4);
+    for (uint32_t y = 0; y < H; ++y) {
+        const uint8_t* row = mapped + static_cast<size_t>(y) * padded;
+        uint8_t* dst = out_rgba.data() + static_cast<size_t>(y) * W * 4;
+        for (uint32_t x = 0; x < W; ++x) {
+            const uint8_t* p = row + x * 4; uint8_t* d = dst + x * 4;
+            if (bgra) { d[0] = p[2]; d[1] = p[1]; d[2] = p[0]; }
+            else      { d[0] = p[0]; d[1] = p[1]; d[2] = p[2]; }
+            d[3] = 255;                                        // opaque screenshot regardless of surface alpha
+        }
+    }
+    wgpuBufferUnmap(buf); wgpuBufferRelease(buf);
+    return true;
+}
+
 bool GpuContext::end_frame(const FrameState& frame) {
     if (device_lost_) {
         discard_frame(frame);
@@ -526,6 +573,21 @@ bool GpuContext::end_frame(const FrameState& frame) {
     }
 
     timer_.after_submit();   // GPU timing: map the readback buffer (submit succeeded)
+
+    // One-shot interface screenshot: the resolve above put the fully-composited window (UI + graph +
+    // canvas) into frame.texture, which is CopySrc-capable. Read it back + write the PNG here, before
+    // the surface texture is released/presented. Only on the frame a capture was armed (rare) — the
+    // blocking readback costs one frame's hitch. No screen-recording permission (own framebuffer).
+    if (capture_requested_) {
+        capture_ok_ = false;
+        if (png_writer_ && surface_copy_src_ && frame.texture) {
+            const uint32_t W = wgpuTextureGetWidth(frame.texture), H = wgpuTextureGetHeight(frame.texture);
+            std::vector<uint8_t> rgba;
+            if (read_texture_to_rgba(device_, queue_, frame.texture, W, H, surface_format_, rgba))
+                capture_ok_ = png_writer_(capture_path_, rgba.data(), W, H);
+        }
+        capture_requested_ = false;
+    }
 
     // Present BEFORE releasing the surface texture/view. frame.view (MSAA) is
     // gpu_context-owned and reused — only the per-frame surface view/texture go.
