@@ -2429,6 +2429,35 @@ def get_authoring_guide() -> dict:
             "9. PROJECT: get_project_status; use save_project(path) / load_project(path), "
             "and set_media_root(path) for video assets.",
         ],
+        "bringing_music_in": {
+            "why": "Steps 3's theory tools GENERATE parts. These bring in music that already exists, "
+                   "or that the person plays. Reach for them before hand-writing a part note by note.",
+            "midi_files": "import_midi(track, scene, path) loads a .mid — THE way to use a drum "
+                          "plugin's groove library (EZdrummer / Superior Drummer / Addictive Drums are "
+                          "built around dragging a groove out of their own browser; their parameter "
+                          "surface cannot do it). file_track= picks one track out of a format-1 file, "
+                          "channel=9 isolates GM drums, append=True overdubs. export_midi sends a part "
+                          "back out.",
+            "recording": "arm_track(track) -> launch_clip(track, scene) -> record(on=True) -> play -> "
+                         "record(on=False). A take records INTO the armed track's PLAYING clip, so a "
+                         "launched clip is required (record refuses without one) and record starts the "
+                         "transport for you. Sustain pedal extends the recorded note durations; a "
+                         "committed take is undoable.",
+            "keyboard_check": "If the person says their keyboard is not working, call midi_input_status "
+                              "FIRST — it lists the connected sources and whether anything has arrived. "
+                              "Devices are picked up live, so no restart is needed. midi_input_select "
+                              "narrows to one source/channel.",
+            "controllers": "Mod wheel / sustain / pitch bend record as clip automation lanes. Read them "
+                           "with get_clip (a 'cc' array) and write with set_clip_cc(track, scene, cc) — "
+                           "a SEPARATE call from set_clip, which is note-only, so a transpose or "
+                           "quantize will not wipe them. n = 0..127 CC, 128 channel pressure, 129 pitch "
+                           "bend; values 0..1; points in clip-local beats. Whether a plugin ACTS on a "
+                           "controller is its own routing: list_params reports accepts_midi_cc.",
+            "capture": "export_audio renders the CURRENT arming offline from beat 0 — it cannot replay "
+                       "a timeline of scene launches. To capture an arrangement PERFORMED by hand, use "
+                       "start_master_record(path) / stop_master_record for a lossless .wav, and check "
+                       "`overruns` is 0 on the result.",
+        },
         "errors": "Every reply has an 'ok' bool. Failures are {ok:false, code, error}: "
                   "branch on the stable `code` (bad_json, unknown_method, no_session, no_graph, "
                   "no_vgraph, no_transport, bad_arg, out_of_range, not_found, io_error, internal, "
