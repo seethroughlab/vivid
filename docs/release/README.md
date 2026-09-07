@@ -48,7 +48,7 @@ The PR gate and the release build run these legs; reproduce them locally:
   headless **ASan/UBSan**, **ThreadSanitizer** (`ctest -L THREAD`), **audio-engine**
   (`ctest -L AUDIO_ENGINE`), and **audio-thread-sanitizer** (`ctest -L AUDIO_THREAD`). It
   builds into `app/build-verify-*` dirs and fails on any red.
-- `VIVID_APP=app/build/vivid.app/Contents/MacOS/vivid uv run mcp/tests/test_persist_roundtrip.py`
+- `VIVID_APP=app/build/Vivid.app/Contents/MacOS/Vivid uv run mcp/tests/test_persist_roundtrip.py`
   — the **save/load golden round-trip** (audit Ph4 P1-03): launches the built app, builds a project,
   and asserts `get_session` is byte-identical across a `save_project`/`load_project` cycle. Needs the
   GUI app + a GPU (skips cleanly without them); wired into `release-macos.yml`.
@@ -84,7 +84,7 @@ validation, also an EdDSA signing key.
 ```sh
 cmake -S app -B app/build-release -DCMAKE_BUILD_TYPE=Release && cmake --build app/build-release -j
 APPLE_CODESIGN_IDENTITY="Developer ID Application: … (TEAMID)" NOTARY_PROFILE=vivid-notary \
-    scripts/release/sign_and_notarize.sh app/build-release/vivid.app build/dist
+    scripts/release/sign_and_notarize.sh app/build-release/Vivid.app build/dist
 ```
 
 ## Wiring real auto-update

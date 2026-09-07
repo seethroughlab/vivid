@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <cstdint>   // uint32_t (sampler_playhead_norm) — clang pulls it in transitively, gcc does not
 #include <string>
 
 // Shared UI geometry + layout constants for the Vivid shell: the session grid
@@ -29,6 +30,31 @@ inline int stepper_hit(Rect b, double mx, double my) {
     if (mx > b.x + b.w - bw) return +1;
     return 0;
 }
+// ADR-0049: map a Sampler playhead to the waveform canvas. The op publishes its position as 0..1 over
+// its regions CONCATENATED in order, but the Sampler editor draws the SOURCE file, so a drum rack (whose
+// slices need not tile the source, and whose head/tail may be trimmed off) has to walk the regions to
+// convert. `starts`/`ends` are per-region source frames; returns a source-normalized 0..1 position, or
+// -1 when there is nothing to map. With one region this is just lerp(in, out, ph).
+inline double sampler_playhead_norm(const uint32_t* starts, const uint32_t* ends, int n,
+                                    double ph, unsigned long long source_frames) {
+    if (!starts || !ends || n <= 0 || source_frames == 0 || ph < 0.0) return -1.0;
+    double total = 0.0;
+    for (int i = 0; i < n; ++i) total += static_cast<double>(ends[i]) - starts[i];
+    if (total <= 0.0) return -1.0;
+    double at = (ph < 1.0 ? ph : 1.0) * total, cum = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const double len = static_cast<double>(ends[i]) - starts[i];
+        // Half-open [cum, cum+len): a position exactly on a boundary belongs to the NEXT region, the
+        // same convention segmented_hit uses. The last region absorbs the tail (and any FP slop).
+        if (at < cum + len || i == n - 1) {
+            const double off = at - cum < 0.0 ? 0.0 : (at - cum > len ? len : at - cum);
+            return (starts[i] + off) / static_cast<double>(source_frames);
+        }
+        cum += len;
+    }
+    return -1.0;
+}
+
 inline float dock_top(int win_h, float dock_h);   // fwd (defined in the window-relative section)
 
 // --- Pane region chrome: bounded panels on a margin/gutter grid. ---
@@ -58,8 +84,17 @@ inline Rect transport_play_rect() { return { 300.f, 11.f, 18.f, 18.f }; }
 inline Rect transport_record_rect() { return { 500.f, 11.f, 18.f, 18.f }; }   // record toggle
 inline Rect transport_metro_rect()  { return { 524.f, 11.f, 18.f, 18.f }; }   // metronome toggle
 inline Rect transport_quant_rect()  { return { 600.f, 10.f, 60.f, 20.f }; }   // scene-launch quantize pill
-// ADR-0019 health rollup: a status dot right-aligned in the transport bar; click opens diagnostics.
-inline Rect health_dot_rect(int win_w) { return { static_cast<float>(win_w) - 26.f, 14.f, 12.f, 12.f }; }
+// The top-right status cluster: the ADR-0019 health rollup dot pins to the right gutter, and the
+// always-on perf read-out chip sits to its LEFT. Both derive from the same gutter constant so they
+// can't drift into each other again (they used to be two independent right-edge anchors, and the
+// dot landed inside the chip). The chip's width is text-driven, so the caller measures the string
+// and passes it in. Both are vertically centred on the 40px bar (14+12 and 12+16 → centre 20).
+constexpr float kTopRightPad = 8.f;
+inline Rect health_dot_rect(int win_w) { return { static_cast<float>(win_w) - kTopRightPad - 12.f, 14.f, 12.f, 12.f }; }
+inline Rect perf_hud_rect(int win_w, float text_w) {
+    const float bw = text_w + 12.f;                       // 6px pad each side of the text
+    return { health_dot_rect(win_w).x - 8.f - bw, 12.f, bw, 16.f };
+}
 inline Rect track_header_rect(int t) { return { track_x(t), kHeaderY, kTrackW, kHeaderH }; }
 inline Rect track_add_rect(int tracks) { return { track_x(tracks), kHeaderY, kTrackW, kHeaderH }; }  // "+ Track" header
 inline Rect track_header_x_rect(int t) { return { track_x(t) + kTrackW - 15.f, kHeaderY + 3.f, 12.f, 12.f }; }  // remove ×
@@ -86,16 +121,21 @@ inline float mixer_divider_y(int scenes) { return mixer_y(scenes) - 6.f; }  // r
 
 // The AUDIO GRAPH pane: the lower-left column, below the session mixer, down to the dock. Its top
 // clears the mixer's ARM/VIZ button row (mixer_y+48 + 16h) plus a gap. A header strip hosts the
-// track label + Re-layout/Editor buttons; the node canvas fills the rest. The bottom dock is a
-// pure param inspector now, so the audio node graph lives HERE (below the session).
-inline Rect audio_graph_pane(float split_x, int win_h, float dock_h, int scenes) {
+// track label + Editor button; the node canvas fills the rest. The bottom dock is a pure param
+// inspector now, so the audio node graph lives HERE (below the session).
+// Sidebar-aware like sidebar_panel/pool_item_rect: the pane starts past the browser column. It is
+// drawn in SCREEN space (outside the DAW pane's set_transform shift, which agr.draw would clobber
+// with its own camera anyway), so the offset has to be in the rect itself — otherwise the graph
+// paints over the CLIPS panel and scroll over the browser zooms the graph.
+inline Rect audio_graph_pane(float split_x, float sidebar_w, int win_h, float dock_h, int scenes) {
     const float top = mixer_y(scenes) + 48.f + 16.f + 12.f;
     const float bottom = dock_top(win_h, dock_h) - kPaneMargin;
-    return { kPaneMargin, top, split_x - 2.f * kPaneMargin, std::max(48.f, bottom - top) };
+    return { sidebar_w + kPaneMargin, top,
+             std::max(48.f, split_x - sidebar_w - 2.f * kPaneMargin),
+             std::max(48.f, bottom - top) };
 }
 inline Rect audio_pane_hdr_rect(const Rect& pane)      { return { pane.x, pane.y, pane.w, kPanelHdH }; }
 inline Rect audio_pane_canvas_rect(const Rect& pane)   { return { pane.x, pane.y + kPanelHdH, pane.w, pane.h - kPanelHdH }; }
-inline Rect audio_pane_relayout_rect(const Rect& pane) { return { pane.x + pane.w - 78.f, pane.y + 3.f, 74.f, kPanelHdH - 6.f }; }
 inline Rect audio_pane_editor_rect(const Rect& pane)   { return { pane.x + pane.w - 156.f, pane.y + 3.f, 60.f, kPanelHdH - 6.f }; }
 
 // Sources offered when mapping an audio param (the return path): audio characteristics + visuals state.
@@ -211,16 +251,8 @@ inline Rect preview_grip_rect(float px, float py, float pw, float aspect) {
     const Rect p = preview_panel(px, py, pw, aspect);
     return { p.x + p.w - 14.f, p.y + p.h - 14.f, 14.f, 14.f };
 }
-// Graph chrome, pinned to the visuals column's top-right corner (screen space, not canvas space).
-inline Rect graph_relayout_rect(int win_w, int win_h, float split_x, float dock_h) {
-    const Rect g = visuals_panel(win_w, win_h, split_x, dock_h);
-    return { g.x + g.w - 78.f, g.y + 4.f, 74.f, kPanelHdH - 6.f };
-}
-// ADR-0033 P5: the "+ Note" chrome button, immediately left of Re-layout.
-inline Rect graph_add_note_rect(int win_w, int win_h, float split_x, float dock_h) {
-    const Rect rl = graph_relayout_rect(win_w, win_h, split_x, dock_h);
-    return { rl.x - 66.f, rl.y, 60.f, rl.h };
-}
+// (Graph "Re-layout" and "+ Note" chrome buttons removed — Re-layout is now View ▸ Re-layout Graph
+// (⌘L) and Note is a "Note" entry in the Tab operator chooser.)
 // The DAW|visuals splitter: a full-height grab strip running from the transport bar down to the
 // dock (no gap at the top — a divider that stops short reads as an artifact, not a handle).
 inline Rect splitter_rect(int win_h, float dock_h, float split_x) { return { split_x - 3.f, kTopBarH, 6.f, dock_top(win_h, dock_h) - kTopBarH }; }

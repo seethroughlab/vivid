@@ -27,6 +27,30 @@ static void drain_params(Vst3Handle* h, Vst3ParamChanges& pc) {
     while (h->param_q.pop(m)) pc.add(m.id, m.value);   // sets id AND value (addParameterData+addPoint left value unset)
 }
 
+// P4: deliver this block's controller events. VST3 has NO MIDI-CC event — a controller reaches the
+// plugin as a PARAMETER CHANGE on the id IMidiMapping bound it to, which is why this rides the same
+// queue as UI edits and modulation rather than the event list.
+//
+// Deliberately NOT routed through h->param_q: that is a UI->audio SPSC ring, and this stream already
+// originates on the audio thread, so pushing into a ring only to pop it in the same callback would
+// add a drop-on-full failure mode for nothing.
+//
+// Block-granular by construction: SinglePointQueue::getPoint reports sampleOffset 0 whatever we
+// stamp, so only the LAST value per controller in a block can reach the plugin anyway — pc.add()
+// dedupes by ParamID, which collapses a fast sweep to one slot and gives that behaviour for free.
+// A fast filter sweep therefore steps rather than glides at large buffer sizes; fixing that means
+// replacing SinglePointQueue with a multi-point queue, which is orthogonal to everything here
+// (CcEvent already carries a real sample_offset for when it lands).
+//
+// RT-safe: array indexing and a bounded pc.add; no allocation, no locks.
+static void apply_cc_params(Vst3Handle* h, const std::vector<CcEvent>& cev, Vst3ParamChanges& pc) {
+    if (!h->midi_map_ok || cev.empty()) return;
+    for (const CcEvent& e : cev) {
+        if (e.cc >= Vst3Handle::kCtrlCount || !h->midi_map_has[e.cc]) continue;   // unmapped: nothing to drive
+        pc.add(h->midi_map[e.cc], std::clamp(static_cast<ParamValue>(e.value), 0.0, 1.0));
+    }
+}
+
 // Note on/off + per-note expression. Note events are added first so a same-offset
 // expression for a just-started note never precedes its note-on (VST3 wants the list
 // sorted; continuing-note expression is at offset 0 with its note-on in a prior block).
@@ -102,7 +126,8 @@ void render_vst3_instrument(Track& t, Vst3Handle* h, Vst3EventList& events,
     float* ch[2] = { L, R };
     AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;
     Vst3ParamChanges pc; pc.clear();
-    drain_params(h, pc);
+    drain_params(h, pc);                    // UI param edits
+    apply_cc_params(h, t.cev, pc);          // P4 clip automation / live controllers
     for (uint32_t k = 0; k < mod_n; ++k) pc.add(mod[k].id, mod[k].value);   // ADR-0034: modulation wins
     ProcessContext pctx = vst3_build_process_context(&ctx, t.steady);
     ProcessData data{};
@@ -183,7 +208,7 @@ void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx,
 // full-range source, or a key-range-filtered list) plus this block's scene-switch note-offs.
 // RT-safe (fixed scratch, no alloc/lock).
 void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent>& notes,
-                            uint32_t frames, float* L, float* R,
+                            const std::vector<ExprEvent>& expr, uint32_t frames, float* L, float* R,
                             const ClapParamMsg* mod, uint32_t mod_n) {
     h->events.clear();
     clap_flush_params(h);
@@ -192,6 +217,34 @@ void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent
         h->events.add_note(ne.on, ne.pitch, ne.vel, ne.note_id, ne.sample_offset);
     for (const NoteEvent& ne : notes)         // this source's notes (full range = t.nev; key-split = filtered)
         h->events.add_note(ne.on, ne.pitch, ne.vel, ne.note_id, ne.sample_offset);
+    // Per-note expression. This was MISSING: render_clap_instrument took notes and never read
+    // t.eev, so the bend/pressure/timbre curves painted in the clip editor — which work on the
+    // VST3 path — were silently dropped on EVERY CLAP instrument. Axis mapping mirrors emit_vst3,
+    // except CLAP's TUNING is already in semitones so the bend value passes through unconverted.
+    for (const ExprEvent& xe : expr) {
+        const clap_note_expression id =
+            xe.axis == vivid::session::AXIS_BEND     ? CLAP_NOTE_EXPRESSION_TUNING :
+            xe.axis == vivid::session::AXIS_PRESSURE ? CLAP_NOTE_EXPRESSION_PRESSURE
+                                                     : CLAP_NOTE_EXPRESSION_BRIGHTNESS;
+        h->events.add_note_expression(id, xe.note_id, xe.pitch, xe.value, xe.sample_offset);
+    }
+    // P4: clip-level controllers as raw MIDI. Legal only when the plugin's note input advertises
+    // CLAP_NOTE_DIALECT_MIDI; a CLAP-dialect-only plugin simply gets the note expression above.
+    if (h->note_in_dialects & CLAP_NOTE_DIALECT_MIDI) {
+        for (const CcEvent& ce : t.cev) {
+            const uint8_t ch = ce.channel & 0x0F;
+            if (ce.cc < 128) {                                   // control change
+                h->events.add_midi(uint8_t(0xB0 | ch), uint8_t(ce.cc),
+                                   uint8_t(std::clamp(ce.value, 0.f, 1.f) * 127.f + 0.5f), ce.sample_offset);
+            } else if (ce.cc == vivid::session::kCcChannelPressure) {
+                h->events.add_midi(uint8_t(0xD0 | ch),
+                                   uint8_t(std::clamp(ce.value, 0.f, 1.f) * 127.f + 0.5f), 0, ce.sample_offset);
+            } else if (ce.cc == vivid::session::kCcPitchBend) {   // 14-bit, LSB first
+                const int b = std::clamp(static_cast<int>(std::clamp(ce.value, 0.f, 1.f) * 16383.f + 0.5f), 0, 16383);
+                h->events.add_midi(uint8_t(0xE0 | ch), uint8_t(b & 0x7F), uint8_t((b >> 7) & 0x7F), ce.sample_offset);
+            }
+        }
+    }
     float* out[2] = { L, R };
     float* in[2]  = { h->silence.data(), h->silence.data() + h->max_block };
     const char* wd_name = plugin_crash_name(h->name, h->bundle_path, "CLAP plugin");

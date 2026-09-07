@@ -486,7 +486,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/blur.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/Vivid.app/Contents/Resources/shaders/blur.wgsl",
         "tier": "bundled"
       },
       "preview": "blur.png"
@@ -705,7 +705,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/composite.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/Vivid.app/Contents/Resources/shaders/composite.wgsl",
         "tier": "bundled"
       },
       "preview": "composite.png"
@@ -917,7 +917,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/crt.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/Vivid.app/Contents/Resources/shaders/crt.wgsl",
         "tier": "bundled"
       },
       "preview": "crt.png"
@@ -1116,7 +1116,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/displace.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/Vivid.app/Contents/Resources/shaders/displace.wgsl",
         "tier": "bundled"
       },
       "preview": "displace.png"
@@ -1387,7 +1387,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/fold.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/Vivid.app/Contents/Resources/shaders/fold.wgsl",
         "tier": "bundled"
       },
       "preview": "fold.png"
@@ -2012,7 +2012,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/kaleidoscope.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/Vivid.app/Contents/Resources/shaders/kaleidoscope.wgsl",
         "tier": "bundled"
       },
       "preview": "kaleidoscope.png"
@@ -3052,7 +3052,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/noise_field.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/Vivid.app/Contents/Resources/shaders/noise_field.wgsl",
         "tier": "bundled"
       },
       "preview": "noisefield.png"
@@ -4677,7 +4677,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/shape.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/Vivid.app/Contents/Resources/shaders/shape.wgsl",
         "tier": "bundled"
       },
       "preview": "shape.png"
@@ -5062,7 +5062,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/shatter.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/Vivid.app/Contents/Resources/shaders/shatter.wgsl",
         "tier": "bundled"
       },
       "preview": "shatter.png"
@@ -5939,7 +5939,7 @@
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/transform.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/Vivid.app/Contents/Resources/shaders/transform.wgsl",
         "tier": "bundled"
       },
       "preview": "transform.png"

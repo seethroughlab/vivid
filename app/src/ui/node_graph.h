@@ -302,6 +302,10 @@ public:
     void chooser_backspace()   { chooser_.backspace(); }
     void chooser_char(unsigned int c) { chooser_.type(c); }
     void chooser_confirm();                   // spawn the selected entry
+    // ADR-0033 P5: if the last chooser spawn created a sticky Note, returns its id (once, then clears)
+    // so the caller can begin a text edit on it; -1 otherwise. The Window (which owns the text-edit
+    // state) isn't reachable from here, so the input layer polls this after confirm/click.
+    int  consume_pending_note_edit() { const int id = note_pending_edit_; note_pending_edit_ = -1; return id; }
 
     // ADR-0021/P3: create an op node at a screen position (as the chooser does) and, if given,
     // set the named FILE param to `file_value` (falls back to the node's first FILE param when
@@ -377,6 +381,7 @@ private:
 
     Chooser chooser_;                  // the shared Tab palette (ui/chooser.h)
     void chooser_spawn(const Chooser::Entry& e);   // create the node the chooser handed back
+    int  note_pending_edit_ = -1;      // ADR-0033 P5: id of a just-spawned sticky Note awaiting text edit (-1 = none)
 
     // ADR-0050: bundled per-op preview thumbnails drawn in the add-node chooser. Lazily decoded +
     // uploaded on first draw, cached by slug (a null view = "no preview, draw the accent dot"), and

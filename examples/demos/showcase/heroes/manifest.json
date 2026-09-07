@@ -2,7 +2,7 @@
   "note": "Hero PNGs + showcase clips from the ADR-0037 showcase QA harness (examples/demos/showcase). These are DEV-BUILD captures of the Phase-D REACTIVE rebuild of all five demos (per-note / beat-synced geometry, not the old self-animating screensavers) — captured with the transport PLAYING (the geometry demos render black when idle). The per-showcase .mp4 clips are the primary showcase now; the hero PNG is the video poster + fallback. The geometry demos are intentionally dark (sparse glowing forms on black). Clips are hosted separately (gitignored; see site showcase_video_base). Regenerate: run `examples/demos/showcase/runner.py --video` against the app. A SIGNED-build re-capture is pending for the next release.",
   "app_build": "dev",
   "app_version": "0.1.0",
-  "captured_from": "app/build/vivid.app (dev build, operator_abi=14)",
+  "captured_from": "app/build/Vivid.app (dev build, operator_abi=14)",
   "gate": "pass_with_warnings",
   "heroes": [
     {

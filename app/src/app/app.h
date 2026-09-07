@@ -27,6 +27,7 @@ class ControlServer;
 class EditGateway;
 class CrashRecovery;
 class VideoRecorder;
+class MasterRecorder;
 namespace ui { class NodeGraph; class AudioNodeGraph; }
 namespace audio { class AudioDeviceManager; }   // ADR-0032 Phase A (miniaudio-free fwd decl)
 }
@@ -54,6 +55,7 @@ struct App {
     std::function<void()> before_audio_rebuild;
     CrashRecovery*      crash_recovery = nullptr; // ADR-0018 warm-snapshot writer (a main.cpp local)
     VideoRecorder*      recorder    = nullptr;   // realtime AV video export (a main.cpp local)
+    MasterRecorder*     master_rec  = nullptr;   // realtime master-mix -> .wav capture (a main.cpp local)
     // ADR-0032: the ma_device (owned by audio_devices below), kept OPAQUE so miniaudio.h stays out of
     // this widely-included header. The audio-export path casts it back to ma_device* to pause/resume the
     // device around an offline WAV bounce. Null when audio is unavailable (headless / device open failed).
@@ -107,6 +109,12 @@ struct App {
     ProjectState project;
     void remember_project_path(const std::string& path);
     void set_media_root(const std::string& root);
+
+    // ADR-0017 convenience: forward one logical edit to the gateway (a no-op when there is none, e.g.
+    // headless). Lets a VIEW record an edit without including app/edit_gateway.h — the ui layer may not
+    // reach up into app/ (ADR-0043), but it already sees this header. Definition is in app.cpp, where
+    // EditGateway is complete.
+    void note_edit(const char* label, const char* coalesce_key = "");
 
     // Audio-thread DSP state (touched only inside the audio callback).
     float  m_flt_lo = 0.f, m_flt_hi = 0.f;   // master 3-band crossover states

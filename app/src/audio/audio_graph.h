@@ -139,6 +139,15 @@ struct AudioGraphEdge {
     ControlShape shape;
 };
 
+// ADR-0033 P5: a graph sticky note — a free-floating editor annotation, NOT a node (no ports, never
+// compiled, invisible to the audio thread). UI-thread only; persisted with the track's audio graph.
+// x/y/w/h are editor WORLD coordinates (the same space as AudioGraphNode::ui_x/ui_y).
+struct AudioGraphAnnotation {
+    int   id = -1;
+    float x = 0.f, y = 0.f, w = 180.f, h = 96.f;
+    std::string text;
+};
+
 // ADR-0022: one resolved control input on a step — which buffer to read, which param it drives,
 // and how to shape it. POD (the RT publish copies steps element-wise).
 struct ControlIn {
@@ -267,6 +276,19 @@ public:
     // along): keeping the old columns would stack the new nodes on top of the old ones.
     void clear_positions();
 
+    // ADR-0033 P5: graph sticky notes (UI thread; persisted; never seen by the audio thread). `add`
+    // returns the new id; `add_raw` is the load path (preserves id + rect + text and bumps the id
+    // counter). The id-keyed mutators no-op on a missing id. `get` reads by index for save/render
+    // iteration; `annotation_text` returns a pointer into the stored string (stable until mutated).
+    int  add_annotation(float x, float y);
+    void add_annotation_raw(int id, const std::string& text, float x, float y, float w, float h);
+    bool remove_annotation(int id);
+    bool set_annotation_text(int id, const std::string& text);
+    bool move_annotation(int id, float x, float y);
+    int  annotation_count() const { return static_cast<int>(annotations_.size()); }
+    bool get_annotation(int i, int& id, std::string& text, float& x, float& y, float& w, float& h) const;
+    const char* annotation_text(int id) const;
+
     // Compile into an immutable plan. Returns false on a cycle (out is left unchanged so the
     // caller keeps its last good plan). buf_count == node count; each node's out_buf == its
     // index in nodes_. Steps are emitted in topological order.
@@ -289,8 +311,11 @@ public:
 private:
     std::vector<AudioGraphNode> nodes_;
     std::vector<AudioGraphEdge> edges_;
+    std::vector<AudioGraphAnnotation> annotations_;   // ADR-0033 P5 sticky notes (UI thread; persisted)
     int output_id_ = -1;
     int next_id_ = 0;
+    int next_anno_id_ = 0;
+    int anno_index(int id) const;                     // id -> index into annotations_, -1 if absent
 };
 
 }  // namespace vivid::audio

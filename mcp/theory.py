@@ -130,11 +130,28 @@ CHORD_INTERVALS = {
     "add9":  [0, 4, 7, 14],    "madd9": [0, 3, 7, 14],
     "11":    [0, 4, 7, 10, 14, 17], "m11": [0, 3, 7, 10, 14, 17],
     "13":    [0, 4, 7, 10, 14, 21], "maj13": [0, 4, 7, 11, 14, 21], "m13": [0, 3, 7, 10, 14, 21],
+    # Lydian / altered / minor-major colour. This is the vocabulary the reference literature on
+    # Depeche Mode, Beach House, Reznor-Ross and Boards of Canada actually trades in; without it
+    # `chord()` fell through to a bare triad (and, worse, "maj*" tripped the startswith("m")
+    # minor test, so Cmaj7#11 returned C MINOR).
+    "maj7#11": [0, 4, 7, 11, 18], "maj9#11": [0, 4, 7, 11, 14, 18], "7#11": [0, 4, 7, 10, 18],
+    "maj7b5":  [0, 4, 6, 11],
+    "7#9":   [0, 4, 7, 10, 15], "7b9": [0, 4, 7, 10, 13],
+    "7#5":   [0, 4, 8, 10],     "7b5": [0, 4, 6, 10],   "aug7": [0, 4, 8, 10],
+    "alt":   [0, 4, 10, 15, 20],                        # 1 3 b7 #9 b13
+    "mmaj7": [0, 3, 7, 11],     "mmaj9": [0, 3, 7, 11, 14], "dimmaj7": [0, 3, 6, 11],
+    "69":    [0, 4, 7, 9, 14],  "m69": [0, 3, 7, 9, 14],
+    "add11": [0, 4, 7, 17],     "add13": [0, 4, 7, 21],
+    "9sus4": [0, 5, 7, 10, 14], "sus2sus4": [0, 2, 5, 7],
 }
 
 
 def _norm_quality(q: str) -> str:
     q = q.strip()
+    # Parenthesised qualities are a spelling, not structure: "m(maj7)" == "mmaj7", "C(add9)" ==
+    # "Cadd9". Strip before the substitutions below so the table lookup sees one canonical form.
+    q = q.replace("(", "").replace(")", "")
+    q = q.replace("6/9", "69")          # a slash INSIDE a quality, not a slash bass
     q = q.replace("Δ", "maj7").replace("△", "maj7").replace("°", "dim").replace("ø", "m7b5")
     q = q.replace("Major", "maj").replace("major", "maj").replace("Maj", "maj").replace("MAJ", "maj")
     q = q.replace("Minor", "m").replace("minor", "m").replace("Min", "m").replace("MIN", "m").replace("min", "m")
@@ -152,7 +169,12 @@ def chord(symbol: str, octave: int = 4, inversion: int = 0, voicing: str = "clos
     sym = symbol.strip()
     bass = None
     if "/" in sym:
-        sym, bass = (p.strip() for p in sym.split("/", 1))
+        head, tail = (p.strip() for p in sym.rsplit("/", 1))
+        # Only a slash BASS, never a slash inside a quality ("C6/9", "Cmaj7#11/9"): split just when
+        # the right side is a note name. Previously "C6/9" split into quality "6" + bass "9" and
+        # raised "bad note name: '9'".
+        if re.fullmatch(r"[A-Ga-g][#b]?", tail):
+            sym, bass = head, tail
     m = re.match(r"^([A-Ga-g])([#b]?)(.*)$", sym)
     if not m:
         raise ValueError(f"bad chord symbol: {symbol!r}")
@@ -160,7 +182,15 @@ def chord(symbol: str, octave: int = 4, inversion: int = 0, voicing: str = "clos
     q = _norm_quality(m.group(3))
     intervals = CHORD_INTERVALS.get(q)
     if intervals is None:
-        intervals = [0, 3, 7] if q.startswith("m") else [0, 4, 7]
+        # RAISE rather than guess. The old fallback returned a plausible-looking triad for any
+        # unrecognised quality, so a wrong chord was indistinguishable from a right one — and
+        # because the test was startswith("m"), every unknown "maj…" became a MINOR triad
+        # (Cmaj7#11 -> C minor). A caller that gets an error can fix the symbol; a caller that
+        # gets the wrong notes cannot even tell.
+        raise ValueError(
+            f"unknown chord quality {q!r} in {symbol!r}; supported: "
+            + ", ".join(sorted(k for k in CHORD_INTERVALS if k))
+        )
     root_midi = parse_note(root + str(octave))
     pitches = [root_midi + iv for iv in intervals]
     for _ in range(inversion % max(1, len(pitches))):     # invert: raise the lowest note an octave

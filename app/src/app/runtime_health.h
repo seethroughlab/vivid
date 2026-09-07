@@ -25,6 +25,7 @@ struct HealthSnapshot {
     uint64_t    audio_render_bailouts = 0;      // oversized-block bail-to-silence events (audible dropout)
     uint64_t    audio_over_budget = 0;          // callbacks that blew the realtime time budget
     uint64_t    audio_handoff_skips = 0;        // try_lock handoffs skipped on contention (kept stale)
+    uint64_t    audio_param_drops = 0;          // param changes dropped (block's IParameterChanges full) — P4
     uint32_t    audio_last_callback_us = 0;     // gauge: most-recent callback wall time
     uint32_t    audio_max_callback_us = 0;      // gauge: high-water callback wall time since start
     // Error threshold for render bailouts, set by collect_health from audio_budgets() so severity()
@@ -64,6 +65,7 @@ struct HealthSnapshot {
     int         op_nodes = 0;                    // op nodes in the visuals chain
     int         op_types = 0;                    // registered operator types (built-in + loaded)
     int         missing_ops = 0;                 // chain nodes whose op type isn't registered (BROKEN)
+    int         errored_ops = 0;                 // chain nodes reporting a runtime_error this frame (ADR-0019)
     int         packages_loaded = 0;             // dlopen'd operator dylibs
     // Structural blank-vs-empty signal (P2-03): true = a producer feeds the active Output; false =
     // nothing is wired to Output ("empty by design"). A benign, intended state — NOT a failure — so
