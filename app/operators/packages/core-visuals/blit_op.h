@@ -30,7 +30,7 @@ inline const char* kBlitWGSL = R"(
 struct BlitOp : vivid::OperatorBase, vivid::GpuProcessable {
     const char* label_;
     explicit BlitOp(const char* label) : label_(label) {}
-    bool tried_ = false;
+    bool tried_ = false; std::string err_;   // ADR-0019: surfaced per-frame via report_if_no_pipeline
     WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
     WGPURenderPipeline pipe_ = nullptr; WGPUSampler samp_ = nullptr; WGPUBindGroup bg_ = nullptr;
     ~BlitOp() override {
@@ -45,7 +45,7 @@ struct BlitOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     bool lazy_init(const VividGpuContext* c) {
         std::string err; sh_ = vivid::gpu::create_shader_checked(c->device, kBlitWGSL, label_, err);
-        if (!sh_ || !err.empty()) return false;
+        if (!sh_ || !err.empty()) { err_ = vivid::gpu::concise_gpu_error(err); return false; }
         WGPUBindGroupLayoutEntry e[2]{};
         e[0].binding = 0; e[0].visibility = WGPUShaderStage_Fragment;
         e[0].texture.sampleType = WGPUTextureSampleType_Float; e[0].texture.viewDimension = WGPUTextureViewDimension_2D;
@@ -62,7 +62,7 @@ struct BlitOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     void process_gpu(const VividGpuContext* c) override {
         if (!tried_) { tried_ = true; lazy_init(c); }
-        if (!pipe_) return;
+        if (vivid::gpu::report_if_no_pipeline(c, pipe_, err_)) return;
         const WGPUTextureView in = (c->input_texture_count > 0) ? c->input_texture_views[0] : c->output_texture_view;
         if (bg_) { wgpuBindGroupRelease(bg_); bg_ = nullptr; }
         WGPUBindGroupEntry be[2]{};
