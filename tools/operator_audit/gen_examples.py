@@ -17,7 +17,7 @@ so `load_project` compiles + registers it on open (project-local operators, `pro
 The example both DEMONSTRATES the op and CARRIES it — no dependency on the default install.
 
 Prereq: launch the app by DIRECT binary path with a control port (a fresh, lean instance):
-    VIVID_PORT=9877 app/build/vivid.app/Contents/MacOS/vivid &
+    VIVID_PORT=9877 app/build/Vivid.app/Contents/MacOS/Vivid &
 Then:
     uv run tools/operator_audit/gen_examples.py            # every renderable visual op
     uv run tools/operator_audit/gen_examples.py Render3D   # explicit op(s)

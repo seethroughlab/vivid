@@ -308,8 +308,12 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
         } else {
             json clips = json::array();
             for (int sc = 0; sc < ns; ++sc) {
-                vivid::session::ClipNote buf[256];
-                const int n = vivid::session::session_get_clip(s, t, sc, buf, 256);
+                // Size to the clip, never a fixed buffer: a fixed 256 silently DROPPED notes past
+                // the cap on save (the control surface reads 1024), so a dense imported groove or a
+                // long recorded take lost work at save time with no error.
+                const int cap = vivid::session::session_clip_note_count(s, t, sc);
+                std::vector<vivid::session::ClipNote> buf(static_cast<size_t>(cap > 0 ? cap : 1));
+                const int n = vivid::session::session_get_clip(s, t, sc, buf.data(), cap);
                 json notes = json::array();
                 for (int i = 0; i < n; ++i) {
                     json jn = { {"p", buf[i].pitch}, {"s", buf[i].start}, {"d", buf[i].dur}, {"v", buf[i].vel} };
@@ -317,6 +321,15 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                     notes.push_back(jn);
                 }
                 json jc = { {"length", vivid::session::session_clip_length(s, t, sc)}, {"notes", notes} };
+                {   // P4: clip-level controller automation (absent when there is none)
+                    const int nc = vivid::session::session_clip_cc_count(s, t, sc);
+                    if (nc > 0) {
+                        std::vector<vivid::session::CcLane> lanes(static_cast<size_t>(nc));
+                        const int got = vivid::session::session_get_clip_cc(s, t, sc, lanes.data(), nc);
+                        vivid::session::MidiClip tmp; tmp.cc.assign(lanes.begin(), lanes.begin() + got);
+                        vivid::session::cc_to_json(tmp, jc);
+                    }
+                }
                 double ls = 0, le = 0; vivid::session::session_get_clip_loop(s, t, sc, &ls, &le);
                 if (le > ls) { jc["loop_start"] = ls; jc["loop_end"] = le; }   // in-clip loop region
                 clips.push_back(jc);
@@ -409,6 +422,21 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
             for (int e = 0; e < vivid::session::session_audio_effect_count(s, t); ++e) afx.push_back(audio_op(e));
             if (!afx.empty()) jt["audio_fx"] = afx;
         }
+        // ADR-0033 P5: per-track graph sticky notes — saved for EVERY track, independent of the
+        // authoritative/linear split above (notes live on the track's editor view either way).
+        {
+            json notes = json::array();
+            const int na = vivid::session::session_audio_graph_annotation_count(s, t);
+            for (int i = 0; i < na; ++i) {
+                int aid = 0; float ax = 0.f, ay = 0.f, aw = 0.f, ah = 0.f;
+                if (vivid::session::session_audio_graph_annotation_at(s, t, i, &aid, &ax, &ay, &aw, &ah)) {
+                    const char* txt = vivid::session::session_audio_graph_annotation_text(s, t, aid);
+                    notes.push_back({ {"id", aid}, {"text", txt ? txt : ""},
+                                      {"x", ax}, {"y", ay}, {"w", aw}, {"h", ah} });
+                }
+            }
+            if (!notes.empty()) jt["audio_notes"] = notes;
+        }
 
         tracks.push_back(jt);
     }
@@ -452,16 +480,27 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     json pool = json::array();
     for (int i = 0; i < vivid::session::session_pool_count(s); ++i) {
         if (vivid::session::session_pool_is_audio(s, i)) continue;
-        vivid::session::ClipNote buf[256];
-        const int n = vivid::session::session_pool_get(s, i, buf, 256);
+        const int cap = vivid::session::session_pool_note_count(s, i);   // see the grid-clip note above
+        std::vector<vivid::session::ClipNote> buf(static_cast<size_t>(cap > 0 ? cap : 1));
+        const int n = vivid::session::session_pool_get(s, i, buf.data(), cap);
         json notes = json::array();
         for (int k = 0; k < n; ++k) {
             json jn = { {"p", buf[k].pitch}, {"s", buf[k].start}, {"d", buf[k].dur}, {"v", buf[k].vel} };
             vivid::session::expr_to_json(buf[k], jn);
             notes.push_back(jn);
         }
-        pool.push_back({ {"name", vivid::session::session_pool_name(s, i)},
-                         {"length", vivid::session::session_pool_length(s, i)}, {"notes", notes} });
+        json jp = { {"name", vivid::session::session_pool_name(s, i)},
+                    {"length", vivid::session::session_pool_length(s, i)}, {"notes", notes} };
+        {   // P4: a stashed clip keeps its automation
+            const int nc = vivid::session::session_pool_cc_count(s, i);
+            if (nc > 0) {
+                std::vector<vivid::session::CcLane> lanes(static_cast<size_t>(nc));
+                const int got = vivid::session::session_pool_get_cc(s, i, lanes.data(), nc);
+                vivid::session::MidiClip tmp; tmp.cc.assign(lanes.begin(), lanes.begin() + got);
+                vivid::session::cc_to_json(tmp, jp);
+            }
+        }
+        pool.push_back(jp);
     }
     j["pool"] = pool;
 
@@ -666,6 +705,8 @@ static void apply_track_values(vivid::session::Session* s, int t, const json& jt
                     notes.push_back(std::move(cn));
                 }
             session_set_clip(s, t, sc, notes.data(), static_cast<int>(notes.size()), jc.value("length", 4.0));
+            { MidiClip tmp; cc_from_json(jc, tmp);   // P4 (absent key => no lanes)
+              session_set_clip_cc(s, t, sc, tmp.cc.data(), static_cast<int>(tmp.cc.size())); }
             if (jc.contains("loop_end"))
                 session_set_clip_loop(s, t, sc, jc.value("loop_start", 0.0), jc.value("loop_end", 0.0));
         }
@@ -790,6 +831,14 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
             vivid::session::session_set_track_gain(s, t, jt.value("gain", 0.8f));
             vivid::session::session_set_track_mute(s, t, jt.value("mute", false));   // ADR-0022 P1b.4
             vivid::session::session_set_track_solo(s, t, jt.value("solo", false));
+            // ADR-0033 P5: restore per-track graph sticky notes (every track; tracks are freshly
+            // rebuilt above, so the store starts empty — absent key in older projects ⇒ none).
+            if (jt.contains("audio_notes"))
+                for (const auto& jn : jt["audio_notes"])
+                    vivid::session::session_audio_graph_annotation_add_raw(
+                        s, t, jn.value("id", 0), jn.value("text", std::string()).c_str(),
+                        jn.value("x", 0.f), jn.value("y", 0.f),
+                        jn.value("w", 180.f), jn.value("h", 96.f));
             if (vivid::session::session_track_is_audio(s, t) && jt.contains("trims")) {
                 const json& tr = jt["trims"];
                 for (int sc = 0; sc < static_cast<int>(tr.size()); ++sc)
@@ -831,6 +880,11 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                             notes.push_back(std::move(cn));
                         }
                     vivid::session::session_set_clip(s, t, sc, notes.data(), static_cast<int>(notes.size()), jc.value("length", 4.0));
+                    // P4: restore lanes HERE too. persist_undo strips "clips" from track_topology, so
+                    // clip content comes back ONLY through this ParamsOnly path — miss it and undo of
+                    // an automation edit silently does nothing.
+                    { vivid::session::MidiClip tmp; vivid::session::cc_from_json(jc, tmp);
+                      vivid::session::session_set_clip_cc(s, t, sc, tmp.cc.data(), static_cast<int>(tmp.cc.size())); }
                     if (jc.contains("loop_end"))
                         vivid::session::session_set_clip_loop(s, t, sc, jc.value("loop_start", 0.0), jc.value("loop_end", 0.0));
                 }
@@ -905,10 +959,21 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
         for (const auto& jp : j["pool"]) {
             std::vector<vivid::session::ClipNote> notes;
             if (jp.contains("notes"))
-                for (const auto& jn : jp["notes"])
-                    notes.push_back({ jn.value("p", 60), jn.value("s", 0.0), jn.value("d", 0.25), jn.value("v", 0.8f) });
-            vivid::session::session_pool_add(s, notes.data(), static_cast<int>(notes.size()),
-                                             jp.value("length", 4.0), jp.value("name", std::string()).c_str());
+                for (const auto& jn : jp["notes"]) {
+                    vivid::session::ClipNote cn{ jn.value("p", 60), jn.value("s", 0.0),
+                                                 jn.value("d", 0.25), jn.value("v", 0.8f), {} };
+                    // The pool SAVE path writes expression curves (expr_to_json above) but this
+                    // restore never read them back, so stashing a clip with painted bend/pressure
+                    // and reloading the project quietly flattened it. Symmetric now.
+                    vivid::session::expr_from_json(jn, cn);
+                    notes.push_back(std::move(cn));
+                }
+            const int pidx = vivid::session::session_pool_add(
+                s, notes.data(), static_cast<int>(notes.size()),
+                jp.value("length", 4.0), jp.value("name", std::string()).c_str());
+            { vivid::session::MidiClip tmp; vivid::session::cc_from_json(jp, tmp);   // P4 lanes
+              if (pidx >= 0 && !tmp.cc.empty())
+                  vivid::session::session_pool_set_cc(s, pidx, tmp.cc.data(), static_cast<int>(tmp.cc.size())); }
         }
 
     // ADR-0022 P2a.3: restore cross-track control edges after the tracks + their audio graphs exist

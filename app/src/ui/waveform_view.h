@@ -10,6 +10,17 @@
 // Each editor composes the pieces it needs. The colors ARE the language — kept here so both match.
 namespace vivid::ui {
 
+// The waveform palette. These live HERE, not in each editor: when the marker colors were caller-side
+// file-statics the two editors drifted (trim handles were yellow in the clip editor and amber in the
+// Sampler). Every overlay method defaults to its own color, so composing the component is enough to be
+// in the language; an editor passes an explicit color only for a marker class it alone has.
+inline constexpr float kWaveTrim[3]   = { 0.94f, 0.63f, 0.19f };   // trim / loop / in-out handles (amber)
+inline constexpr float kWaveDivider[3]= { 0.58f, 0.66f, 0.78f };   // slice boundaries (steel)
+inline constexpr float kWaveRegion[3] = { 0.35f, 0.55f, 0.85f };   // the selected slice / region (blue)
+inline constexpr float kWaveTransient[3] = { 0.50f, 0.50f, 0.36f };// detected onsets (dim ticks)
+inline constexpr float kWaveWarp[3]   = { 0.96f, 0.62f, 0.24f };   // warp markers (orange; clip editor only)
+inline constexpr float kWavePlayhead[3] = { 0.95f, 0.35f, 0.35f }; // playhead (red)
+
 struct WaveformView {
     Rect   rect;            // the canvas the waveform fills (already clipped by the caller)
     double x0  = 0.0;       // leftmost visible normalized position (h-scroll)
@@ -47,22 +58,23 @@ struct WaveformView {
         if (xr < rect.x + rect.w) r.draw_rect(std::max(xr, rect.x), rect.y, rect.x + rect.w - std::max(xr, rect.x), rect.h, 0.f, 0.f, 0.f, 0.45f);
     }
     // A vertical handle line at normalized `n` (trim edge, root note, …). Clipped to the canvas.
-    void handle(Renderer2D& r, double n, const float* col, float w = 2.f) const {
+    void handle(Renderer2D& r, double n, const float* col = kWaveTrim, float w = 2.5f) const {
         const float x = x_of(n);
         if (x >= rect.x && x <= rect.x + rect.w)
             r.draw_rect(x - w * 0.5f, rect.y, w, rect.h, col[0], col[1], col[2], 1.0f);
     }
     // A translucent region [lo,hi) fill (a selected slice, an active zone).
-    void region(Renderer2D& r, double lo, double hi, const float* col, float alpha = 0.16f) const {
+    void region(Renderer2D& r, double lo, double hi, const float* col = kWaveRegion, float alpha = 0.20f) const {
         const float xl = std::max(x_of(lo), rect.x), xr = std::min(x_of(hi), rect.x + rect.w);
         if (xr > xl) r.draw_rect(xl, rect.y, xr - xl, rect.h, col[0], col[1], col[2], alpha);
     }
     // Bottom ticks (detected transients).
-    void ticks(Renderer2D& r, const float* ns, int n, const float* col) const {
+    void ticks(Renderer2D& r, const float* ns, int n, const float* col = kWaveTransient) const {
         for (int i = 0; i < n; ++i) { const float tx = x_of(ns[i]); if (tx >= rect.x && tx < rect.x + rect.w) r.draw_rect(tx, rect.y + rect.h - 9.f, 1.f, 8.f, col[0], col[1], col[2], 0.7f); }
     }
     // Full-height divider lines (slice boundaries, warp markers). `grab_tab` adds a top grab handle.
-    void dividers(Renderer2D& r, const float* ns, int n, const float* col, float alpha = 0.5f, bool grab_tab = false) const {
+    void dividers(Renderer2D& r, const float* ns, int n, const float* col = kWaveDivider,
+                  float alpha = 0.85f, bool grab_tab = false) const {
         for (int i = 0; i < n; ++i) {
             const float x = x_of(ns[i]);
             if (x < rect.x || x > rect.x + rect.w) continue;
@@ -70,7 +82,7 @@ struct WaveformView {
             if (grab_tab) r.draw_rect(x - 3.f, rect.y, 7.f, 6.f, col[0], col[1], col[2], 1.0f);
         }
     }
-    void playhead(Renderer2D& r, double n, const float* col) const {
+    void playhead(Renderer2D& r, double n, const float* col = kWavePlayhead) const {
         const float x = x_of(n);
         if (x >= rect.x && x < rect.x + rect.w) r.draw_rect(x, rect.y, 1.5f, rect.h, col[0], col[1], col[2], 1.0f);
     }

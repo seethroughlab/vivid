@@ -1,3 +1,7 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["fastmcp>=3.4,<4", "httpx>=0.27,<1"]
+# ///
 """Vivid — MCP bridge.
 
 A FastMCP (stdio) server that proxies each tool call to the running app's loopback
@@ -14,6 +18,11 @@ import time
 import httpx
 from fastmcp import FastMCP
 
+# This file also ships INSIDE the app bundle (Contents/Resources/mcp). Importing the sibling
+# theory.py would drop a __pycache__/ next to it — a write into a signed, read-only bundle, which
+# invalidates the code signature where it succeeds and is a silent no-op where it doesn't. Nothing
+# here is import-heavy enough to care about bytecode caching, so just turn it off.
+sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # import sibling theory.py
 import theory  # noqa: E402  — pure-Python music-theory helpers (chords/scales/rhythm)
 
@@ -92,6 +101,16 @@ def get_version() -> dict:
     must match), session_schema (a saved session is gated against this), and build_type.
     Read this to check whether an operator package or saved session is compatible."""
     return _post("get_version")
+
+
+@mcp.tool
+def get_mcp_setup() -> dict:
+    """How another MCP client connects to this running app. Returns {bundled, bridge_dir, command,
+    url}: `command` is the ready-to-paste `claude mcp add …` line pointing at the bridge shipped in
+    the app bundle (Contents/Resources/mcp). Use it when a user asks how to connect Claude — or
+    another agent — to Vivid. `bundled` is false in a build without the bundled bridge (then `hint`
+    gives the repo-checkout fallback). The same string is behind the app's Help > Connect Claude."""
+    return _post("get_mcp_setup")
 
 
 @mcp.tool
@@ -245,8 +264,11 @@ def get_graph() -> dict:
 
 @mcp.tool
 def layout_graph() -> dict:
-    """Auto-arrange the op nodes into a tidy layered left->right layout (rank by depth along
-    the input chain; the 'Re-layout' button). Returns {nodes}. Positions show up in get_graph."""
+    """Auto-arrange the visual op nodes into a tidy layered LEFT->RIGHT layout — rank by depth along the
+    input chain AND the reactive control edges, so sources sit left of what they drive and the flow reads
+    cleanly. CALL THIS AFTER you build or rewire a graph: a legible, human-comprehensible arrangement is
+    part of the deliverable, not an afterthought — never leave nodes stacked or overlapping. Returns
+    {nodes}; positions show up in get_graph. (New audio-graph nodes are auto-arranged on creation.)"""
     return _post("layout_graph")
 
 
@@ -866,6 +888,23 @@ def capture_frame(path: str = "") -> dict:
     return _post("capture_frame", payload)
 
 
+@mcp.tool
+def capture_interface(path: str = "") -> dict:
+    """Screenshot the WHOLE Vivid interface — the UI chrome, panels, session grid, node graph AND the
+    canvas — not just the visual output (that's capture_frame). Reads the app's own composited window
+    framebuffer, so it needs no screen-recording permission. Use it to SEE the interface you're driving
+    (an agent's eyes on the UI) or to make documentation screenshots. path optional (else saved under
+    the user data dir's captures/). Returns {path, pending}; the PNG is written within ~1 frame — this
+    tool waits briefly so the file exists on return."""
+    payload: dict = {}
+    if path:
+        payload["path"] = path
+    r = _post("capture_interface", payload)
+    if isinstance(r, dict) and r.get("ok", True):
+        time.sleep(0.35)   # the capture is taken in the next end_frame; give it a moment to land
+    return r
+
+
 # ---------------- video export (realtime AV) ----------------
 @mcp.tool
 def export_video(path: str, seconds: float, fps: float = 60.0) -> dict:
@@ -922,6 +961,32 @@ def audio_export_status() -> dict:
 
 
 @mcp.tool
+def start_master_record(path: str) -> dict:
+    """Begin recording the LIVE master mix to a lossless .wav (absolute path, ends in .wav) — the way
+    to capture a performance you play by hand, launching scenes as you go. Records until
+    stop_master_record. Unlike export_audio (which renders the current arming offline from beat 0 and
+    cannot replay scene launches) this captures exactly what you hear, and unlike export_video its
+    audio is not lossy AAC. Fails if a video export is already recording: both drain the same
+    single-reader master tap."""
+    return _post("start_master_record", {"path": path})
+
+
+@mcp.tool
+def stop_master_record() -> dict:
+    """Finish the master recording and close the .wav. Returns {path, frames, duration_sec,
+    sample_rate, peak, clipped, overruns}. CHECK `overruns` — anything above 0 means blocks were
+    dropped and the capture has gaps in it, so the take should be redone."""
+    return _post("stop_master_record")
+
+
+@mcp.tool
+def master_record_status() -> dict:
+    """Poll the realtime master recording: {recording, path, frames, duration_sec, sample_rate, peak,
+    clipped, overruns}. After a stop it reports the finished take."""
+    return _post("master_record_status")
+
+
+@mcp.tool
 def export_av(path: str, seconds: float = 0.0, bars: float = 0.0, fps: float = 60.0, block: int = 0) -> dict:
     """Kick off a DETERMINISTIC offline audiovisual export (H.264 video + AAC audio .mp4/.mov). ASYNC:
     returns {started} immediately, then the render runs a frame per app tick — poll `av_export_status`
@@ -972,6 +1037,26 @@ def set_audio_input_device(name: str = "", enabled: bool = True) -> dict:
     the device stays playback-only (active.input_open = false) but the call still succeeds. Live audio
     briefly drops out during the reopen. Returns {active:{...incl. input_open, input_name}}."""
     return _post("set_audio_input_device", {"name": name, "enabled": enabled})
+
+
+@mcp.tool
+def midi_input_status() -> dict:
+    """Hardware MIDI keyboard state. Returns {sources:[{id,name,connected}], connected,
+    selected_source, selected_channel, events_seen, receiving} plus a `hint` when something looks
+    wrong. CALL THIS FIRST when a user says their keyboard isn't working, before assuming the app is
+    at fault — `sources` empty means nothing is attached (devices are picked up live, no restart
+    needed), and `events_seen` 0 with sources connected means nothing has been played yet or the
+    channel filter is excluding it."""
+    return _post("midi_input_status")
+
+
+@mcp.tool
+def midi_input_select(source: int = 0, channel: int = -1) -> dict:
+    """Restrict MIDI input to one source and/or channel. `source` is the CoreMIDI unique id from
+    midi_input_status (0 = accept every source, the default); `channel` is 0..15 (-1 = omni).
+    Persists as a machine preference alongside the audio-device choice — it follows the computer,
+    not the project, so it is not undoable."""
+    return _post("midi_input_select", {"source": source, "channel": channel})
 
 
 @mcp.tool
@@ -1203,6 +1288,34 @@ def audio_graph_add_op(track: int, op: str) -> dict:
 
 
 @mcp.tool
+def audio_graph_add_annotation(track: int, x: float = 40.0, y: float = 40.0, text: str = "") -> dict:
+    """Add a sticky note to a track's audio graph at world position (x,y) — free-floating
+    explainability text (not a node; makes no sound, never wired). Returns its id. Persists;
+    undoable. The audio-graph peer of add_annotation (which annotates the visual graph). Use it
+    to leave intent on an audio graph for a human or another agent."""
+    return _post("audio_graph_add_annotation", {"track": track, "x": x, "y": y, "text": text})
+
+
+@mcp.tool
+def audio_graph_set_annotation_text(track: int, id: int, text: str) -> dict:
+    """Set an audio-graph sticky note's text (id from audio_graph_add_annotation / get_audio_graph
+    annotations). Undoable."""
+    return _post("audio_graph_set_annotation_text", {"track": track, "id": id, "text": text})
+
+
+@mcp.tool
+def audio_graph_move_annotation(track: int, id: int, x: float, y: float) -> dict:
+    """Move an audio-graph sticky note to world position (x,y). Undoable."""
+    return _post("audio_graph_move_annotation", {"track": track, "id": id, "x": x, "y": y})
+
+
+@mcp.tool
+def audio_graph_remove_annotation(track: int, id: int) -> dict:
+    """Remove an audio-graph sticky note by id. Undoable."""
+    return _post("audio_graph_remove_annotation", {"track": track, "id": id})
+
+
+@mcp.tool
 def audio_graph_add_source(track: int, op: str) -> dict:
     """Add a native instrument (name from list_audio_operators) as a new *source* node in a
     track's audio graph, wired straight to the Output in parallel with any existing source.
@@ -1231,6 +1344,83 @@ def audio_graph_set_node_key_range(track: int, node: int, lo: int = 0, hi: int =
     get_audio_graph). The audio thread then hands that source only its in-range notes, so two
     sources with disjoint ranges split the keyboard. Full range 0..127 = no filtering."""
     return _post("audio_graph_set_node_key_range", {"track": track, "node": node, "lo": lo, "hi": hi})
+
+
+@mcp.tool
+def get_sampler(track: int, node_id: int) -> dict:
+    """Read a Sampler node's loaded sample: source path, length (source_frames), sample rate,
+    channels, base_note, gate (one-shot vs gated), and the slice map — one entry per slice with its
+    [start,end) SOURCE frames and the note range that triggers it. This is the read side of the
+    Sampler editor; call it before any sampler_* edit, because those take SOURCE frames and you
+    need source_frames to address them. Node ids come from get_audio_graph."""
+    return _post("get_sampler", {"track": track, "node_id": node_id})
+
+
+@mcp.tool
+def sampler_set_trim(track: int, node_id: int, start: int, end: int) -> dict:
+    """Trim which part of the loaded sample plays: the region [start,end) in SOURCE frames (get
+    them from get_sampler.source_frames). This is the melodic framing — one region stretched across
+    the keyboard — and it REPLACES any slicing. Use it to cut silence off the head/tail. To go the
+    other way (one slice per key) use sampler_slice_equal or sampler_detect_slices."""
+    return _post("sampler_set_trim", {"track": track, "node_id": node_id, "start": start, "end": end})
+
+
+@mcp.tool
+def sampler_slice_equal(track: int, node_id: int, count: int) -> dict:
+    """Cut the played region into `count` equal slices, each mapped to its own ascending note from
+    base_note — the drum-rack framing (slice 1 on base_note, slice 2 a semitone up, …). Good for a
+    loop already on a grid, e.g. count=16 for a 1-bar 16th break. `count=1` CLEARS the slicing and
+    returns to one melodic region. For an unquantized break, sampler_detect_slices finds the actual
+    onsets instead. Returns the resulting slice map."""
+    return _post("sampler_slice_equal", {"track": track, "node_id": node_id, "count": count})
+
+
+@mcp.tool
+def sampler_detect_slices(track: int, node_id: int, sensitivity: float = 0.5) -> dict:
+    """Auto-slice the loaded sample at detected transients (onsets) and map each slice to its own
+    ascending note — the usual way to turn a drum break into a playable rack. `sensitivity` 0..1:
+    higher finds more (quieter) onsets. Returns the slice count and the resulting map; re-run with a
+    different sensitivity if you got too many/few, or place edges yourself with sampler_set_slices."""
+    return _post("sampler_detect_slices",
+                 {"track": track, "node_id": node_id, "sensitivity": sensitivity})
+
+
+@mcp.tool
+def sampler_set_slices(track: int, node_id: int, starts: list[int],
+                       ends: list[int] | None = None, base_note: int | None = None) -> dict:
+    """Place slice edges explicitly, in SOURCE frames (from get_sampler). `starts` is the list of
+    slice start positions (1..32, sorted for you); `ends` defaults to contiguous slices (each ends
+    where the next begins, the last at the sample end), so normally you pass starts only. Slices map
+    to ascending notes from `base_note` (defaults to the sampler's current one). Use this when
+    detect/equal put an edge in the wrong place."""
+    body: dict = {"track": track, "node_id": node_id, "starts": starts}
+    if ends is not None:
+        body["ends"] = ends
+    if base_note is not None:
+        body["base_note"] = base_note
+    return _post("sampler_set_slices", body)
+
+
+@mcp.tool
+def sampler_set_slice_tune(track: int, node_id: int, slice: int, semitones: int) -> dict:
+    """Pitch one slice up/down by `semitones` (-48..48) while it keeps triggering from the SAME
+    note — so you can tune a snare or drop a kick without remapping the rack. `slice` is the index
+    from get_sampler.slices."""
+    return _post("sampler_set_slice_tune",
+                 {"track": track, "node_id": node_id, "slice": slice, "semitones": semitones})
+
+
+@mcp.tool
+def sampler_slices_to_midi(track: int, node_id: int, scene: int | None = None) -> dict:
+    """Write a MIDI clip that plays the sampler's slices in order — one 1/16 note per slice, on the
+    note that triggers it — so a sliced break becomes an editable clip you can rearrange. Needs the
+    sampler to be sliced first (sampler_detect_slices / sampler_slice_equal). Writes to the first
+    EMPTY scene on this track so it never clobbers a clip; pass `scene` to overwrite one on purpose.
+    Produces exactly the clip the Sampler editor's `Slice -> MIDI` button does."""
+    body: dict = {"track": track, "node_id": node_id}
+    if scene is not None:
+        body["scene"] = scene
+    return _post("sampler_slices_to_midi", body)
 
 
 @mcp.tool
@@ -1567,6 +1757,21 @@ def set_clip(track: int, scene: int, notes: list[dict], length: float = 4.0) -> 
 
 
 @mcp.tool
+def set_clip_cc(track: int, scene: int, cc: list[dict], expected_rev: int | None = None) -> dict:
+    """Replace a clip's CONTROLLER AUTOMATION lanes (mod wheel, sustain, pitch bend, ...). Separate
+    from set_clip on purpose: set_clip is note-only and full-replace, so a transpose or quantize
+    would otherwise wipe recorded automation. `cc` = [{n: <controller>, ch: 0, pts: [[beat, value], ...]}]
+    where `n` is 0..127 for a MIDI CC, 128 for channel pressure, 129 for pitch bend, `value` is
+    normalized 0..1 (bend 0.5 = centered), and `pts` are in CLIP-LOCAL BEATS. Pass cc=[] to clear.
+    At most 16 lanes per clip. Read them back with get_clip, which returns the same shape under "cc".
+    `expected_rev` gives the same conflict guard as set_clip; `rev` is shared between both writes."""
+    payload = {"track": track, "scene": scene, "cc": cc}
+    if expected_rev is not None:
+        payload["expected_rev"] = expected_rev
+    return _post("set_clip_cc", payload)
+
+
+@mcp.tool
 def get_clip(track: int, scene: int) -> dict:
     """Read a MIDI clip back: {notes:[{p,s,d,v}], length}. The read half that editing/transform
     tools use (set_clip is full-replace, so they read-modify-write)."""
@@ -1632,6 +1837,32 @@ def import_audio_clip(track: int, scene: int, path: str, src_bpm: float = 0.0) -
     Returns {track, scene, length} (length in beats). This is the way to get real recorded audio
     into the grid so the glitch pack / warp can process it."""
     return _post("import_audio_clip", {"track": track, "scene": scene, "path": path, "src_bpm": src_bpm})
+
+
+@mcp.tool
+def import_midi(track: int, scene: int, path: str, file_track: int = -1, channel: int = -1,
+                transpose: int = 0, length: float = 0.0, append: bool = False) -> dict:
+    """Import a Standard MIDI File (.mid) into an instrument track's scene clip. THE way to get a
+    drum-plugin groove in: EZdrummer / Superior Drummer / Addictive Drums are built around dragging
+    a groove out of their own browser, so drag it to a folder and import the .mid here.
+    `file_track` (-1 = all) picks one track out of a format-1 file; `channel` (-1 = all) filters by
+    MIDI channel — GM drums are channel 9. `transpose` shifts semitones (notes pushed out of 0..127
+    are dropped and counted in `skipped`). `length` overrides the clip loop length in beats; 0 rounds
+    the content up to a whole bar. `append` overdubs onto the existing clip instead of replacing it.
+    Returns {notes, skipped, length, file_tracks, file_format, file_bpm, track_names} — `file_bpm` is
+    informational, import does NOT change the session tempo."""
+    return _post("import_midi", {"track": track, "scene": scene, "path": path,
+                                 "file_track": file_track, "channel": channel,
+                                 "transpose": transpose, "length": length, "append": append})
+
+
+@mcp.tool
+def export_midi(track: int, scene: int, path: str) -> dict:
+    """Write a MIDI clip out as a .mid file (absolute path, must end in .mid), at the session tempo.
+    The other half of import_midi — send a part back to a plugin's groove browser or another DAW.
+    Per-note expression curves have no SMF equivalent and are not written; the reply says so when the
+    clip had any. Returns {path, notes, bpm}."""
+    return _post("export_midi", {"track": track, "scene": scene, "path": path})
 
 
 @mcp.tool
@@ -2198,6 +2429,35 @@ def get_authoring_guide() -> dict:
             "9. PROJECT: get_project_status; use save_project(path) / load_project(path), "
             "and set_media_root(path) for video assets.",
         ],
+        "bringing_music_in": {
+            "why": "Steps 3's theory tools GENERATE parts. These bring in music that already exists, "
+                   "or that the person plays. Reach for them before hand-writing a part note by note.",
+            "midi_files": "import_midi(track, scene, path) loads a .mid — THE way to use a drum "
+                          "plugin's groove library (EZdrummer / Superior Drummer / Addictive Drums are "
+                          "built around dragging a groove out of their own browser; their parameter "
+                          "surface cannot do it). file_track= picks one track out of a format-1 file, "
+                          "channel=9 isolates GM drums, append=True overdubs. export_midi sends a part "
+                          "back out.",
+            "recording": "arm_track(track) -> launch_clip(track, scene) -> record(on=True) -> play -> "
+                         "record(on=False). A take records INTO the armed track's PLAYING clip, so a "
+                         "launched clip is required (record refuses without one) and record starts the "
+                         "transport for you. Sustain pedal extends the recorded note durations; a "
+                         "committed take is undoable.",
+            "keyboard_check": "If the person says their keyboard is not working, call midi_input_status "
+                              "FIRST — it lists the connected sources and whether anything has arrived. "
+                              "Devices are picked up live, so no restart is needed. midi_input_select "
+                              "narrows to one source/channel.",
+            "controllers": "Mod wheel / sustain / pitch bend record as clip automation lanes. Read them "
+                           "with get_clip (a 'cc' array) and write with set_clip_cc(track, scene, cc) — "
+                           "a SEPARATE call from set_clip, which is note-only, so a transpose or "
+                           "quantize will not wipe them. n = 0..127 CC, 128 channel pressure, 129 pitch "
+                           "bend; values 0..1; points in clip-local beats. Whether a plugin ACTS on a "
+                           "controller is its own routing: list_params reports accepts_midi_cc.",
+            "capture": "export_audio renders the CURRENT arming offline from beat 0 — it cannot replay "
+                       "a timeline of scene launches. To capture an arrangement PERFORMED by hand, use "
+                       "start_master_record(path) / stop_master_record for a lossless .wav, and check "
+                       "`overruns` is 0 on the result.",
+        },
         "errors": "Every reply has an 'ok' bool. Failures are {ok:false, code, error}: "
                   "branch on the stable `code` (bad_json, unknown_method, no_session, no_graph, "
                   "no_vgraph, no_transport, bad_arg, out_of_range, not_found, io_error, internal, "

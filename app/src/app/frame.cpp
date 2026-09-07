@@ -16,6 +16,7 @@
 #include "app/editor_window.h"   // UI-5: floated operator-editor window
 #include "app/window_prefs.h"    // UI-5.4c: remembered float-window geometry
 #include "app/video_recorder.h"  // realtime AV export: per-frame tick after end_frame
+#include "app/master_recorder.h" // realtime master-mix .wav capture: per-frame tap drain
 #include "gpu/gpu_context.h"
 #include "gpu/gpu_util.h"
 #include "ui/renderer_2d.h"
@@ -163,7 +164,10 @@ void draw_gemini_key_modal(Renderer2D& ui, Window& win) {
 // constant) so the digits don't jitter. The string is only re-formatted a few times a
 // second, snprintf'd into a static buffer, so the draw path allocates nothing. The text
 // tints green / gold / red as the frame rate drops, an at-a-glance load hint.
-void draw_perf_hud(Renderer2D& ui, const Window& win) {
+// Placement comes from ui::perf_hud_rect, which anchors off the health dot's gutter so the two
+// can't overlap (they used to: the dot sat inside this chip). Its width is text-driven, so the
+// measured rect is stashed on the Window for the tooltip to hit-test.
+void draw_perf_hud(Renderer2D& ui, Window& win) {
     static double last_t = glfwGetTime();
     static double ema_ms = 1000.0 / 60.0;   // smoothed frame time (ms), seeded at 60 fps
     static double refresh_acc = 0.25;       // seconds since the string was last formatted (force 1st)
@@ -184,15 +188,12 @@ void draw_perf_hud(Renderer2D& ui, const Window& win) {
     }
     const Style& s = style();
     const float scale = s.fs_value;         // small numeric read-out (0.70x)
-    const float tw = ui.text_width(buf, scale);
-    const float pad = 6.f, bh = 16.f;
-    const float bw = tw + pad * 2.f;
-    const float x = static_cast<float>(win.win_w) - bw - 8.f;
-    const float y = 8.f;
-    ui.draw_rect(x, y, bw, bh, s.recess[0], s.recess[1], s.recess[2], 0.60f);                         // semi-transparent chip
-    ui.draw_rect_outline(x, y, bw, bh, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 0.5f);
+    const vivid::ui::Rect b = vivid::ui::perf_hud_rect(win.win_w, ui.text_width(buf, scale));
+    win.perf_chip = b;                      // for the hover tooltip (its width is text-driven)
+    ui.draw_rect(b.x, b.y, b.w, b.h, s.recess[0], s.recess[1], s.recess[2], 0.60f);                   // semi-transparent chip
+    ui.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 0.5f);
     const float* c = fps >= 55.0 ? s.green : (fps >= 30.0 ? s.gold : s.red);                          // load hint
-    ui.draw_text(x + pad, y + 3.f, buf, c[0], c[1], c[2], 0.95f, scale);
+    ui.draw_text(b.x + 6.f, b.y + 3.f, buf, c[0], c[1], c[2], 0.95f, scale);
 }
 
 }  // namespace
@@ -596,6 +597,24 @@ void apply_shader_reloads(App& app) {
     }
 }
 
+// ADR-0019: promote a GPU operator's per-frame runtime error (set via vivid_report_gpu_error, read
+// back into VisualNode::runtime_error) to a log line — which the log→toast promotion below turns into
+// a toast, and the header dot reflects. Edge-triggered per node so a persistent error logs ONCE, and
+// re-logs if it clears then recurs. Mirrors apply_shader_reloads' loudness for the shader-file path;
+// without this a broken compiled op only showed a node badge (easy to miss, invisible to headless/MCP).
+void promote_operator_errors(App& app) {
+    if (!app.vgraph) return;
+    for (auto& n : app.vgraph->nodes()) {
+        if (!n.runtime_error.empty() && !n.runtime_error_reported) {
+            n.runtime_error_reported = true;
+            VLOG_ERR(app, "operator '%s' error: %s",
+                     (n.label.empty() ? n.op_type : n.label).c_str(), n.runtime_error.c_str());
+        } else if (n.runtime_error.empty() && n.runtime_error_reported) {
+            n.runtime_error_reported = false;   // cleared — allow a fresh report if it recurs
+        }
+    }
+}
+
 void run_frame_loop(App& app, Window& win) {
     // Local aliases to the shared engine (App) + this view (Window) so the tick
     // body reads naturally; every object is owned by main(), not here.
@@ -735,16 +754,36 @@ void run_frame_loop(App& app, Window& win) {
         // Hardware MIDI (M6.4): drain the input queue on the main thread and route to the
         // armed track's instrument (so all Session access stays on the UI thread).
         if (app.session) {
-            vivid::platform::MidiEvent mev[64];
+            vivid::platform::MidiMsg mev[64];
             const int nm = app.midi_in.poll(mev, 64);
             const bool step = win.editor && win.editor->is_open() && win.editor->step_mode();
             for (int i = 0; i < nm; ++i) {
-                if (mev[i].on) {
-                    vivid::session::session_note_on(app.session, mev[i].pitch, mev[i].vel);
-                    if (step) win.editor->step_note_on(mev[i].pitch, mev[i].vel);
-                } else {
-                    vivid::session::session_note_off(app.session, mev[i].pitch);
-                    if (step) win.editor->step_note_off();
+                switch (mev[i].kind) {
+                    case vivid::session::MidiKind::NoteOn:
+                        vivid::session::session_note_on(app.session, mev[i].data1, mev[i].value);
+                        if (step) win.editor->step_note_on(mev[i].data1, mev[i].value);
+                        break;
+                    case vivid::session::MidiKind::NoteOff:
+                        vivid::session::session_note_off(app.session, mev[i].data1);
+                        if (step) win.editor->step_note_off();
+                        break;
+                    // P4 Phase D: channel controllers reach the armed track's instrument. Mapped
+                    // into the Vst::ControllerNumbers space the clip lanes and the VST3
+                    // IMidiMapping table both use, so live and automated controllers travel one path.
+                    case vivid::session::MidiKind::CC:
+                        vivid::session::session_ctrl(app.session, mev[i].data1, mev[i].value);
+                        break;
+                    case vivid::session::MidiKind::ChannelPressure:
+                        vivid::session::session_ctrl(app.session, vivid::session::kCcChannelPressure, mev[i].value);
+                        break;
+                    case vivid::session::MidiKind::PitchBend:
+                        vivid::session::session_ctrl(app.session, vivid::session::kCcPitchBend, mev[i].value);
+                        break;
+                    default:
+                        // Poly aftertouch is genuinely PER-NOTE and has no home in the clip-level
+                        // lane model; program change is not a controller. Both stay dropped, and
+                        // deliberately so rather than by omission.
+                        break;
                 }
             }
         }
@@ -809,6 +848,7 @@ void run_frame_loop(App& app, Window& win) {
                 vgraph.set_metronome(static_cast<float>(transport.bpm.load(std::memory_order_relaxed)),
                                      transport.beats_per_bar.load(std::memory_order_relaxed), beats);
                 vgraph.run_chain(frame.encoder, tsec);
+                promote_operator_errors(app);   // ADR-0019: a compiled op that failed init is now loud
             }
             gpu.gpu_mark(frame.encoder, "visuals");   // GPU timing: end of the output render (vs. the editor UI that follows)
             win.preview.out_aspect = vgraph.rt_aspect();   // cache: drives the preview's height + hit-rects
@@ -900,7 +940,11 @@ void run_frame_loop(App& app, Window& win) {
             if (win.show_shader_library) draw_shader_library_view(ui, app.shader_library, win.win_w, win.win_h);
             if (win.show_diagnostics) draw_diagnostics_panel(ui, win.health, app, win.win_w, win.win_h);
             if (win.show_log) draw_log_view(ui, app.log, win.win_w, win.win_h);
-            if (win.show_shortcuts) draw_shortcuts_overlay(ui, win.win_w, win.win_h);   // Ph4 F3
+            // Ph4 F3 + ADR-0048 step 4: while a clip is open, the sheet also lists that editor's keys.
+            if (win.show_shortcuts)
+                draw_shortcuts_overlay(ui, win.win_w, win.win_h,
+                                       win.editor && win.editor->is_open(),
+                                       win.editor && win.editor->is_audio());
             if (win.show_gemini_key) draw_gemini_key_modal(ui, win);   // ADR-0026 key entry (on top)
             // UX Ph4 F3: a keyboard wire is pending — remind the user how to commit / cancel it.
             if (win.kbd_wire_dom)
@@ -909,13 +953,23 @@ void run_frame_loop(App& app, Window& win) {
                              0.98f, 0.80f, 0.30f, 1.0f, 0.82f);
             draw_toasts(ui, win.toasts, glfwGetTime(), win.win_w, win.win_h);
             if (win.show_presets) draw_preset_popover(ui, app, win.presets_node, win.win_w, win.win_h);
-            draw_perf_hud(ui, win);   // always-on FPS / frame-time read-out, drawn last (on top)
+            draw_perf_hud(ui, win);   // always-on FPS / frame-time read-out (stashes win.perf_chip)
+            // The hover tooltip is resolved AFTER the perf HUD (whose rect it can tip) and drawn
+            // last of all, so the pill sits above every other overlay.
+            {   const double tip_now = glfwGetTime();
+                tick_top_bar_tooltip(win.tip, win, mx, my, tip_now);
+                draw_tooltip(ui, win.tip, win.win_w, tip_now);   }
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
             gpu.end_frame(frame);
             // This frame's Output RT is now submitted to the queue and can be read back. TWO consumers
             // want it: the reactive-visuals perception ring (throttled ~12fps, always-on so a single
             // analyze_output call sees a real time-series) and the realtime video recorder (only while
             // recording). Read back ONCE and feed both. The ring is frame-thread only — no locks.
+            // Realtime master-mix capture: drain the transport tap into the .wav. Independent of
+            // the video path below (it needs no framebuffer readback), and mutually exclusive with
+            // it — MasterRecorder::start refuses while a video export holds the single-reader tap.
+            if (app.master_rec) app.master_rec->tick(transport);
+
             const double react_now = std::chrono::duration<double>(
                 std::chrono::steady_clock::now().time_since_epoch()).count();
             const bool recording = app.recorder && app.recorder->is_recording();
@@ -1116,6 +1170,15 @@ void AudioNodeGraph::on_move(App& app, Window& win, double mx, double my) {
     if (marquee_ && app.session) {   // ADR-0033 P1: extend the marquee's far corner (world coords)
         double wxd, wyd; canvas_.view().to_world(mx, my, wxd, wyd);
         marq_x1_ = wxd; marq_y1_ = wyd;
+    }
+    // ADR-0033 P5: drag a sticky note (world space, like a node).
+    if (anno_drag_ >= 0 && app.session) {
+        const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
+        prime(app, win);
+        double wxd, wyd; canvas_.view().to_world(mx, my, wxd, wyd);
+        S::session_audio_graph_annotation_move(app.session, tr, anno_drag_,
+                                               static_cast<float>(wxd) - anno_dx_, static_cast<float>(wyd) - anno_dy_);
+        if (app.edit_gateway) app.edit_gateway->note_edit("Move Note", "ag-note-drag");   // ADR-0017/G3
     }
     // Drag a source node's key-range handle (vertical): ~0.25 semitone/px, lo/hi kept ordered.
     if (key_drag >= 0 && app.session && win.sel_audio_node >= 0) {

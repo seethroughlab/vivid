@@ -21,7 +21,7 @@ Launch Vivid with the control server listening on `127.0.0.1:9876` (set `VIVID_P
 For a disposable run:
 
 ```sh
-VIVID_DISCARD_RECOVERY=1 ./build/vivid.app/Contents/MacOS/vivid
+VIVID_DISCARD_RECOVERY=1 ./build/Vivid.app/Contents/MacOS/Vivid
 ```
 
 ## Run It

@@ -382,24 +382,37 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double beats, double mx, 
         // The audio node CANVAS lives below the session view now (drawn by draw_ui); the bottom dock is
         // the UNIFIED param inspector, so here we render ONLY the selected audio node's param strip.
         const int tr = std::min(std::max(w.focus.track, 0), vivid::session::session_track_count(s) - 1);
-        section_header(ui, 12.f, y0 + 7.f, vivid::session::session_track_name(s, tr), sty.audio);
         // ADR-0049 slice 5: a selected Sampler node gets its first-class editor (identity + waveform +
         // key-zone mapping + the high-frequency controls) in place of the generic param rows.
+        bool sampler_view = false;
         if (w.sel_audio_node >= 0) {
             namespace SS = vivid::session;
             const int nc = SS::session_track_audio_graph_node_count(s, tr);
             for (int i = 0; i < nc; ++i) {
                 if (SS::session_track_audio_graph_node_id(s, tr, i) != w.sel_audio_node) continue;
                 const char* ty = SS::session_track_audio_graph_node_type(s, tr, i);
-                if (ty && std::strcmp(ty, "Sampler") == 0) {
-                    static vivid::ui::SamplerEditor s_sampler_editor;
-                    const Rect body{ 14.f, y0 + 26.f, static_cast<float>(w.win_w) - 28.f, w.dock_h - 32.f };
-                    s_sampler_editor.draw(ui, s, body, tr, w.sel_audio_node,
-                                          static_cast<float>(w.cur_x), static_cast<float>(w.cur_y), w.mouse_left_down);
-                    return;
-                }
+                sampler_view = ty && std::strcmp(ty, "Sampler") == 0;
                 break;
             }
+        }
+        // The Sampler editor paints the SHARED shell (its own title strip carries the track ident), so
+        // the generic section header would be a second, competing title. Every other node keeps it.
+        if (!sampler_view)
+            section_header(ui, 12.f, y0 + 7.f, vivid::session::session_track_name(s, tr), sty.audio);
+        if (sampler_view) {
+            static vivid::ui::SamplerEditor s_sampler_editor;
+            const Rect body{ 12.f, y0 + 2.f, static_cast<float>(w.win_w) - 24.f, w.dock_h - 10.f };
+            // ADR-0017: the editor's mutations reach the undo gateway through this sink, via
+            // App::note_edit — so ui/ never has to include app/edit_gateway.h (ADR-0043 layering).
+            vivid::ui::SamplerEditor::EditSink sink{
+                [](void* o, const char* label, const char* key) {
+                    static_cast<vivid::App*>(o)->note_edit(label, key);
+                },
+                w.app };
+            s_sampler_editor.draw(ui, s, body, tr, w.sel_audio_node,
+                                  static_cast<float>(w.cur_x), static_cast<float>(w.cur_y),
+                                  w.mouse_left_down, sink);
+            return;
         }
         AudioNodeGraph& ag = *w.app->audio_graph;   // ADR-0023 step 6: the one persistent instance, re-primed
         ag.prime(*w.app, w);                        // node-canvas bounds + param bounds (dock) + selection
@@ -678,15 +691,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     ui.push_clip_rect(w.split_x, kTopBarH, W - w.split_x, w.dock_top() - kTopBarH);
     // (No edge accent bar here: hard against the splitter it reads as a stray line, not identity.
     // The visual domain announces itself through the graph's own cyan node/port coloring.)
-    { const Rect rl = graph_relayout_rect(w.win_w, w.win_h, w.split_x, w.dock_h);
-      const bool rlh = hit(rl, mx, my);
-      item_box(ui, rl, sty.gpu, rlh);
-      ui.draw_text(rl.x + 8.f, rl.y + 2.f, "Re-layout", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
-    // ADR-0033 P5: the "+ Note" sticky-note create button, left of Re-layout.
-    { const Rect nb = graph_add_note_rect(w.win_w, w.win_h, w.split_x, w.dock_h);
-      const bool nbh = hit(nb, mx, my);
-      item_box(ui, nb, sty.gold, nbh);
-      ui.draw_text(nb.x + 8.f, nb.y + 2.f, "+ Note", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
+    // (Re-layout → native View menu ⌘L; "+ Note" → the Tab operator chooser. No graph chrome here.)
     ui.pop_clip_rect();
 
     // DAW | visuals splitter (on top, unclipped): a full-height rule from the transport to the dock,
@@ -748,14 +753,12 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         AudioNodeGraph& agr = *w.app->audio_graph;
         agr.prime(*w.app, w);   // node-canvas bounds (this pane) + param bounds (dock) + selection
         const int tr = std::min(std::max(w.sel_track, 0), vivid::session::session_track_count(s) - 1);
-        const Rect pane = audio_graph_pane(w.split_x, w.win_h, w.dock_h, scenes);
+        const Rect pane = audio_graph_pane(w.split_x, w.sidebar_w, w.win_h, w.dock_h, scenes);
         ui.draw_rect(pane.x, pane.y - 6.f, pane.w, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
         const Rect hdr = audio_pane_hdr_rect(pane);
         ui.draw_text(hdr.x + 2.f, hdr.y + 5.f, vivid::session::session_track_name(s, tr),
                      sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.78f);
-        { const Rect rb = audio_pane_relayout_rect(pane); const bool rh = hit(rb, mx, my);
-          item_box(ui, rb, sty.audio, rh);
-          ui.draw_text(rb.x + 8.f, rb.y + 2.f, "Re-layout", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
+        // (Re-layout moved to the native View menu — ⌘L relays out whichever graph is in view.)
         // Show "Editor" for a plugin node with a native GUI — VST3 (has a controller) or CLAP (clap.gui).
         if (w.sel_audio_node >= 0 &&
             (vivid::session::session_audio_graph_node_controller(s, tr, w.sel_audio_node) ||
@@ -868,6 +871,46 @@ void draw_output_preview(Renderer2D& ui, const Window& w, double mx, double my) 
           ui.draw_rect(g.x + g.w - o, g.y + g.h - 3.f, o, 1.f, c[0], c[1], c[2], 1.0f);
           ui.draw_rect(g.x + g.w - 3.f, g.y + g.h - o, 1.f, o, c[0], c[1], c[2], 1.0f);
       } }
+}
+
+// The transport bar's tooltips. The table lives here, next to draw_ui, because that function owns
+// every rect in it — the tips walk the SAME layout.h helpers the draw and the hit-tests use, so a
+// moved control can't leave its tooltip behind. Keyboard hints are the ones the cheat-sheet lists
+// (draw_shortcuts_overlay): Space play/stop, R record, H diagnostics.
+void tick_top_bar_tooltip(TipState& tip, const Window& w, double mx, double my, double now) {
+    // Never tip over a modal, and never follow a drag — a pill under the cursor mid-gesture is noise.
+    if (w.show_gemini_key || w.split_drag || w.dock_drag || my >= kTopBarH) { tip_clear(tip); return; }
+
+    // Placement anchor: the control's x/width, but the FULL bar height — so every tip in the row
+    // hangs at the same y instead of bobbing with each control's own height.
+    auto band = [](const Rect& r) { return Rect{ r.x, 0.f, r.w, kTopBarH }; };
+
+    struct Item { Rect r; const char* text; };
+    const Item items[] = {
+        { sidebar_toggle_rect(),   "Clips browser \xE2\x80\x94 stash clips out of the grid" },
+        { transport_play_rect(),   "Play / Stop  (Space)" },
+        { transport_record_rect(), "Record \xE2\x80\x94 arm a track first  (R)" },
+        { transport_metro_rect(),  "Metronome click" },
+        { transport_quant_rect(),  "Scene-launch quantize \xE2\x80\x94 click to cycle 1 / 2 / 4 / 8 bars" },
+        { w.perf_chip,             "Frame rate \xC2\xB7 frame time (smoothed)" },
+    };
+    for (const Item& it : items)
+        if (hit(it.r, mx, my)) { tip_set(tip, band(it.r), it.text, now); return; }
+
+    // The health dot's tip carries its current rollup, so hovering answers "is anything wrong?"
+    // without opening the panel.
+    const Rect hd = health_dot_rect(w.win_w);
+    if (hit(hd, mx, my)) {
+        const Severity sev = severity(w.health);
+        const char* what = sev == Severity::Error   ? "errors"
+                         : sev == Severity::Warning ? "warnings"
+                                                    : "all clear";
+        char buf[96];
+        std::snprintf(buf, sizeof buf, "Diagnostics \xE2\x80\x94 %s  (H)", what);
+        tip_set(tip, band(hd), buf, now);
+        return;
+    }
+    tip_clear(tip);
 }
 
 // Which visuals source is under (mx,my): -1 = master, >=0 = track, -2 = none.

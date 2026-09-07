@@ -23,7 +23,7 @@ capturing a preview. The carried operator *source* is the real thing — edit it
 
 ```bash
 # launch a lean app instance by DIRECT binary path with a control port:
-VIVID_PORT=9877 app/build/vivid.app/Contents/MacOS/vivid &
+VIVID_PORT=9877 app/build/Vivid.app/Contents/MacOS/Vivid &
 uv run tools/operator_audit/gen_examples.py Render3D InstanceNoise   # or any op names
 ```
 
@@ -31,7 +31,7 @@ uv run tools/operator_audit/gen_examples.py Render3D InstanceNoise   # or any op
 
 ```bash
 # launch a lean app instance by DIRECT binary path with a control port:
-VIVID_PORT=9877 app/build/vivid.app/Contents/MacOS/vivid &
+VIVID_PORT=9877 app/build/Vivid.app/Contents/MacOS/Vivid &
 uv run tools/operator_audit/gen_examples.py Render3D InstanceNoise   # or any op names
 ```
 

@@ -15,7 +15,7 @@ generate_reference.py spins up (which lacks shaders). Like reference.json, the P
 regenerated on a dev machine (the capture needs a GPU + a non-occluded window; there is no headless mode).
 
     # launch the app by DIRECT binary path first (open -a can run a stale copy):
-    #   VIVID_PORT=9877 build/vivid.app/Contents/MacOS/vivid &
+    #   VIVID_PORT=9877 build/Vivid.app/Contents/MacOS/Vivid &
     uv run --with pillow tools/operator_audit/capture_previews.py            # all visual ops
     uv run --with pillow tools/operator_audit/capture_previews.py Shape3D    # one op
 """

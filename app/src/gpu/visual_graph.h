@@ -100,6 +100,9 @@ struct VisualNode {
     // refreshed (or cleared) every frame it runs. Feeds error() above. ADR-0051 P4 wired this in:
     // the ABI field existed and operators could set it, but nothing read it back.
     std::string runtime_error;
+    // Edge-trigger latch so the app promotes a NEW runtime_error to a log line + toast exactly once
+    // (not every frame it persists), and re-promotes if it clears then recurs. ADR-0019 loudness.
+    bool runtime_error_reported = false;
 
     // Port-indexed input-edge access; out-of-range reads return -1 (unconnected).
     int  in(int port) const { return (port >= 0 && port < static_cast<int>(inputs.size())) ? inputs[port] : -1; }
@@ -138,6 +141,7 @@ public:
     WGPUDevice device() const { return dev_; }
     WGPUQueue  queue()  const { return q_; }
     int  missing_op_count() const;             // nodes whose op type isn't a real operator (ADR-0019)
+    int  errored_op_count() const;             // nodes carrying a runtime_error this frame (ADR-0019)
     std::vector<int> missing_op_node_indices() const;   // indices of those broken nodes (diagnostics panel)
     int  add_node(const std::string& type);   // returns new node index (fresh id)
     void load_node(const std::string& type, int id);   // append with a persisted id
