@@ -61,11 +61,32 @@ launch_scene(1)   # main   (takes over on the next bar)
 launch_scene(2)   # peak
 ```
 
+### Keep the take
+
+A performance is only worth as much as what you can play back. Vivid records the **live master
+mix** to a lossless `.wav` while you launch scenes:
+
+```
+start_master_record("/absolute/path/take.wav")
+# ...perform: launch_scene(0), launch_scene(1), launch_scene(2)...
+stop_master_record()                 # -> {path, duration_sec, peak, clipped, overruns}
+```
+
+Check **`overruns`** on the result: anything above 0 means blocks were dropped and the capture has
+gaps, so redo the take.
+
+> Why not `export_audio`? That renders offline from beat 0 with whatever is *currently* armed — it
+> cannot replay a timeline of scene launches, so it cannot capture an arrangement you performed by
+> hand. That is exactly what this is for.
+
+**✓ You should have:** a `.wav` of the arrangement as you played it, with `overruns: 0`.
+
 ## Recap
 
 - **Scenes** are song sections; **launching** them live is how you perform and arrange.
 - **Launch quantize** keeps changes on the bar.
 - `Clock → Switch3D` gives the visuals their own beat-locked cuts.
+- `start_master_record` / `stop_master_record` capture the performance losslessly.
 
 ## Next
 

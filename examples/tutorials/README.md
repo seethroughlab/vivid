@@ -4,6 +4,22 @@ Two tracks. **Start with the learning path** if you're new — it's GUI-first an
 by doing, one concept at a time, then graduates you to driving Vivid over MCP. The **advanced
 follow-ups** assume you already have the mental model.
 
+## Before you start: connect an agent
+
+The path is GUI-first, but every tutorial ends with a **"Try it with MCP"** aside, and Vivid is
+MCP-native — so connect an agent once, up front, and the asides work as you go.
+
+The bridge ships **inside the app**; there is nothing to clone. Launch Vivid and choose
+**Help ▸ Connect Claude…**, which shows the command with the right path already filled in and a
+button to copy it:
+
+```sh
+claude mcp add vivid -- uv run --script "/Applications/Vivid.app/Contents/Resources/mcp/vivid_mcp.py"
+```
+
+It needs [uv](https://docs.astral.sh/uv/), and it talks to Vivid on `127.0.0.1:9876` while the app is
+running. Ask your agent to call `get_authoring_guide()` and it will explain the rest of the surface.
+
 ## Learning path (new users — do these in order)
 
 GUI-first: you'll click through the real interface. Each tutorial ends with a **"Try it with MCP"**

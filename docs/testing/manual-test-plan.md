@@ -16,7 +16,7 @@ the automated `ctest` + showcase harness can't cover — actually *seeing and he
   - **Run a demo:** launch the app, then `uv run examples/demos/<name>.py` (talks to the running app
     over the loopback control server; it builds the song + visuals and saves a portable project).
   - **Open a project:** `File > Open` (or `File > Open Example`), pick the project folder.
-  - **Launch by direct binary** for a clean run: `build/vivid.app/Contents/MacOS/vivid`
+  - **Launch by direct binary** for a clean run: `build/Vivid.app/Contents/MacOS/Vivid`
     (`open -a` can run a stale copy). `VIVID_DISCARD_RECOVERY=1` skips the recovery modal.
 
 ---
@@ -24,7 +24,7 @@ the automated `ctest` + showcase harness can't cover — actually *seeing and he
 ## 0. Environment & launch smoke
 
 - [ ] App launches from the signed release DMG (Gatekeeper: opens without a security block).
-- [ ] App launches from `build/vivid.app/Contents/MacOS/vivid` (dev build).
+- [ ] App launches from `build/Vivid.app/Contents/MacOS/Vivid` (dev build).
 - [ ] Audio device is selected + audible (`View > Audio Output` lists devices; picking one keeps sound).
 - [ ] Diagnostics panel shows a green health dot on a fresh session (no `missing_ops` / `errored_ops`).
 - [ ] Control server is reachable (`curl -s -X POST 127.0.0.1:9876/status -d '{}'` returns `ok:true`).
