@@ -22,6 +22,8 @@
 #include "persist.h"                     // ADR-0033 P2b: capture_audio_nodes / paste_audio_subgraph
 #include <nlohmann/json.hpp>            // the audio clipboard is a serialized subgraph
 #include "app/frame.h"   // open_popout / close_popout
+#include "app/review_workspace.h"   // ADR-0064: the Review workspace owns input below the bar while active
+#include "ui/review_view.h"         // workspace_switch_rect
 #include "app/bridge_source.h"   // the audio→visual source-id grammar (shared with frame.cpp's publisher)
 #include "transport.h"   // Transport play/stop (toggle_playing)
 #include "gpu/visual_graph.h"           // VOp, VisualGraph
@@ -70,6 +72,10 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
         }
         return;  // swallow all keys while the modal is up
     }
+    // ADR-0064: while Review is the workspace, its controller gets the keyboard (space = audition
+    // play/pause, 1-4 = hear a source, comment typing) before the Create shell's shortcuts.
+    if (win->workspace == vivid::Window::Workspace::Review && win->review &&
+        win->review->key(*win, key, action, mods)) return;
     // ADR-0033 P5: in-canvas text editing (a sticky note or a node rename) owns the keyboard while
     // active — before the choosers / musical typing / shortcuts, so typed text never leaks into them.
     if (win->text_edit_kind != 0) {
@@ -278,6 +284,7 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
 void char_callback(GLFWwindow* w, unsigned int cp) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
     if (!win) return;
+    if (win->workspace == vivid::Window::Workspace::Review && win->review && win->review->chr(cp)) return;   // ADR-0064 comment box
     if (win->show_gemini_key) {   // ADR-0026: type printable ASCII into the key buffer (masked on draw)
         const bool super = glfwGetKey(w, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS ||
                            glfwGetKey(w, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS;
@@ -307,6 +314,7 @@ static int scroll_mods(GLFWwindow* w) {
 
 void scroll_callback(GLFWwindow* w, double xoff, double yoff) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
+    if (win && win->workspace == vivid::Window::Workspace::Review) return;   // ADR-0064: no graph under the cursor to zoom
     if (!win) return;
     double mx, my; glfwGetCursorPos(w, &mx, &my);
     if (vivid::input::editor_scroll(*win, xoff, yoff, scroll_mods(w), mx, my)) return;
@@ -338,6 +346,11 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (win->param_chooser.open() && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
         if (vivid::input::param_chooser_click(*win, *app, mx, my)) return;
     }
+    // ADR-0064 §1: the Create | Review workspace switch — the creator's choice, never automatic.
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        const int seg = vivid::ui::segmented_hit(vivid::ui::workspace_switch_rect(), 2, mx, my);
+        if (seg >= 0) { vivid::switch_workspace(*win, seg == 1 ? vivid::Window::Workspace::Review : vivid::Window::Workspace::Create); return; }
+    }
     // Top transport bar: play/pause + record + metronome (M6).
     if (vivid::input::transport_mouse(*win, *app, button, action, mx, my)) return;
     // Browser sidebar toggle.
@@ -349,6 +362,11 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && hit(vivid::ui::health_dot_rect(win->win_w), mx, my)) {
         win->show_diagnostics = !win->show_diagnostics;
         return;
+    }
+    // ADR-0064: in the Review workspace the controller owns every click below the bar (the Create
+    // shell — grid, graph, dock — is not drawn, so it must not receive input either).
+    if (win->workspace == vivid::Window::Workspace::Review && win->review) {
+        if (win->review->mouse(*win, button, action, mx, my)) return;
     }
     // ADR-0014: the floating OUTPUT preview. It sits ON TOP of the graph canvas, so its handles are
     // tested BEFORE the graph gets the press (below) — otherwise dragging the preview would pan the

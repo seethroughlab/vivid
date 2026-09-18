@@ -72,12 +72,14 @@ WindowPrefs load_window_prefs(const std::string& path) {
         p.y = j.value("y", 0);
         p.has_pos = true;
     }
+    if (j.contains("workspace") && j["workspace"].is_string()) p.workspace = j["workspace"].get<std::string>();
     return p;
 }
 
 bool save_window_prefs(const WindowPrefs& p, const std::string& path) {
     if (path.empty()) return false;
     json j = { {"w", p.w}, {"h", p.h}, {"x", p.x}, {"y", p.y} };
+    if (!p.workspace.empty()) j["workspace"] = p.workspace;
     std::error_code ec;
     std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
     std::ofstream out(path, std::ios::trunc);

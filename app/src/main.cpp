@@ -55,6 +55,7 @@
 #include "ui/session_view.h"
 #include "cli/control_server.h"
 #include "ui/clip_editor.h"
+#include "app/review_workspace.h"   // ADR-0064: the Review workspace controller
 #include "persist.h"
 #include "gpu/shader_op.h"
 #include "audio/vst3_plugin_window.h"
@@ -623,6 +624,13 @@ int main(int argc, char** argv) {
     // Ph4 P1-01: before a Full-tier undo/redo frees plugin instances, close this window's floated
     // plugin-editor windows so their raw handles can't dangle into freed memory (UAF).
     app.before_audio_rebuild = [&win] { vivid::close_plugin_editor_windows(win); };
+    // ADR-0064: the Review workspace controller (records + players + decisions). Restore the last
+    // selected workspace from the window prefs — the creator lands where they left off; the app never
+    // switches on its own.
+    vivid::ReviewWorkspace review_ws(app);
+    win.review = &review_ws;
+    if (vivid::load_window_prefs(vivid::window_prefs_path()).workspace == "review")
+        vivid::switch_workspace(win, vivid::Window::Workspace::Review);
 
     // ADR-0018 (R4): offer to recover autosaved unsaved work left by a prior crash / kill. On accept,
     // load the autosave session, re-point the project so Save targets it, and mark it dirty once the
@@ -669,7 +677,12 @@ int main(int argc, char** argv) {
     // Remember this window's size + position for next launch (app-level, not per-project).
     { int w = 0, h = 0, x = 0, y = 0;
       glfwGetWindowSize(window, &w, &h); glfwGetWindowPos(window, &x, &y);
-      if (w > 0 && h > 0) vivid::save_window_prefs({ w, h, x, y, true, true }, vivid::window_prefs_path()); }
+      if (w > 0 && h > 0) {
+          vivid::WindowPrefs wp{ w, h, x, y, true, true };
+          wp.workspace = win.workspace == vivid::Window::Workspace::Review ? "review" : "create";
+          vivid::save_window_prefs(wp, vivid::window_prefs_path());
+      } }
+    if (win.workspace == vivid::Window::Workspace::Review) review_ws.leave(win);   // record the visit; stop playback
 
     app.midi_in.stop();   // stop hardware MIDI before tearing down state
     control.stop();   // stop the MCP control server thread before tearing down state

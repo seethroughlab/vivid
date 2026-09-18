@@ -74,6 +74,11 @@ static void test_save_load_roundtrip() {
     WindowPrefs got = load_window_prefs(path);
     CHECK(got.has_size && got.has_pos);
     CHECK(got.w == 1440 && got.h == 900 && got.x == 40 && got.y == 25);
+    CHECK(got.workspace.empty());                 // absent => no remembered workspace (defaults to Create)
+    // ADR-0064 §1: the selected workspace round-trips.
+    w.workspace = "review";
+    CHECK(save_window_prefs(w, path));
+    CHECK(load_window_prefs(path).workspace == "review");
 
     std::filesystem::remove(path, ec);
 }

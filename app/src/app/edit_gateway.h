@@ -54,6 +54,14 @@ public:
 
     bool undo();
     bool redo();
+
+    // ADR-0062 §3 — PROMOTION: replace the whole document with `doc` (a saved project.json — the
+    // candidate's snapshot, with its `preferred_version` already set) as ONE undoable edit labeled
+    // `label`. Reuses the undo restore path (smart audio tier), then pushes the result as a new history
+    // entry, so undo returns to the pre-promotion document AND preferred-version pointer in one step.
+    // `base_dir` resolves the snapshot's project-relative media paths. Returns false with no change
+    // when the document cannot be applied.
+    bool apply_document(const nlohmann::json& doc, const std::string& label, const std::string& base_dir = "");
     bool can_undo() const { return undo_.can_undo(); }
     bool can_redo() const { return undo_.can_redo(); }
     const std::string& undo_label() const { return undo_.undo_label(); }
@@ -83,7 +91,7 @@ private:
     void seed_baseline(const nlohmann::json& proj);    // clear history + install proj as entry 0
     void force_close_group();
     void push_snapshot(const nlohmann::json& proj, bool replace_top, const std::string& label);
-    void restore(const nlohmann::json& target);        // apply a snapshot with the smart audio tier
+    void restore(const nlohmann::json& target, const std::string& base_dir = "");   // apply a snapshot with the smart audio tier
 
     App&        app_;
     UndoManager undo_;

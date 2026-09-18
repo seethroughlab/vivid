@@ -21,6 +21,9 @@ struct WindowPrefs {
     int  w = 0, h = 0, x = 0, y = 0;
     bool has_size = false;   // a remembered size exists (restore path vs first-launch %)
     bool has_pos  = false;
+    // ADR-0064 §1: the last selected workspace ("create" | "review"), restored on launch so a
+    // returning creator lands where they left off; never changed automatically.
+    std::string workspace;
 };
 
 struct LaunchRect { int x = 0, y = 0, w = 0, h = 0; };

@@ -78,6 +78,12 @@
   is a PLACEMENT rect, not the hit rect: a row of controls passes a common band so the pill doesn't
   bob as the cursor crosses it.
 - **`clip_editor.{h,cpp}`** — the dockable MIDI piano-roll / audio waveform editor.
+- **`review_geom.{h,cpp}`** / **`review_view.{h,cpp}`** — the ADR-0064 **Review workspace** surface.
+  `review_geom` is the renderer-free layout (left column: current version · since your last review ·
+  direction & protections · decisions; main: status strip · question · source tiles · transport ·
+  per-candidate Use/Keep/Revise/Dismiss · Neither · comment · feedback) that draw AND input both call,
+  so hit-rects equal pixels (`tests/test_review_geom.cpp`); `review_view` draws a `ReviewModel` (plain
+  data from `app/review_workspace`) and the transport bar's Create | Review switch.
 - **`review_audition.h`** / **`media_texture.{h,cpp}`** — ADR-0064 Review workspace plumbing. The
   audition runs every review source (baseline, A, B) in LOCKSTEP from one host time with exactly one
   audible — A/B is a mute swap, never a re-seek — plus excerpt loop, drift re-sync, and the labeled,
