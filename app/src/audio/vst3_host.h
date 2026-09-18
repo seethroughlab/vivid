@@ -236,6 +236,11 @@ void  session_set_launch_quantum_bars(Session*, int bars);
 const char* session_music_root(Session*);
 const char* session_music_scale(Session*);
 void        session_set_music(Session*, const char* root, const char* scale);
+// ADR-0062: the preferred work-records version id this document derives from ("" = none). Document
+// metadata like the key/scale — persisted in project.json, restored under every undo tier — so
+// promoting a candidate (document contents + this pointer) is one reversible edit. UI/main thread only.
+const char* session_preferred_version(Session*);
+void        session_set_preferred_version(Session*, const char* id);
 int   session_master_gnid(Session*);                // ADR-0022 P2b.3c: the master's global node id (0)
 float session_master_level(Session*);               // master output RMS (meters)
 float session_master_transient(Session*);           // master onset detector (0..1)

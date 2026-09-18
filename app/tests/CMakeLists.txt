@@ -208,6 +208,11 @@ target_link_libraries(test_persist_chain_migration PRIVATE nlohmann_json::nlohma
 # Ph4 P1-02: missing-operator params survive a save/load round-trip (persist_orphan.h, pure JSON).
 vivid_add_test(test_persist_orphan)
 target_link_libraries(test_persist_orphan PRIVATE nlohmann_json::nlohmann_json)
+vivid_add_test(test_work_records)   # ADR-0061/0062 work records: round-trips, snapshot, dependency check, JSONL
+target_sources(test_work_records PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/work/work_records.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/persist_undo.cpp)
+target_link_libraries(test_work_records PRIVATE nlohmann_json::nlohmann_json)
 
 # Visuals executor topological order + cycle handling (gpu/graph_topo.h; header-only, wgpu-free).
 vivid_add_test(test_graph_topo)

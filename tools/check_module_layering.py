@@ -36,6 +36,7 @@ LAYER_RANK = {
     "operator_api": 0,   # leaf SDK
     "midi": 0,           # leaf
     "platform": 10,      # downward-only OS seam
+    "work": 10,          # ADR-0061/0062 work records (pure JSON + filesystem; app/ and cli/ consume it)
     "packages": 15,      # package loader/compiler service (below engine; see ADR-0043)
     "gpu": 20,           # engine
     "audio": 20,         # engine

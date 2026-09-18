@@ -628,6 +628,10 @@ struct Session {
     // stores the two strings so the key/scale round-trips with the project. UI/main thread only.
     std::string      music_root  = "C";
     std::string      music_scale = "major";
+    // ADR-0062: the explicitly chosen work-records version this document derives from ("" = none).
+    // Document state, not a work record: it saves/loads/undoes with project.json so promotion is one
+    // reversible edit. The records it points into live under <project>/work/. UI/main thread only.
+    std::string      preferred_version;
     uint32_t  sample_rate = 0;
     // Live MIDI input (M6): monitored/recorded notes flow through `live_in` to the armed
     // track's instrument. `armed_track` is a stable track id (-1 = none). Both are read on
