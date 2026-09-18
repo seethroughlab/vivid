@@ -40,6 +40,7 @@ target_sources(test_undo_projection PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/persist_undo.cpp)
 target_link_libraries(test_undo_projection PRIVATE nlohmann_json::nlohmann_json)
 vivid_add_test(test_param_widget)   # inspector widget classifier (type/hint/enum -> widget)
+vivid_add_test(test_review_audition)   # ADR-0064 synchronized A/B audition over a mock ReviewPlayer (pure)
 vivid_add_test(test_graph_camera)   # ADR-0023 #1/#3d shared graph camera (transform + pan/zoom/reset math)
 vivid_add_test(test_graph_selection)  # ADR-0033 P1 multi-select set + marquee-resolve (pure, header-only)
 vivid_add_test(test_chooser_rank)   # ADR-0046 add-node chooser demotes recipe ops below primitives
