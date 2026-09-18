@@ -20,6 +20,11 @@ in [`../docs/thread-safety.md`](../docs/thread-safety.md).
   (`undo`/`redo`).
 - **`midi/`** — `MidiClip` types.  **`platform/`** — macOS CFRunLoop frame timer +
   the native `menu_bar` (File + the ADR-0017 Edit menu).
+- **`work/`** — the ADR-0061/0062 **work records**: the durable creative memory under
+  `<project>/work/` (brief, versions + snapshots, candidates, reviews, feedback, events) as
+  plain JSON / JSON Lines. Pure data + filesystem (rank 10, beside `platform/`), so `app/` and
+  `cli/` both consume it; `sha256.h` is its dependency digest. `preferred_version` (the one
+  work-records fact in `project.json`) is document state on the Session, next to key/scale.
 - Root-level `persist.*` (session JSON) + `persist_undo.*` (undo's canonical-document
   projection + tiered restore) + `mapping.*` (the bridge).
 

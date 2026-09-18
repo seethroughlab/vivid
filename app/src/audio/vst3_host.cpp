@@ -2041,6 +2041,9 @@ void session_set_music(Session* s, const char* root, const char* scale) {
     if (root  && *root)  s->music_root  = root;
     if (scale && *scale) s->music_scale = scale;
 }
+// ADR-0062: the preferred work-records version pointer (document metadata; "" clears it).
+const char* session_preferred_version(Session* s) { return s ? s->preferred_version.c_str() : ""; }
+void session_set_preferred_version(Session* s, const char* id) { if (s) s->preferred_version = id ? id : ""; }
 // The analysis / publication READ surface (meters, note scalars, held notes, spectrum + per-node FFT
 // rings, node control-out) moved to vst3_host_analysis.cpp (ADR-0025) — cold frame-thread accessors over
 // state the render path below publishes. The capture-snapshot API stays here (it's the export ring).

@@ -269,6 +269,9 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     // persisted here so the key/scale round-trips with the project (optional; older files => C major).
     j["music"] = { {"root",  vivid::session::session_music_root(s)},
                    {"scale", vivid::session::session_music_scale(s)} };
+    // ADR-0062: the preferred work-records version this document derives from (optional; absent =>
+    // none). Document state so promotion + its undo move the pointer with the contents.
+    if (const char* pv = vivid::session::session_preferred_version(s); pv && *pv) j["preferred_version"] = pv;
     json tracks = json::array();
     for (int t = 0; t < nt; ++t) {
         json jt;
@@ -806,6 +809,10 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
     if (j.contains("music") && j["music"].is_object())
         vivid::session::session_set_music(s, j["music"].value("root", "C").c_str(),
                                              j["music"].value("scale", "major").c_str());
+    // ADR-0062: the preferred-version pointer. Restored under ANY tier, and UNCONDITIONALLY — a
+    // document without the field has no preferred version, so undoing a promotion (whose prior
+    // snapshot lacks it) must clear the pointer rather than leave the promoted id behind.
+    vivid::session::session_set_preferred_version(s, j.value("preferred_version", std::string()).c_str());
     // ADR-0022 P2b: a load fully REPLACES the session, so drop any existing cross-track edges before the
     // document's tracks + edges are restored (else the previous session's edges leak, and a surviving
     // edge with matching ids would duplicate-reject the restore, leaving it resolved against a stale

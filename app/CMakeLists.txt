@@ -285,6 +285,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/audio/visual_eval.cpp
     src/persist.cpp
     src/persist_undo.cpp
+    src/work/work_records.cpp
     src/operator_api/operator_descriptor_validation.cpp
     src/operator_api/shader_meta.cpp
     src/gpu/op_runtime.cpp
