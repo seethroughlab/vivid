@@ -14,6 +14,29 @@ schemas, APIs, UI labels, MCP tools, or implementation assumptions.
 
 ## Terms
 
+### Background Refinement Vocabulary _(proposed)_
+
+The following terms belong to the proposed
+[continuous creative workflow](continuous-creative-workflow.md) and ADR-0061 through ADR-0064.
+They describe unimplemented work and are not accepted product contracts yet.
+
+- **Brief:** versioned creative direction, preferences, and protections for a project or work item.
+- **Version:** an immutable project snapshot with parentage and referenced dependencies.
+- **Preferred Version:** the explicitly chosen version; the open editing session may contain newer
+  unsaved changes.
+- **Candidate:** a version proposed for a purpose, with its source brief, provenance, and evidence.
+  Its scope can span a clip, scene, or project; a clip-scoped candidate, once promoted or kept, lands
+  in the cell's Variation Well as a Take (see Take, Variation Well).
+- **Work Item:** a bounded objective with scope, dependencies, budget, and stopping conditions.
+- **Run:** one execution attempt against a work item, with recorded inputs, progress, and outcome.
+- **Review Item:** a focused question about exact candidate versions and playable evidence.
+- **Feedback:** a recorded comment or choice with its version/passage target, interpretation, and
+  resolution.
+- **Runner:** an external process that schedules and reasons about work through Vivid's contract.
+- **Worker:** an isolated execution process that edits or renders candidate content.
+- **Promotion:** the explicit creator action that makes a candidate current, subject to revision
+  and protection checks; distinct from previewing or keeping an alternative.
+
 ### Agent
 
 The LLM collaborator that inspects, explains, edits, varies, and pressure-tests a Vivid project using
