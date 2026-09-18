@@ -157,6 +157,7 @@ struct Review {
     std::string              created;
     std::string              question;      // ONE focused question
     std::string              baseline;      // version id the candidates are compared against
+    Media                    baseline_media; // the baseline's rendered excerpt (same recipe as the candidates')
     std::vector<std::string> candidates;    // candidate ids (start with at most two)
     Passage                  passage;
     std::string              status = "open";   // open | resolved

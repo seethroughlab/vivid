@@ -201,9 +201,11 @@ static void test_candidate_and_review_roundtrip() {
 
     Review r; r.id = make_id("r", "q"); r.created = now_iso8601(); r.question = "Which chorus opens up better?";
     r.baseline = "v-0"; r.candidates = { c.id, "c-other" }; r.passage = { 17, 25 };
+    r.baseline_media = { "work/media/baseline/chorus.mp4", "av", json{{"start_bar", 17}} };
     CHECK(save_review(proj, r));
     Review lr; CHECK(load_review(proj, r.id, lr));
     CHECK(lr.status == "open" && lr.resolution.choice.empty() && lr.candidates.size() == 2);
+    CHECK(lr.baseline_media.path == "work/media/baseline/chorus.mp4" && lr.baseline_media.recipe["start_bar"] == 17);
     CHECK(lr.passage.start_bar == 17 && lr.passage.end_bar == 25);
     lr.status = "resolved"; lr.resolution = { "use", c.id, now_iso8601(), "f-1" };
     CHECK(save_review(proj, lr));

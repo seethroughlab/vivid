@@ -17,6 +17,7 @@
 #include "app/window_prefs.h"    // UI-5.4c: remembered float-window geometry
 #include "app/video_recorder.h"  // realtime AV export: per-frame tick after end_frame
 #include "app/master_recorder.h" // realtime master-mix .wav capture: per-frame tap drain
+#include "app/review_workspace.h" // ADR-0064: the Review workspace (a sibling composition of the frame)
 #include "gpu/gpu_context.h"
 #include "gpu/gpu_util.h"
 #include "ui/renderer_2d.h"
@@ -867,6 +868,29 @@ void run_frame_loop(App& app, Window& win) {
                 }
             }
 
+            // ADR-0064 §1: the Review workspace is a SIBLING composition — the shared transport bar plus
+            // the media/decision surface — not another dock view. The visual graph still ran above
+            // (the output / pop-out keep rendering); only the Create shell is not drawn.
+            const bool review_ws = win.workspace == Window::Workspace::Review && win.review;
+            if (win.review) {
+                if (review_ws) { win.review->motion(mx, my); win.review->tick(win, glfwGetTime()); }
+                else win.review->poll(glfwGetTime());
+                win.review_pending = win.review->pending_count();
+            }
+            if (review_ws) {
+                draw_transport_bar(ui, win, beats, mx, my);
+                win.review->draw(ui, win, mx, my, glfwGetTime());
+                ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
+                if (win.show_diagnostics) draw_diagnostics_panel(ui, win.health, app, win.win_w, win.win_h);
+                if (win.show_log) draw_log_view(ui, app.log, win.win_w, win.win_h);
+                draw_toasts(ui, win.toasts, glfwGetTime(), win.win_w, win.win_h);
+                draw_perf_hud(ui, win);
+                {   const double tip_now = glfwGetTime();
+                    tick_top_bar_tooltip(win.tip, win, mx, my, tip_now);
+                    draw_tooltip(ui, win.tip, win.win_w, tip_now);   }
+                ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
+                gpu.end_frame(frame);
+            } else {
             draw_ui(ui, win, beats, mx, my);
             // ADR-0014: the visuals node graph IS the visual zone — it owns the whole right column,
             // always drawn, no reveal toggle.
@@ -961,6 +985,7 @@ void run_frame_loop(App& app, Window& win) {
                 draw_tooltip(ui, win.tip, win.win_w, tip_now);   }
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
             gpu.end_frame(frame);
+            }   // Create workspace composition
             // This frame's Output RT is now submitted to the queue and can be read back. TWO consumers
             // want it: the reactive-visuals perception ring (throttled ~12fps, always-on so a single
             // analyze_output call sees a real time-series) and the realtime video recorder (only while

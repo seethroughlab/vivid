@@ -20,6 +20,7 @@ struct ClapPluginWindow;
 namespace vivid {
 struct App;
 class EditorWindow;   // UI-5: floated operator-editor window (app/editor_window.h)
+class ReviewWorkspace;   // ADR-0064: the Review workspace controller (app/review_workspace.h)
 namespace ui { class Renderer2D; class ClipEditor; }
 }
 
@@ -70,6 +71,7 @@ struct Window {
     GLFWwindow*     glfw   = nullptr;
     ui::Renderer2D* ui     = nullptr;   // this window's 2D renderer (not owned)
     ui::ClipEditor* editor = nullptr;   // this window's clip editor (not owned)
+    ReviewWorkspace* review = nullptr;  // ADR-0064: this window's Review workspace controller (not owned)
 
     // Layout metrics: logical (point) size drives UI layout; framebuffer (physical)
     // size drives the surface. dpi bridges them (2.0 on retina).
@@ -83,6 +85,13 @@ struct Window {
     // own persistent view owner, ADR-0025 pressure-point #2); `preview.show` mirrors the Output node's
     // `preview` param, `preview.out_aspect` is cached from VisualGraph::rt_aspect() each frame.
     OutputPreview preview;
+    // ADR-0064 §1: the selected top-level WORKSPACE. Create = the authoring shell (session grid +
+    // visuals graph + detail dock — ADR-0014's graph-is-home applies within it); Review = the
+    // media/decision surface over the work records. Persisted across launches (window prefs); switched
+    // only by the creator (the transport-bar toggle / the pending-review shortcut) — never automatically.
+    enum class Workspace { Create, Review };
+    Workspace workspace = Workspace::Create;
+    int       review_pending = 0;   // open decisions (the switch's badge); refreshed by the frame loop
     // UI-3: drilled into the selected track's audio node graph (the detail region shows the
     // per-track audio graph deep view instead of the device chain). Toggled by the dock "Graph"
     // button; persists across frames (the focus recompute reads it).

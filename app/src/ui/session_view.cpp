@@ -10,6 +10,7 @@
 #include "ui/diagnostics_panel.h" // ADR-0019: severity_color for the health dot
 #include "ui/compound_widget.h"   // UI-4a: host-composed compound inspector widgets
 #include "ui/operator_draw_bridge.h"  // UI-4b: Renderer2D -> VividDrawAPI adapter
+#include "ui/review_view.h"           // ADR-0064: the Create | Review workspace switch
 #include "audio/vst3_host.h"
 #include "audio/plugin_catalog.h"
 #include "transport.h"
@@ -427,11 +428,11 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double beats, double mx, 
 }
 
 // The Session view on Renderer2D: transport, a tracks×scenes clip grid, a mixer.
-void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my) {
+void draw_transport_bar(Renderer2D& ui, const Window& w, double beats, double mx, double my) {
     const Style& sty = style();
     const float W = static_cast<float>(w.win_w);
 
-    // --- transport bar: wordmark · play/pause · beat · tempo ---
+    // --- transport bar: wordmark · workspace switch · play/pause · beat · tempo ---
     ui.draw_rect(0, 0, W, kTopBarH, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
     ui.draw_rect(0, kTopBarH - 1.f, W, 1.f, sty.border[0], sty.border[1], sty.border[2], 1.0f);
     ui.draw_text(sty.s6, 11.f, "Vivid", sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_brand);
@@ -444,6 +445,9 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         const float* ic = open ? sty.audio : sty.dim;
         for (int i = 0; i < 3; ++i) ui.draw_rect(b.x + 3.f, b.y + 3.f + i * 5.f, b.w - 6.f, 2.f, ic[0], ic[1], ic[2], 1.0f);
     }
+    // ADR-0064 §1: the Create | Review workspace switch, with a pending-decision badge. The creator
+    // switches; the app never does.
+    draw_workspace_switch(ui, w.workspace == Window::Workspace::Review, w.review_pending, mx, my);
     {
         const Rect p = transport_play_rect();
         const bool hov = hit(p, mx, my);
@@ -503,6 +507,13 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
             ui.draw_rect(hd.x - 3.f, hd.y - 3.f, hd.w + 6.f, hd.h + 6.f, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 1.0f);
         ui.draw_rounded_rect(hd.x, hd.y, hd.w, hd.h, 3.f, c[0], c[1], c[2], 1.0f);
     }
+}
+
+void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my) {
+    const Style& sty = style();
+    const float W = static_cast<float>(w.win_w);
+    draw_transport_bar(ui, w, beats, mx, my);
+    const bool playing = w.app->transport && w.app->transport->is_playing();
 
     if (!w.app->session) return;
     auto* s = w.app->session;

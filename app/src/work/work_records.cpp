@@ -402,6 +402,9 @@ json to_json(const Review& r) {
     json j;
     j["schema"] = r.schema; j["id"] = r.id; j["created"] = r.created; j["question"] = r.question;
     j["baseline"] = r.baseline; j["candidates"] = r.candidates;
+    if (!r.baseline_media.path.empty())
+        j["baseline_media"] = { {"path", r.baseline_media.path}, {"kind", r.baseline_media.kind},
+                                {"recipe", r.baseline_media.recipe.is_null() ? json::object() : r.baseline_media.recipe} };
     j["passage"] = { {"start_bar", r.passage.start_bar}, {"end_bar", r.passage.end_bar} };
     j["status"] = r.status;
     if (!r.resolution.choice.empty())
@@ -414,6 +417,11 @@ Review review_from_json(const json& j) {
     r.schema = j.value("schema", kSchema); r.id = j.value("id", ""); r.created = j.value("created", "");
     r.question = j.value("question", ""); r.baseline = j.value("baseline", "");
     for (const auto& c : j.value("candidates", json::array())) if (c.is_string()) r.candidates.push_back(c.get<std::string>());
+    if (j.contains("baseline_media")) {
+        const auto& m = j["baseline_media"];
+        r.baseline_media.path = m.value("path", ""); r.baseline_media.kind = m.value("kind", "");
+        if (m.contains("recipe")) r.baseline_media.recipe = m["recipe"];
+    }
     if (j.contains("passage")) { r.passage.start_bar = j["passage"].value("start_bar", 0.0); r.passage.end_bar = j["passage"].value("end_bar", 0.0); }
     r.status = j.value("status", "open");
     if (j.contains("resolution")) {
