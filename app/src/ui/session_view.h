@@ -18,6 +18,10 @@ void draw_clip_preview(Renderer2D& ui, vivid::session::Session* s, int t, int sc
                        const Rect& b, float ar, float ag, float ab, bool on);
 void draw_device_dock(Renderer2D& ui, const Window& w, double beats, double mx, double my);
 void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my);
+// The transport bar alone (wordmark · workspace switch · play · beat · tempo · toggles · health dot).
+// draw_ui calls it first; the Review workspace (ADR-0064) draws it and nothing else of the Create
+// shell, so both workspaces share one bar.
+void draw_transport_bar(Renderer2D& ui, const Window& w, double beats, double mx, double my);
 // Resolve the transport-bar tooltip for the cursor and run its dwell clock. The tip state is passed
 // separately from the (const) Window so draw_ui keeps its read-only contract while the frame loop —
 // which holds a mutable Window — owns the mutation. Call in the overlay pass, then draw_tooltip().

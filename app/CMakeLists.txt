@@ -223,6 +223,9 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/editor_window.cpp
     src/app/project_io.cpp
     src/ui/media_texture.cpp
+    src/ui/review_view.cpp
+    src/ui/review_geom.cpp
+    src/app/review_workspace.cpp
     src/app/file_actions.cpp
     src/app/examples.cpp
     src/app/mcp_bridge.cpp
@@ -354,6 +357,10 @@ if(APPLE)
         src/platform/gemini_client_macos.mm
         src/platform/secret_store_macos.mm
         platform/macos/Vivid.icns)   # app icon (the node-graph "V"), copied into Resources below
+    # review_player.mm holds AVFoundation objects as C++ members across frames; it is written for ARC
+    # (factory methods, no manual retain/release), so compile that one file with ARC. The other .mm
+    # files are manual-retain code and stay as they are.
+    set_source_files_properties(src/platform/review_player.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
     set_source_files_properties(platform/macos/Vivid.icns PROPERTIES
         MACOSX_PACKAGE_LOCATION Resources)
     set_target_properties(vivid PROPERTIES

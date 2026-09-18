@@ -10,7 +10,8 @@
 #include <cstring>
 #include <vector>
 
-// AVFoundation review player (ARC). One AVPlayer per media file: audio goes to the system default
+// AVFoundation review player — compiled with ARC (see CMakeLists: this file only), so the AVPlayer /
+// item / output members stay alive across frames without manual retain/release. One AVPlayer per media file: audio goes to the system default
 // output through AVFoundation (never miniaudio / the session mix); video frames are pulled through an
 // AVPlayerItemVideoOutput as BGRA8 and copied into a CPU buffer the caller uploads to a 2D texture.
 // Synchronized A/B uses -[AVPlayer setRate:time:atHostTime:] with a shared host time, so several

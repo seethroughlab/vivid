@@ -17,6 +17,15 @@ public:
     ~MediaTexture() { release(); }
     MediaTexture(const MediaTexture&) = delete;
     MediaTexture& operator=(const MediaTexture&) = delete;
+    MediaTexture(MediaTexture&& o) noexcept { *this = static_cast<MediaTexture&&>(o); }
+    MediaTexture& operator=(MediaTexture&& o) noexcept {
+        if (this != &o) {
+            release();
+            tex_ = o.tex_; view_ = o.view_; w_ = o.w_; h_ = o.h_; frames_ = o.frames_;
+            o.tex_ = nullptr; o.view_ = nullptr; o.w_ = o.h_ = 0;
+        }
+        return *this;
+    }
 
     // Upload `frame` (tightly packed BGRA8, bytes_per_row = width*4). Creates/resizes the texture as
     // needed. Returns false when the frame is empty or the texture could not be created.

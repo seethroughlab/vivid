@@ -25,6 +25,14 @@ The model/view seam (see [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §2).
   `close`/`grip`) and `clamp` (keeps it inside the visuals column). Extracted from `Window`
   (ADR-0025); renderer-free, so the clamp geometry is headlessly tested
   (`tests/test_output_preview.cpp`). `Window` holds one as `win.preview`.
+- **`review_workspace.{h,cpp}`** — the ADR-0064 **Review workspace controller**: loads the
+  `work/` records, owns one `ReviewPlayer` + texture per source of the selected review, the
+  synchronized A/B audition, and the comment buffer; performs the decisions (Use = promotion via
+  `EditGateway::apply_document`, Keep, Revise, Dismiss/Neither, Comment) by writing records
+  synchronously — no agent needed. `switch_workspace()` is the ONLY way `Window::workspace`
+  changes (never automatic). Draws through `ui/review_view` from a `ReviewModel` it builds, and
+  routes input through the same `ui/review_geom`. While Review is active it owns every click and
+  non-⌘ key below the transport bar; the frame loop composes it as a sibling of the Create shell.
 - **`input.cpp`** — the GLFW key/char/scroll/mouse handlers; `install_input_callbacks`
   wires them. Handlers fetch the `Window*` and reach shared state via `win->app->`.
   Cmd+Z/Cmd+Shift+Z route to the gateway; left-press/release bracket edit gestures.

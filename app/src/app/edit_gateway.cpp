@@ -139,7 +139,18 @@ bool EditGateway::redo() {
     return true;
 }
 
-void EditGateway::restore(const nlohmann::json& target) {
+bool EditGateway::apply_document(const nlohmann::json& doc, const std::string& label, const std::string& base_dir) {
+    if (!app_.session || !app_.graph || !doc.is_object()) return false;
+    close_open_group();
+    restore(doc, base_dir);
+    // The restore sets pending_=false and marks this frame's change intentional; record the result as
+    // its own history entry (never coalesced) so the promotion is exactly one undo step.
+    push_snapshot(canonical_projection_now(), /*replace_top*/false, label);
+    last_key_.clear();
+    return true;
+}
+
+void EditGateway::restore(const nlohmann::json& target, const std::string& base_dir) {
     if (!app_.session || !app_.graph) return;
     // Pick the cheapest correct audio-restore tier: Skip if the tracks are identical; ParamsOnly if
     // only values differ (same topology) — so a gain/param undo never re-instantiates a plugin;
@@ -154,8 +165,10 @@ void EditGateway::restore(const nlohmann::json& target) {
     if (tier == RestoreAudio::Full && app_.before_audio_rebuild)
         app_.before_audio_rebuild();
     int ww = 0, wh = 0; float sx = 0.f, dh = 0.f;
-    session_from_json_scoped(target, app_.session, *app_.graph, ww, wh, sx, dh, tier);
-    cached_ = target;
+    session_from_json_scoped(target, app_.session, *app_.graph, ww, wh, sx, dh, tier, base_dir);
+    // The tier was chosen on canonical projections; a full file (promotion) may carry view/plugin-state
+    // blocks the projection strips — cache the projection so the next equality check is like-for-like.
+    cached_ = canonical_document_projection(target);
     edited_this_frame_ = true;
     dirty_ = true;      // ADR-0018: undo/redo changes the document vs. what's on disk
     pending_ = false;   // an undo/redo supersedes any edit noted earlier this frame
