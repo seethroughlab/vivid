@@ -22,6 +22,13 @@ are not the current product direction unless a newer ADR or roadmap explicitly p
 
 ## Document Types
 
+Current proposal: [continuous creative workflow](product/continuous-creative-workflow.md) develops
+the background refinement and native review workflow. Its proposed decisions are
+[ADR-0061](decisions/ADR-0061-creative-work-persists-across-refinement-rounds.md),
+[ADR-0062](decisions/ADR-0062-candidates-are-isolated-and-promoted-explicitly.md),
+[ADR-0063](decisions/ADR-0063-background-work-uses-an-external-runner.md), and
+[ADR-0064](decisions/ADR-0064-review-is-a-workspace-alongside-creation.md).
+
 ### Product
 
 Product documents describe what Vivid 4 is for, who it serves, what concepts mean, and what
