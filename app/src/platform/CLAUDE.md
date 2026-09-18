@@ -21,6 +21,11 @@ else (GPU/wgpu, audio/miniaudio, input/GLFW) is already cross-platform via its l
   Open Example) and the **Edit menu** (ADR-0017 Undo/Redo, dynamically relabeled; no ⌘Z
   key-equivalent so AppKit doesn't steal it from the clip editor). `menu_bar_stub.cpp` is
   the no-op off macOS.
+- **`review_player.{h,mm}`** — the ADR-0064 **review media player**: one `AVPlayer` per rendered
+  candidate/baseline; audio to the system default output (never miniaudio / the session mix), video
+  pulled as BGRA8 via `AVPlayerItemVideoOutput` for `ui/media_texture`. `play_at(media, host)` with a
+  shared host time = the synchronized A/B (`ui/review_audition.h`). Never touches the Create document
+  or either graph. `review_player_stub.cpp` reports "unavailable" off macOS.
 
 Heavy macOS-only features stub elsewhere (same signatures, feature disabled):
 `gpu/video_player.mm` (AVFoundation) ↔ `gpu/video_player_stub.cpp`;

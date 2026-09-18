@@ -78,5 +78,10 @@
   is a PLACEMENT rect, not the hit rect: a row of controls passes a common band so the pill doesn't
   bob as the cursor crosses it.
 - **`clip_editor.{h,cpp}`** — the dockable MIDI piano-roll / audio waveform editor.
+- **`review_audition.h`** / **`media_texture.{h,cpp}`** — ADR-0064 Review workspace plumbing. The
+  audition runs every review source (baseline, A, B) in LOCKSTEP from one host time with exactly one
+  audible — A/B is a mute swap, never a re-seek — plus excerpt loop, drift re-sync, and the labeled,
+  audition-only listening-level match. Pure over `platform/review_player.h` (tested with a mock);
+  `MediaTexture` uploads the player's BGRA8 frames to a wgpu texture for `draw_texture`.
 
 Renderer/UI is **kept ours** (not lifted from vivid-classic) — see ADR-0011.

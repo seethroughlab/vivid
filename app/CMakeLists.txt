@@ -222,6 +222,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/av_bounce_app.cpp
     src/app/editor_window.cpp
     src/app/project_io.cpp
+    src/ui/media_texture.cpp
     src/app/file_actions.cpp
     src/app/examples.cpp
     src/app/mcp_bridge.cpp
@@ -278,6 +279,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/platform/file_dialog_stub.cpp
     src/platform/menu_bar_stub.cpp
     src/platform/av_exporter_stub.cpp
+    src/platform/review_player_stub.cpp
     src/platform/midi_input_stub.cpp
     src/platform/gemini_client_stub.cpp
     src/platform/secret_store_stub.cpp
@@ -347,6 +349,7 @@ if(APPLE)
         src/platform/file_dialog.mm
         src/platform/menu_bar.mm
         src/platform/av_exporter.mm
+        src/platform/review_player.mm
         src/platform/midi_input.mm
         src/platform/gemini_client_macos.mm
         src/platform/secret_store_macos.mm
