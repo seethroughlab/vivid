@@ -209,7 +209,11 @@ void ReviewWorkspace::leave(Window& win) {
     (void)win;
     audition_.pause();
     comment_active_ = false;
-    if (has_project_) work::append_event(project_dir_, { "", "review_visited", json() });
+    // Anchor "since your last review" — but only for a project that already HAS records. Leaving
+    // Review must not create a work/ folder in a project that never had one.
+    std::error_code ec;
+    if (has_project_ && fs::is_directory(work::work_dir(project_dir_), ec))
+        work::append_event(project_dir_, { "", "review_visited", json() });
 }
 
 int ReviewWorkspace::pending_count() const {

@@ -163,6 +163,7 @@ void ControlServer::register_handlers() {
     register_package_handlers(handlers_);   // ---- ADR-0024 Phase 7: operator-package authoring ----
 
     register_edit_handlers(handlers_);   // ---- ADR-0017 undo/redo ----
+    register_work_handlers(handlers_);   // ---- ADR-0061/0062 work records: status + version snapshot ----
 
     register_video_export_handlers(handlers_);   // ---- realtime AV video export ----
     register_audio_export_handlers(handlers_);   // ---- ADR-0032: offline master-mix WAV bounce ----

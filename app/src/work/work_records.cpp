@@ -273,6 +273,10 @@ static std::vector<PluginDependency> plugins_from_document(const json& doc) {
 }
 
 std::string snapshot_version(const fs::path& project_dir, const SnapshotOptions& opt, std::string* err) {
+    return snapshot_version_into(project_dir, project_dir, opt, err);
+}
+
+std::string snapshot_version_into(const fs::path& project_dir, const fs::path& records_dir, const SnapshotOptions& opt, std::string* err) {
     std::error_code ec;
     const fs::path doc_src = project_dir / "project.json";
     if (!fs::is_regular_file(doc_src, ec)) { set_err(err, "no project.json in " + project_dir.string()); return {}; }
@@ -288,11 +292,11 @@ std::string snapshot_version(const fs::path& project_dir, const SnapshotOptions&
     v.document_sha256 = Sha256::of(doc_text);
     v.plugins = plugins_from_document(doc);
 
-    const fs::path dst = version_dir(project_dir, v.id);
+    const fs::path dst = version_dir(records_dir, v.id);
     fs::create_directories(dst, ec);
     if (ec) { set_err(err, "cannot create " + dst.string()); return {}; }
 
-    const fs::path work = work_dir(project_dir);
+    const fs::path work = work_dir(project_dir);   // the source's own records (if any) are never content
     for (fs::recursive_directory_iterator it(project_dir, fs::directory_options::skip_permission_denied, ec), end;
          it != end && !ec; it.increment(ec)) {
         const fs::path& p = it->path();
@@ -320,7 +324,7 @@ std::string snapshot_version(const fs::path& project_dir, const SnapshotOptions&
     if (ec) { set_err(err, "walk failed: " + ec.message()); return {}; }
     std::sort(v.dependencies.begin(), v.dependencies.end(),
               [](const Dependency& a, const Dependency& b) { return a.path < b.path; });
-    if (!save_version(project_dir, v, err)) return {};
+    if (!save_version(records_dir, v, err)) return {};
     return v.id;
 }
 

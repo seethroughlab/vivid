@@ -321,6 +321,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/cli/project_recovery.cpp
     src/cli/control_handlers_packages.cpp
     src/cli/control_handlers_edit.cpp
+    src/cli/control_handlers_work.cpp
     src/cli/control_handlers_music_eval.cpp
     src/cli/control_handlers_visual_eval.cpp
     src/cli/control_handlers_video_export.cpp

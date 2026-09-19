@@ -273,6 +273,33 @@ def layout_graph() -> dict:
 
 
 @mcp.tool
+def work_status() -> dict:
+    """ADR-0061/0062 work records (gate 1): where the loaded project's records are and what state they
+    are in. Returns {project_dir, is_folder_project, has_records, preferred_version (the version the
+    document derives from, "" = none), dirty, brief_rev, open_reviews, reviews[{id,status,question,
+    candidates}], versions, candidates}. The records themselves are plain JSON under <project>/work/
+    (brief.json, versions/<id>/, candidates/<id>.json, reviews/<id>.json, feedback.jsonl, events.jsonl)
+    — read and write them directly; the Review workspace picks up new reviews within ~5 s."""
+    return _post("work_status")
+
+
+@mcp.tool
+def work_snapshot_version(label: str, source: str = "manual", parent: str = "", brief_rev: int = 0,
+                          into: str = "") -> dict:
+    """Snapshot the LOADED project folder as an immutable work-records version: a complete copy of
+    project.json + co-located assets (minus work/ and build outputs) with a SHA-256 per file and the
+    document's plugin identities. Reads project.json from DISK, so save_project first (an unsaved
+    document is refused with `conflict`). `into` = another project folder whose work/ receives the
+    version — the candidate flow: load_project a COPY, edit it, save, export media, then snapshot it
+    `into` the original so the foreground document is never touched (ADR-0062 §2). `source`:
+    manual | candidate | promotion. Returns {id, records_dir, dependencies, plugins, document_sha256}."""
+    payload = {"label": label, "source": source, "parent": parent, "brief_rev": brief_rev}
+    if into:
+        payload["into"] = into
+    return _post("work_snapshot_version", payload)
+
+
+@mcp.tool
 def undo() -> dict:
     """Undo the last document edit (ADR-0017). One app-wide history covers the visual graph + the
     mapping bridge (audio-session edits land in a later phase); performance actions (play/launch/arm)

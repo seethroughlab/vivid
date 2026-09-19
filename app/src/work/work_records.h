@@ -103,6 +103,11 @@ struct SnapshotOptions {
 };
 std::string snapshot_version(const std::filesystem::path& project_dir, const SnapshotOptions& opt,
                              std::string* err = nullptr);
+// Same, but the version lands in ANOTHER project's records (`records_dir`/work/versions/<id>): the
+// gate-1 candidate flow edits an isolated COPY of the project and snapshots it into the original's
+// work/ (ADR-0062 §2 — candidate writes never touch the foreground document or its folder).
+std::string snapshot_version_into(const std::filesystem::path& project_dir, const std::filesystem::path& records_dir,
+                                  const SnapshotOptions& opt, std::string* err = nullptr);
 // Is `rel` a build output the snapshot leaves behind? (Exposed for the tests.)
 bool is_build_output(const std::filesystem::path& rel);
 
