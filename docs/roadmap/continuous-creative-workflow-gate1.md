@@ -98,14 +98,18 @@ and reports what is missing or changed; it never substitutes content (ADR-0062 �
 - Every action writes `work/` records and works with no control-server client connected.
 
 ### PR 4 — real media + the measurement
-- `mcp/tools/` (or `examples/`) script: load `song-sketch`, snapshot the baseline version, write a
-  brief with two protections (drums, bass) and one preference (expansive chorus, visuals open up),
-  apply two directed edits on isolated copies, `export_av` each with a recorded recipe, write the
-  candidates and one review item.
-- The measurement: the creator returns cold, two minutes, no transcript. Record in ADR-0064's
-  acceptance section: understood the change (y/n, seconds), chose or rejected (which), left a
-  passage-specific comment (y/n), what was confusing. Also test: no agent connection, feedback on
-  an older preview, choosing neither, returning to Create without losing selection.
+- `mcp/gate1/publish_review.py`: loads a project folder, saves + snapshots the baseline, records the
+  brief, renders the baseline excerpt (`export_av`), renders two directions on **isolated copies**
+  (`load_project` the copy → edits → `save_project` → `export_av` → `work_snapshot_version … into=<original>`),
+  writes candidate records with provenance + evidence (export result, measured RMS for the level match),
+  reloads the original, publishes one review item. Nothing in `work/` is hand-written.
+- Control server + MCP: `work_status`, `work_snapshot_version` (the two things only the app can do
+  well; the full tool families are gate 2). `save_project` over MCP now clears the dirty flag like
+  the GUI save (it never did).
+- Leaving Review no longer creates a `work/` folder in a project that never had records.
+- `docs/roadmap/gate1-measurement.md`: the protocol — the creator returns cold, two minutes, no
+  transcript; eight observations, the ADR-0064 probes (no agent, undo/redo, feedback on an older
+  preview, neither, back to Create, save prompt); the result goes into ADR-0064's acceptance section.
 
 ## Out of scope for gate 1
 - Any runner, worker, job, lease, or background execution (gate 3).

@@ -5,6 +5,8 @@
 #include "app/project_io.h"   // folder-aware save/load + project-local operators
 #include "app/project_paths.h"   // is_folder_project / session_json_path
 #include "app/app.h"
+#include "app/edit_gateway.h"  // ADR-0018: mark_saved
+#include "app/autosave.h"      // ADR-0018: clear the recovery slot after a clean save
 #include "app/mcp_bridge.h"    // ADR-0040: the bundled MCP bridge location + setup command
 #include "audio/plugin_catalog.h"       // check_tutorial_prereqs: installed plugin readiness
 #include "ui/node_graph.h"
@@ -516,6 +518,10 @@ void register_project_handlers(Handlers& handlers_) {
         if (path.empty()) return err(code::kBadArg, "need path for first save");
         auto sr = project_io::save(*c.app, *c.graph, *c.win_w, *c.win_h, *c.split_x, *c.dock_h, path);
         if (!sr.ok) return err(code::kIoError, sr.error);
+        // ADR-0018: the document is now clean — same as the GUI's save (file_actions::save_path). Without
+        // this an agent's save left the edited-dot on, the quit prompt armed, and the autosave slot live.
+        if (c.app->edit_gateway) c.app->edit_gateway->mark_saved();
+        autosave::clear();
         json r = ok(); r["path"] = c.app->project.current_project_path; r["session_file"] = sr.session_file; return r;
     };
     handlers_["load_project"] = [](const ControlCtx& c, const json& b) {

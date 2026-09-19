@@ -144,6 +144,22 @@ static void test_snapshot_version() {
     const auto all = list_versions(proj);
     CHECK(all.size() == 2);
     CHECK(all[1].parent == id || all[0].parent == id);
+    // Snapshot an isolated candidate COPY into the original's records (ADR-0062 §2).
+    {
+        const fs::path copy = fresh_dir("copy");
+        write_file(copy / "project.json", std::string(kDoc) + "\n");
+        write_file(copy / "aurora.glsl", "// shader v1");
+        write_file(copy / "work" / "junk.json", "{}");   // the copy's own records are not content
+        SnapshotOptions o; o.label = "candidate C"; o.source = "candidate"; o.parent = id;
+        const std::string cid = snapshot_version_into(copy, proj, o, &err);
+        CHECK(!cid.empty());
+        CHECK(fs::exists(version_dir(proj, cid) / "project.json"));      // landed in the ORIGINAL's work/
+        CHECK(!fs::exists(version_dir(proj, cid) / "work"));
+        CHECK(!fs::exists(copy / "work" / "versions"));                  // nothing written into the copy's records
+        Version cv; CHECK(load_version(proj, cid, cv));
+        CHECK(cv.parent == id && cv.dependencies.size() == 2);
+        CHECK(list_versions(proj).size() == 3);
+    }
     // No project.json → clean failure.
     CHECK(snapshot_version(fresh_dir("empty"), opt, &err).empty());
     CHECK(err.find("project.json") != std::string::npos);
