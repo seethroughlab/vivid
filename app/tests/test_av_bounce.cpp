@@ -46,8 +46,11 @@ struct MockAV : vivid::AVExporter {
     bool start(const std::string& p, uint32_t, uint32_t, double fps, uint32_t) override {
         started = true; path_ = p; sfps = fps; return true;
     }
+    int refuse_every = 0;   // >0: refuse every Nth video frame (an encoder that is not ready)
     bool write_video_frame(const uint8_t*, uint32_t, uint32_t, double pts = -1.0) override {
-        ++vframes; vpts.push_back(pts); return true;
+        const size_t idx = vpts.size(); vpts.push_back(pts);   // idx = this call's ordinal
+        if (refuse_every > 0 && (idx % refuse_every) == static_cast<size_t>(refuse_every - 1)) return false;
+        ++vframes; return true;
     }
     bool write_audio_samples(const float*, uint64_t n, uint32_t, double pts = -1.0) override {
         asamples += n; apts.push_back(pts); return true;
@@ -112,6 +115,32 @@ int main() {
     run_case(reg, 44100, 60.0, 0.5, 120.0);
     run_case(reg, 48000, 30.0, 0.25, 128.0);
     run_case(reg, 44100, 24.0, 1.0, 90.0);
+
+    // An encoder that refuses frames: the job keeps going (audio/video clocks unaffected) and the
+    // result COUNTS the refusals so the caller can say the file is shorter — never silently (ADR-0019).
+    {
+        Transport tr; tr.configure_capture(48000); tr.bpm.store(120.0);
+        Session* s = make_tone_session(reg, 48000);
+        MockFrameSource src(64, 48); MockAV ex; ex.refuse_every = 3;
+        vivid::AvBounceRequest req; req.path = "/tmp/av.mp4"; req.seconds = 0.5; req.fps = 30.0;   // 15 frames
+        vivid::AvBounceResult r; std::string e;
+        CHECK(vivid::av_bounce_run(s, tr, src, ex, nullptr, req, r, &e));
+        CHECK(r.frames == 15);
+        CHECK(r.dropped_frames == 5);
+        CHECK(ex.vframes == 10);
+        CHECK(r.audio_frames == 24000);   // audio is complete regardless
+        session_destroy(s);
+    }
+    {
+        Transport tr; tr.configure_capture(48000); tr.bpm.store(120.0);
+        Session* s = make_tone_session(reg, 48000);
+        MockFrameSource src(64, 48); MockAV ex;
+        vivid::AvBounceRequest req; req.path = "/tmp/av.mp4"; req.seconds = 0.5; req.fps = 30.0;
+        vivid::AvBounceResult r; std::string e;
+        CHECK(vivid::av_bounce_run(s, tr, src, ex, nullptr, req, r, &e));
+        CHECK(r.dropped_frames == 0);   // a healthy encoder drops nothing
+        session_destroy(s);
+    }
 
     // Bad requests are rejected before anything is written.
     {
