@@ -51,6 +51,7 @@ void register_av_export_handlers(Handlers& handlers_) {
         r["duration_sec"] = st.duration_sec;
         r["peak"]         = st.peak;
         r["clipped"]      = st.clipped;
+        r["dropped_frames"] = st.dropped_frames;   // > 0 => the file is shorter than requested (ADR-0019)
         return r;
     };
 }

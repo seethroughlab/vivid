@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <unistd.h>   // usleep (wait_ready)
 #include <memory>
 
 // AVFoundation video exporter. Ported from vivid-classic (src/runtime/platform/av_exporter.mm);
@@ -86,12 +87,15 @@ private:
 
     // Offline feed can outrun the encoder; block (briefly pumping the run loop) until the input is ready
     // instead of dropping the frame. Realtime mode keeps its drop-on-not-ready tuning (returns immediately).
+    // Offline mode blocks until the input accepts more data (the realtime recorder never blocks: a
+    // frame it can't place is dropped by design). Poll with a short sleep rather than pumping a nested
+    // run loop: readiness is flipped from the writer's own queue, not the main run loop, and a nested
+    // pump would run hosted plugins' GUI timers mid-export while the audio device is paused. With the
+    // inputs in realtime mode (see start()) this practically never spins; the 10 s cap is a safety net.
     bool wait_ready(AVAssetWriterInput* input) {
         if ([input isReadyForMoreMediaData]) return true;
         if (!offline_) return false;
-        for (int i = 0; i < 5000 && ![input isReadyForMoreMediaData]; ++i)
-            [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
-                                     beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.002]];
+        for (int i = 0; i < 20000 && ![input isReadyForMoreMediaData]; ++i) usleep(500);
         return [input isReadyForMoreMediaData];
     }
 };
@@ -149,7 +153,14 @@ bool AVFExporter::start(const std::string& path, uint32_t width, uint32_t height
         impl_->video_input = [[AVAssetWriterInput alloc]
             initWithMediaType:AVMediaTypeVideo
                outputSettings:video_settings];
-        impl_->video_input.expectsMediaDataInRealTime = offline_ ? NO : YES;   // offline: faster-than-realtime
+        // ALWAYS realtime inputs — including the deterministic offline export. Counter-intuitive but
+        // measured: in non-realtime mode Apple's H.264 encoder holds an input NOT-ready until it has a
+        // batch of ~16 frames (or a ~1.5 s internal timeout flushes one), so a producer that appends one
+        // frame per frame-loop tick stalls at ~0.2 fps and wait_ready's timeouts DROP frames (a 116-frame
+        // export landed 49). In realtime mode the input buffers and the encoder runs its low-latency
+        // profile: the same trickle encodes at the producer's rate (120 frames in ~1 s standalone).
+        // Offline determinism comes from the explicit PTS in write_*, not from this flag.
+        impl_->video_input.expectsMediaDataInRealTime = YES;
 
         // Pixel buffer adaptor for efficient frame submission.
         NSDictionary* pb_attrs = @{
@@ -184,7 +195,7 @@ bool AVFExporter::start(const std::string& path, uint32_t width, uint32_t height
             impl_->audio_input = [[AVAssetWriterInput alloc]
                 initWithMediaType:AVMediaTypeAudio
                    outputSettings:audio_settings];
-            impl_->audio_input.expectsMediaDataInRealTime = offline_ ? NO : YES;   // offline: faster-than-realtime
+            impl_->audio_input.expectsMediaDataInRealTime = YES;   // see the video input: realtime in every mode
 
             if ([impl_->writer canAddInput:impl_->audio_input])
                 [impl_->writer addInput:impl_->audio_input];

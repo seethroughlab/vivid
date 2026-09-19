@@ -72,7 +72,8 @@ bool AvExportJob::step(uint32_t max_frames) {
         }
 
         // Deterministic PTS: video on the even i/fps grid, audio at its exact sample position.
-        exporter_->write_video_frame(rgba_.data(), w_, h_, static_cast<double>(frame_i_) / fps_);
+        if (!exporter_->write_video_frame(rgba_.data(), w_, h_, static_cast<double>(frame_i_) / fps_))
+            ++dropped_;   // the encoder refused the frame: count it so the result can say so
         exporter_->write_audio_samples(pcm_.data(), static_cast<uint64_t>(n_frame) * 2, 2,
                                        static_cast<double>(sample_pos_) / sr_);
         sample_pos_ = audio_end;
@@ -85,6 +86,7 @@ bool AvExportJob::step(uint32_t max_frames) {
         result_.duration_sec = static_cast<double>(frame_i_) / fps_;
         result_.peak         = peak_;
         result_.clipped      = peak_ > 1.0f;
+        result_.dropped_frames = dropped_;
     }
     return !done();
 }

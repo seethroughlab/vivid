@@ -840,10 +840,12 @@ void run_frame_loop(App& app, Window& win) {
                 if (vivid::av_export_tick(app) == vivid::AvTick::Done) {
                     const auto& r = app.last_av_export;
                     char m[256];
-                    std::snprintf(m, sizeof m, "AV exported: %s (%llu frames, %.1fs%s)", r.path.c_str(),
+                    char drop[64] = "";
+                    if (r.dropped_frames) std::snprintf(drop, sizeof drop, ", %llu frames DROPPED", static_cast<unsigned long long>(r.dropped_frames));
+                    std::snprintf(m, sizeof m, "AV exported: %s (%llu frames, %.1fs%s%s)", r.path.c_str(),
                                   static_cast<unsigned long long>(r.frames), r.duration_sec,
-                                  r.clipped ? ", audio CLIPPED" : "");
-                    vivid::ui::push_toast(win.toasts, vivid::LogLevel::Info, m, glfwGetTime(), 10.0);
+                                  r.clipped ? ", audio CLIPPED" : "", drop);
+                    vivid::ui::push_toast(win.toasts, r.dropped_frames ? vivid::LogLevel::Warning : vivid::LogLevel::Info, m, glfwGetTime(), 10.0);
                 }
             } else {
                 vgraph.set_metronome(static_cast<float>(transport.bpm.load(std::memory_order_relaxed)),

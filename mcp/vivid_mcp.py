@@ -1002,8 +1002,10 @@ def export_av(path: str, seconds: float = 0.0, bars: float = 0.0, fps: float = 6
 @mcp.tool
 def av_export_status() -> dict:
     """Poll the offline AV export (export_av). Returns {active, frames_done, total_frames, done, path,
-    frames, audio_frames, duration_sec, peak, clipped}. `active` = a render is in flight (watch
-    frames_done/total_frames for progress); `done` = a completed export exists (the last-result fields)."""
+    frames, audio_frames, duration_sec, peak, clipped, dropped_frames}. `active` = a render is in flight
+    (watch frames_done/total_frames for progress); `done` = a completed export exists (the last-result
+    fields). `dropped_frames` > 0 means the encoder refused that many video frames and the file is that
+    much shorter than `frames` — treat the export as incomplete rather than trusting the count."""
     return _post("av_export_status", {})
 
 

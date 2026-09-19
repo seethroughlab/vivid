@@ -34,6 +34,8 @@ struct AvBounceResult {
     double      duration_sec  = 0.0;
     float       peak          = 0.0f;
     bool        clipped       = false;
+    uint64_t    dropped_frames = 0;  // video frames the exporter refused (encoder not ready) — the file is
+                                     // that many frames SHORTER than `frames`; never silent (ADR-0019)
 };
 
 // The visual-frame producer, abstracted so the loop is unit-testable without a real GPU. `render`
@@ -82,6 +84,7 @@ private:
     double   bpm_ = 120.0, fps_ = 60.0, bps_ = 2.0;
     uint64_t total_frames_ = 0, frame_i_ = 0, sample_pos_ = 0;
     float    peak_ = 0.f;
+    uint64_t dropped_ = 0;   // write_video_frame refusals (see AvBounceResult::dropped_frames)
     std::string path_;
     std::vector<uint8_t> rgba_;
     std::vector<float>   pcm_;
