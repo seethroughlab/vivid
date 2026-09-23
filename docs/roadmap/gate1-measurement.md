@@ -12,20 +12,24 @@ person running the protocol says nothing until the clock stops.
 
 ## Setup (the agent, before the creator sits down)
 
-1. Build `main` and launch Vivid. Keep the display awake (`caffeinate -dimsu`) and the window frontmost
-   while exporting (a sleeping display or occluded window collapses the frame loop).
-2. Publish the round on a **writable copy** of the song sketch:
-   ```sh
-   uv run --directory mcp python gate1/publish_review.py \
-       --project ~/Music/vivid-gate1/song-sketch --from-example --scene 0 --bars 8
-   ```
-   This snapshots the baseline, records the brief, renders the baseline excerpt, renders two
-   directions on isolated copies (snapshotted into the original's `work/`), and publishes one review
-   item. Nothing in `work/` is hand-written.
-3. Leave the app in **Create** on the original project, with the pending badge showing `1` on the
-   `Create | Review` switch. Do not open Review. Quit any MCP client; the creator must not read a
-   transcript.
-4. Start a stopwatch when the creator first touches the mouse or keyboard.
+One command does all of it — build `main`, hold the display awake, launch Vivid, publish one round on
+a **fresh** scratch copy of the song sketch (baseline + two directions the creator has not seen), and
+leave the app in **Create** with the pending badge showing:
+
+```sh
+bash mcp/gate1/setup_measurement.sh          # --no-build if the binary is already current
+```
+
+It prints `READY` with the project path and the open-decision count. Do **not** open Review, and do
+not narrate the UI — the test is whether the screen explains itself. The creator must not read an
+agent transcript. Start a stopwatch when they first touch the mouse or keyboard.
+
+If the round must be published by hand (a different project, other directions), the script wraps:
+
+```sh
+uv run --directory mcp python gate1/publish_review.py \
+    --project <folder> --from-example --scene 0 --bars 8 [--directions my.json]
+```
 
 ## The session (the creator)
 
