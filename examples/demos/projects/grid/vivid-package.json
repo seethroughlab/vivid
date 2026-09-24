@@ -2,6 +2,23 @@
   "name": "grid-ops",
   "version": "0.1.0",
   "operators": [
-    { "name": "Lines", "kind": "gpu_visual", "source": "lines.cpp" }
-  ]
+    {
+      "name": "Lines",
+      "kind": "gpu_visual",
+      "source": "lines.cpp"
+    },
+    {
+      "name": "InstanceGrid",
+      "kind": "gpu_visual",
+      "source": "instance_grid.cpp"
+    }
+  ],
+  "dependencies": {
+    "vendor": [
+      {
+        "name": "vivid-3d-headers",
+        "include": "vendor"
+      }
+    ]
+  }
 }
