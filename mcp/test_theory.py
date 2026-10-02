@@ -104,6 +104,61 @@ def test_roman():
     assert T.roman("bIII", "C", "major") == [63, 67, 70]  # Eb major (borrowed)
 
 
+def test_roman_extended():
+    assert T.roman("IVmaj7", "C") == [65, 69, 72, 76]       # F A C E
+    assert T.roman("bVIImaj7", "C") == [70, 74, 77, 81]     # Bb D F A — was impossible
+    assert T.roman("bVII7", "C") == [70, 74, 77, 80]        # dominant Bb7
+    assert T.roman("bVImaj7", "C") == [68, 72, 75, 79]      # Ab C Eb G
+    assert T.roman("vi9", "C") == T.chord("Am9", octave=4)  # case sets the third
+    assert T.roman("ii11", "C") == T.chord("Dm11")
+    assert T.roman("Iadd9", "C") == T.chord("Cadd9")
+    assert T.roman("Vsus4", "C") == T.chord("Gsus4")
+    assert T.roman("viiø7", "C") == T.chord("Bm7b5")       # suffix already sets the third
+    assert T.chord("Bø7") == T.chord("Bø") == T.chord("Bm7b5")  # was "m7b57" -> ValueError
+    assert T.chord("B°7") == T.chord("Bdim7")
+    assert T.roman("bvi", "C") == T.chord("Abm")            # lower-case borrowed = minor
+    assert T.roman("I", "C", voicing="open") == T.chord("C", voicing="open")
+    assert T.roman("V7", "C", voicing="drop2") == T.chord("G7", voicing="drop2")
+    for bad in ("IVxyz", "X", "bQ7"):
+        try:
+            T.roman(bad, "C")
+        except ValueError:
+            continue
+        raise AssertionError(f"roman({bad!r}) should have raised")
+
+
+def test_voice_leading():
+    prog = T.progression(["IVmaj7", "V", "iii", "vi"], key="C")
+    assert prog[0] == T.roman("IVmaj7", "C")                # first chord kept as voiced
+    for a, b in zip(prog, prog[1:]):
+        # the brief's bar: no voice moves more than a 4th between adjacent chords
+        assert all(min(abs(n - p) for p in a) <= 5 for n in b), (a, b)
+        assert all(min(abs(p - n) for n in b) <= 5 for p in a), (a, b)
+        if {p % 12 for p in a} & {p % 12 for p in b}:       # common tones are held in place
+            assert set(a) & set(b), (a, b)
+    for c in prog[1:]:
+        assert 48 <= min(c) <= 72
+    # same pitch classes as the unvoiced chords
+    for c, sym in zip(prog, ["IVmaj7", "V", "iii", "vi"]):
+        assert {p % 12 for p in c} == {p % 12 for p in T.roman(sym, "C")}
+    # no adjacent minor seconds in the longer progression from the brief
+    long = T.progression(["IVmaj7", "V", "iii", "vi", "bVIImaj7", "IV", "ii9", "Iadd9"],
+                         key="D", voicing="open", octave=3)
+    for c in long:
+        assert all(b - a != 1 for a, b in zip(c, c[1:])), c
+    # voice_lead=False is the old block-chord output
+    assert T.progression(["ii", "V7", "I"], key="C", voice_lead=False) == \
+        [T.roman("ii", "C"), T.roman("V7", "C"), T.roman("I", "C")]
+    # bass: the root as its own voice in C2..B2, under the voice-led upper structure
+    withbass = T.progression(["IVmaj7", "V", "iii", "vi"], key="C", bass=True)
+    assert [c[0] for c in withbass] == [41, 43, 40, 45]     # F2 G2 E2 A2
+    assert [c[1:] for c in withbass] == prog
+    # slash bass stays underneath and isn't voice-led
+    sl = T.progression(["C", "Cmaj7/E", "F/A"])
+    assert sl[1][0] % 12 == 4 and sl[1][0] < min(sl[1][1:])
+    assert sl[2][0] % 12 == 9 and sl[2][0] < min(sl[2][1:])
+
+
 def test_transforms():
     n = [{"p": 60, "s": 0.0, "d": 1.0, "v": 0.8}]
     assert T.transpose(n, 12)[0]["p"] == 72
@@ -166,7 +221,8 @@ def test_analysis():
 
 
 TESTS = [test_notes, test_norm_notes, test_chords, test_extended_chords,
-         test_unknown_quality_raises, test_scales, test_roman, test_transforms,
+         test_unknown_quality_raises, test_scales, test_roman, test_roman_extended,
+         test_voice_leading, test_transforms,
          test_rhythm, test_analysis]
 
 

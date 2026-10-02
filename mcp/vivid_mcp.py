@@ -1916,21 +1916,29 @@ def add_chord(track: int, scene: int, symbol: str, beat: float = 0.0, dur: float
 @mcp.tool
 def set_progression(track: int, scene: int, chords: list[str], beats_per_chord: float = 4.0,
                     octave: int = 4, voicing: str = "close", vel: float = 0.8,
-                    key: str = "", scale: str = "major") -> dict:
-    """REPLACE a clip with a chord progression. If `key` is given, `chords` are ROMAN NUMERALS
-    diatonic to key/scale (["ii","V","I"] or ["i","iv","V","i"]); otherwise they're absolute
-    chord SYMBOLS (["Dm7","G7","Cmaj7"]). Each chord spans beats_per_chord; the loop length is
-    len(chords)*beats_per_chord."""
-    notes = []
+                    key: str = "", scale: str = "major", voice_lead: bool = True,
+                    bass: bool = False) -> dict:
+    """REPLACE a clip with a chord progression. If `key` is given, `chords` are ROMAN NUMERALS in
+    key/scale; otherwise they're absolute chord SYMBOLS (["Dm7","G7","Cmaj7/E"]). Each chord spans
+    beats_per_chord; the loop length is len(chords)*beats_per_chord.
+
+    Roman numerals: a bare numeral (optionally + "7") is diatonic (["ii","V7","I"]). Any other
+    suffix names the quality explicitly with chord-symbol vocabulary — "IVmaj7", "vi9", "ii11",
+    "Iadd9", "Vsus4" — and the numeral's case sets the third (vi9 = minor 9). An accidental marks a
+    borrowed chord: "bVIImaj7", "bVImaj7", "bVII7" (dominant).
+
+    `voicing` (close/open/drop2) shapes the FIRST chord. With `voice_lead` (default) every later
+    chord is re-voiced to move least from the previous one — common tones held, lowest note kept in
+    C3..C5, no semitone clusters — which is what makes a pad sound smooth. voice_lead=False gives
+    block chords each voiced independently. `bass` adds the root (or slash bass) as its own voice in
+    C2..B2. For a pad, octave=3 sits nicely."""
     try:
-        for i, sym in enumerate(chords):
-            start = i * beats_per_chord
-            pitches = (theory.roman(sym, key, scale, octave) if key
-                       else theory.chord(sym, octave=octave, voicing=voicing))
-            for p in pitches:
-                notes.append({"p": p, "s": start, "d": beats_per_chord, "v": vel})
+        voiced = theory.progression(chords, key=key, scale=scale, octave=octave, voicing=voicing,
+                                    voice_lead=voice_lead, bass=bass)
     except ValueError as e:
         return {"ok": False, "code": "bad_arg", "error": str(e)}
+    notes = [{"p": p, "s": i * beats_per_chord, "d": beats_per_chord, "v": vel}
+             for i, pitches in enumerate(voiced) for p in pitches]
     length = max(1.0, len(chords) * beats_per_chord)
     return _post("set_clip", {"track": track, "scene": scene, "notes": notes, "length": length})
 

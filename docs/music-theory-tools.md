@@ -18,7 +18,8 @@ int *or* a name: `C4`, `F#3`, `Bb5`, `Db2` (sharps `#`/`s`, flats `b`).
 
 ## Harmony
 - `add_chord(track, scene, symbol, beat, dur, octave, inversion, voicing)` — **append** a chord.
-- `set_progression(track, scene, chords, beats_per_chord, key, scale)` — **replace** with a progression.
+- `set_progression(track, scene, chords, beats_per_chord, octave, voicing, key, scale, voice_lead, bass)` —
+  **replace** with a progression.
 
 **Chord symbols:** root (`C`, `F#`, `Bb`) + quality + extensions + optional `/bass`.
 Qualities/extensions: `maj` (or none), `m`/`min`/`-`, `dim`/`°`, `aug`/`+`, `sus2`, `sus4`,
@@ -26,9 +27,25 @@ Qualities/extensions: `maj` (or none), `m`/`min`/`-`, `dim`/`°`, `aug`/`+`, `su
 `11`, `m11`, `13`, `maj13`, `m13`, `7sus4`. Slash bass: `C/G`, `Dm7/A`.
 Voicings: `close` (default), `open`, `drop2`; `inversion` = 0,1,2,…
 
-**Roman numerals** (when `set_progression(key=…)` is given): `I ii iii IV V vi vii` — case is
-informative but the scale sets the quality (diatonic thirds). Trailing `7` = the diatonic
-seventh (`V7`). Accidental prefix = borrowed chord (`bVII` in C = Bb major; upper=major, lower=minor).
+**Roman numerals** (when `set_progression(key=…)` is given): `I ii iii IV V vi vii`.
+- A **bare** numeral, optionally with a trailing `7`, is diatonic: the scale sets the quality by
+  stacking thirds (`V7` = dominant, `IV7` = maj7, `vii` = dim in major).
+- **Any other suffix** names the quality with the chord-symbol vocabulary above: `IVmaj7`, `vi9`,
+  `ii11`, `Iadd9`, `Vsus4`, `viiø7`. The numeral's **case sets the third**: lower case means minor
+  (`vi9` = Am9 in C) unless the suffix already sets it (`dim`, `°`, `ø`, `m7b5`, `sus`, `aug`).
+- An **accidental** prefix marks a borrowed chord on the chromatic degree, with quality from case +
+  suffix: `bVII` = Bb, `bVII7` = Bb7 (dominant), `bVIImaj7` = Bbmaj7, `bvi` = Abm.
+
+**Voice leading** (`voice_lead=True`, the default): `voicing` shapes the **first** chord only; each
+later chord is re-voiced to move least from the one before. Common tones are held, the lowest note
+stays in C3–C5, and adjacent semitone clusters are avoided. This is what makes a pad sound smooth.
+`voice_lead=False` gives block chords, each voiced independently. `bass=True` adds the root (or the
+slash bass) as its own voice in C2–B2. A slash bass always stays underneath and is never voice-led.
+
+```
+set_progression(track=0, scene=0, key="D", octave=3, voicing="open", beats_per_chord=4,
+                chords=["IVmaj7","V","iii","vi","bVIImaj7","IV","ii9","Iadd9"])
+```
 
 ## Scales & key
 - `set_key(root, scale)` / `get_key()` — a session context the tools below default to (**ephemeral** v1).

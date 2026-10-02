@@ -152,6 +152,7 @@ def _norm_quality(q: str) -> str:
     # "Cadd9". Strip before the substitutions below so the table lookup sees one canonical form.
     q = q.replace("(", "").replace(")", "")
     q = q.replace("6/9", "69")          # a slash INSIDE a quality, not a slash bass
+    q = q.replace("ø7", "ø").replace("°7", "dim7")   # ø already implies the 7th ("Bø7" == "Bø")
     q = q.replace("Δ", "maj7").replace("△", "maj7").replace("°", "dim").replace("ø", "m7b5")
     q = q.replace("Major", "maj").replace("major", "maj").replace("Maj", "maj").replace("MAJ", "maj")
     q = q.replace("Minor", "m").replace("minor", "m").replace("Min", "m").replace("MIN", "m").replace("min", "m")
@@ -162,10 +163,41 @@ def _norm_quality(q: str) -> str:
     return q
 
 
-def chord(symbol: str, octave: int = 4, inversion: int = 0, voicing: str = "close") -> list[int]:
-    """A chord symbol -> MIDI pitches. Supports root (+#/b), quality (maj/m/dim/aug/sus2/sus4),
-    extensions (6/7/maj7/m7/9/maj9/m9/add9/11/13/m7b5/dim7), a slash bass ("Cmaj7/G"), inversion,
-    and voicing (close/open/drop2). Unknown qualities fall back to a major/minor triad."""
+def _apply_voicing(pitches: list[int], inversion: int = 0, voicing: str = "close") -> list[int]:
+    """Invert (raise the lowest note an octave, `inversion` times), then voice: drop2 drops the
+    second-highest note an octave; open raises the second-lowest an octave."""
+    for _ in range(inversion % max(1, len(pitches))):
+        pitches = pitches[1:] + [pitches[0] + 12]
+    if voicing == "drop2" and len(pitches) >= 2:
+        s = sorted(pitches); s[-2] -= 12; pitches = sorted(s)
+    elif voicing == "open" and len(pitches) >= 3:
+        s = sorted(pitches); s[1] += 12; pitches = sorted(s)
+    return pitches
+
+
+def _build(root_midi: int, quality: str, inversion: int = 0, voicing: str = "close",
+           symbol: str = "") -> list[int]:
+    """root MIDI note + a raw quality string ("maj7", "m9", "add9", …) -> voiced pitches (unclamped).
+    The one place qualities are resolved, shared by chord() and roman()."""
+    q = _norm_quality(quality)
+    intervals = CHORD_INTERVALS.get(q)
+    if intervals is None:
+        # RAISE rather than guess. The old fallback returned a plausible-looking triad for any
+        # unrecognised quality, so a wrong chord was indistinguishable from a right one — and
+        # because the test was startswith("m"), every unknown "maj…" became a MINOR triad
+        # (Cmaj7#11 -> C minor). A caller that gets an error can fix the symbol; a caller that
+        # gets the wrong notes cannot even tell.
+        raise ValueError(
+            f"unknown chord quality {q!r} in {symbol or quality!r}; supported: "
+            + ", ".join(sorted(k for k in CHORD_INTERVALS if k))
+        )
+    return _apply_voicing([root_midi + iv for iv in intervals], inversion, voicing)
+
+
+def chord_parts(symbol: str, octave: int = 4, inversion: int = 0,
+                voicing: str = "close") -> tuple[list[int], int | None, int]:
+    """A chord symbol -> (upper-structure pitches, slash-bass MIDI note or None, root pitch class).
+    chord() is `[bass] + upper`; voice leading moves only `upper` and keeps the bass underneath."""
     sym = symbol.strip()
     bass = None
     if "/" in sym:
@@ -179,70 +211,155 @@ def chord(symbol: str, octave: int = 4, inversion: int = 0, voicing: str = "clos
     if not m:
         raise ValueError(f"bad chord symbol: {symbol!r}")
     root = m.group(1).upper() + m.group(2)
-    q = _norm_quality(m.group(3))
-    intervals = CHORD_INTERVALS.get(q)
-    if intervals is None:
-        # RAISE rather than guess. The old fallback returned a plausible-looking triad for any
-        # unrecognised quality, so a wrong chord was indistinguishable from a right one — and
-        # because the test was startswith("m"), every unknown "maj…" became a MINOR triad
-        # (Cmaj7#11 -> C minor). A caller that gets an error can fix the symbol; a caller that
-        # gets the wrong notes cannot even tell.
-        raise ValueError(
-            f"unknown chord quality {q!r} in {symbol!r}; supported: "
-            + ", ".join(sorted(k for k in CHORD_INTERVALS if k))
-        )
     root_midi = parse_note(root + str(octave))
-    pitches = [root_midi + iv for iv in intervals]
-    for _ in range(inversion % max(1, len(pitches))):     # invert: raise the lowest note an octave
-        pitches = pitches[1:] + [pitches[0] + 12]
-    if voicing == "drop2" and len(pitches) >= 2:
-        s = sorted(pitches); s[-2] -= 12; pitches = sorted(s)
-    elif voicing == "open" and len(pitches) >= 3:
-        s = sorted(pitches); s[1] += 12; pitches = sorted(s)
+    pitches = _build(root_midi, m.group(3), inversion, voicing, symbol)
+    bnote = None
     if bass:
         low = min(pitches)
         bnote = pitch_class(bass) + 12 * (low // 12)
         while bnote >= low:
             bnote -= 12
-        pitches = [bnote] + pitches
-    return [_clamp(p) for p in pitches]
+    return [_clamp(p) for p in pitches], (None if bnote is None else _clamp(bnote)), root_midi % 12
+
+
+def chord(symbol: str, octave: int = 4, inversion: int = 0, voicing: str = "close") -> list[int]:
+    """A chord symbol -> MIDI pitches. Supports root (+#/b), quality (maj/m/dim/aug/sus2/sus4),
+    extensions (6/7/maj7/m7/9/maj9/m9/add9/11/13/m7b5/dim7), a slash bass ("Cmaj7/G"), inversion,
+    and voicing (close/open/drop2). Unknown qualities raise ValueError."""
+    upper, bass, _ = chord_parts(symbol, octave, inversion, voicing)
+    return ([bass] if bass is not None else []) + upper
 
 
 _ROMAN = {"i": 0, "ii": 1, "iii": 2, "iv": 3, "v": 4, "vi": 5, "vii": 6}
+_ROMAN_RE = re.compile(r"^([b#]*)(VII|VI|V|IV|III|II|I|vii|vi|v|iv|iii|ii|i)(.*)$")
+# Suffixes that already fix the third, so a lower-case numeral must NOT prepend "m".
+_THIRD_SET = ("m", "dim", "°", "ø", "sus", "aug", "+")
 
 
-def roman(numeral: str, key, scale: str = "major", octave: int = 4) -> list[int]:
-    """A roman-numeral degree -> MIDI pitches, diatonic to key/scale. A DIATONIC numeral (I..vii)
-    stacks scale thirds, so the quality is automatic (I=maj, ii=min, vii°=dim in major). A
-    trailing "7" adds the diatonic seventh ("V7"). An ACCIDENTAL prefix marks a borrowed chord
-    ("bVII", "bIII"): a triad on the chromatic degree, major if the numeral is UPPER-case, minor
-    if lower — e.g. bVII in C = Bb major."""
-    s = numeral.strip()
-    shift = 0
-    while s and s[0] in "b#":
-        shift += -1 if s[0] == "b" else 1
-        s = s[1:]
-    seventh = s.endswith("7")
-    if seventh:
-        s = s[:-1]
-    deg = _ROMAN.get(s.lower())
-    if deg is None:
+def roman_parts(numeral: str, key, scale: str = "major", octave: int = 4, inversion: int = 0,
+                voicing: str = "close") -> tuple[list[int], int]:
+    """roman() plus the chord's root pitch class: (pitches, root_pc)."""
+    m = _ROMAN_RE.match(numeral.strip())
+    if not m:
         raise ValueError(f"bad roman numeral: {numeral!r}")
+    acc, num, suffix = m.groups()
+    shift = acc.count("#") - acc.count("b")
+    deg = _ROMAN[num.lower()]
     steps = SCALES.get(scale.lower(), SCALES["major"])
     key_root = 60 + (octave - MIDDLE_C_OCTAVE) * 12 + pitch_class(key)
 
     def off(d):   # absolute semitone offset of scale degree d (wraps octaves)
         return steps[d % len(steps)] + 12 * (d // len(steps))
 
-    if shift != 0:                                  # borrowed chord: quality from case
-        root = key_root + off(deg) + shift
-        out = [root + i for i in ([0, 4, 7] if s[:1].isupper() else [0, 3, 7])]
-        if seventh:
-            out.append(root + 10)
-    else:                                           # diatonic: stack scale thirds
-        idxs = [deg, deg + 2, deg + 4] + ([deg + 6] if seventh else [])
-        out = [key_root + off(d) for d in idxs]
-    return [_clamp(p) for p in out]
+    root = key_root + off(deg) + shift
+    if shift == 0 and suffix in ("", "7"):          # diatonic: stack scale thirds
+        idxs = [deg, deg + 2, deg + 4] + ([deg + 6] if suffix == "7" else [])
+        out = _apply_voicing([key_root + off(d) for d in idxs], inversion, voicing)
+    else:                                           # explicit quality: case sets the third
+        q = suffix
+        if num.islower() and not suffix.startswith(_THIRD_SET):
+            q = "m" + suffix
+        out = _build(root, q, inversion, voicing, numeral)
+    return [_clamp(p) for p in out], root % 12
+
+
+def roman(numeral: str, key, scale: str = "major", octave: int = 4, inversion: int = 0,
+          voicing: str = "close") -> list[int]:
+    """A roman-numeral degree -> MIDI pitches in key/scale.
+
+    - A bare DIATONIC numeral (I..vii, optional trailing "7") stacks scale thirds, so the quality
+      is automatic: I=maj, ii=min, vii=dim, V7=dominant, IV7=maj7 (in major).
+    - Any other suffix names the quality explicitly, using chord()'s vocabulary: "IVmaj7", "vi9",
+      "ii11", "Iadd9", "Vsus4", "bVIImaj7". The numeral's CASE sets the third: lower-case prepends
+      "m" (vi9 = m9, ii11 = m11) unless the suffix already sets it (dim/°/ø/m7b5/sus/aug).
+    - An ACCIDENTAL prefix marks a borrowed chord on the chromatic degree ("bVII" = Bb in C, "bvi"
+      = Ab minor); quality from case + suffix, so "bVII7" is a dominant Bb7 and "bVIImaj7" Bbmaj7.
+    `inversion` / `voicing` (close/open/drop2) apply as in chord()."""
+    return roman_parts(numeral, key, scale, octave, inversion, voicing)[0]
+
+
+# --- Voice leading ---
+def voice_lead(prev: list[int], chord: list[int], low: int = 48, high: int = 72,
+               clash_penalty: int = 4) -> list[int]:
+    """Re-voice `chord` (any octave placement of its pitch classes) to move least from `prev`.
+
+    Cost = symmetric nearest-voice distance (each new note to its nearest old note + each old note
+    to its nearest new note), so it handles different voice counts and keeps common tones (cost 0).
+    Each adjacent minor 2nd adds `clash_penalty` (semitones of movement) — clusters are mud in a
+    pad. The lowest note must lie in [low, high] (default C3..C5). Ties prefer keeping prev's span,
+    so an open voicing stays open."""
+    import itertools
+    if not prev:
+        return sorted(chord)
+    pcs = list(dict.fromkeys(p % 12 for p in chord))
+    lo_b = min(min(prev) - 12, low)
+    hi_b = max(prev) + 12
+    opts = [[m for m in range(lo_b, hi_b + 1) if m % 12 == pc] for pc in pcs]
+    prev_span = max(prev) - min(prev)
+    prev_mid = sum(prev) / len(prev)
+
+    def cost(c):
+        move = (sum(min(abs(n - p) for p in prev) for n in c)
+                + sum(min(abs(p - n) for n in c) for p in prev))
+        s = sorted(c)
+        # Adjacent minor seconds read as mud in a sustained pad: worth a few semitones of movement.
+        clash = sum(1 for a, b in zip(s, s[1:]) if b - a == 1)
+        return (move + clash_penalty * clash, abs((max(c) - min(c)) - prev_span),
+                abs(sum(c) / len(c) - prev_mid))
+
+    best = None
+    for combo in itertools.product(*opts):
+        if not low <= min(combo) <= high:
+            continue
+        k = cost(combo)
+        if best is None or k < best[0]:
+            best = (k, combo)
+    if best is None:                       # prev far out of range: fall back to the chord as given
+        return sorted(chord)
+    return sorted(_clamp(p) for p in best[1])
+
+
+def voice_lead_progression(chords: list[list[int]], low: int = 48,
+                           high: int = 72) -> list[list[int]]:
+    """Keep the first chord exactly as voiced; voice-lead each next chord from the previous one."""
+    out: list[list[int]] = []
+    for c in chords:
+        out.append(sorted(c) if not out else voice_lead(out[-1], c, low, high))
+    return out
+
+
+def progression(chords: list[str], key: str = "", scale: str = "major", octave: int = 4,
+                voicing: str = "close", voice_lead: bool = True, bass: bool = False) -> list[list[int]]:
+    """A list of roman numerals (if `key`) or chord symbols -> one pitch list per chord.
+
+    `voicing` shapes the FIRST chord; with `voice_lead` each later chord is re-voiced to move least
+    from the one before (so the opening shape carries through). A slash bass stays underneath and
+    is not voice-led. `bass` adds the chord root (or slash bass) as its own voice in C2..B2."""
+    uppers, basses, roots = [], [], []
+    for sym in chords:
+        if key:
+            up, root = roman_parts(sym, key, scale, octave, voicing=voicing)
+            b = None
+        else:
+            up, b, root = chord_parts(sym, octave=octave, voicing=voicing)
+        uppers.append(up); basses.append(b); roots.append(root)
+    if voice_lead:
+        uppers = voice_lead_progression(uppers)
+    out = []
+    for up, b, root in zip(uppers, basses, roots):
+        if bass:
+            pc = b % 12 if b is not None else root
+            out.append([36 + pc] + sorted(up))          # C2..B2
+        elif b is not None:
+            bn = b
+            while bn >= min(up):
+                bn -= 12
+            while bn + 12 < min(up):
+                bn += 12
+            out.append([_clamp(bn)] + sorted(up))
+        else:
+            out.append(sorted(up))
+    return out
 
 
 # --- Transforms (operate on clip-note lists; pure) ---
